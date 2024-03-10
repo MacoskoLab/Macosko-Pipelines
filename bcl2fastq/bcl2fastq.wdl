@@ -62,8 +62,8 @@ task mkfastq {
 
     echo "writing logs"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
-    ( echo; echo "BCL size:"; du -sh ./BCL ) >> mkfastq.log
-    ( echo; echo "mkfastq size:"; du -sh ./mkfastq ) >> mkfastq.log
+    ( echo; echo "BCL size:"; du -sh BCL ) >> mkfastq.log
+    ( echo; echo "mkfastq size:"; du -sh mkfastq ) >> mkfastq.log
     ( echo; echo "free space:"; df -h ) >> mkfastq.log
     ( echo; echo "CPU INFO:"; lscpu ) >> mkfastq.log
     
