@@ -9,6 +9,7 @@ task mkfastq {
   input {
     String bcl
     String samplesheet
+    String method
     String fastq_output
     String log_output
     Int disksize
@@ -19,14 +20,16 @@ task mkfastq {
     dstat --time --cpu --disk --mem --io &> mkfastq.usage &
 
     #export PATH="/usr/local/bcl2fastq/bin:$PATH"
-    export PATH="/software/cellranger-7.2.0/bin:$PATH"
+    export PATH="/software/cellranger-8.0.0/bin:$PATH"
     export PATH="/software/cellranger-arc-2.0.2/bin:$PATH"
     export PATH="/software/cellranger-atac-2.1.0/bin:$PATH"
     
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
+    # get the samplesheet
     gcloud storage cp "~{samplesheet}" Indexes.csv |& ts
+    echo "Indexes.csv:" ; cat Indexes.csv ; echo
 
     # assert that the samplesheet is not blank
     if [[ -s Indexes.csv ]]
@@ -41,12 +44,24 @@ task mkfastq {
         rm Indexes.csv
     fi
 
-    echo "running mkfastq"
-    time stdbuf -oL -eL cellranger-arc mkfastq                 \
-      --run=BCL                                                \
-      --id=mkfastq                                             \
-      --csv=Indexes.csv                                        \
-      --disable-ui |& ts | tee ./mkfastq.log
+    # run the cellranger command
+    if [[ ~{method} == "cellranger" ]]; then
+        echo "running mkfastq"
+        time stdbuf -oL -eL cellranger mkfastq                     \
+          --run=BCL                                                \
+          --id=mkfastq                                             \
+          --csv=Indexes.csv                                        \
+          --disable-ui |& ts | tee ./mkfastq.log
+    elif [[ ~{method} == "cellranger-arc" ]]; then
+        echo "running mkfastq"
+            time stdbuf -oL -eL cellranger-arc mkfastq                 \
+              --run=BCL                                                \
+              --id=mkfastq                                             \
+              --csv=Indexes.csv                                        \
+              --disable-ui |& ts | tee ./mkfastq.log
+    else
+        echo "ERROR: could not recognize method ~{method}"
+    fi
 
     echo "removing MAKE_FASTQS_CS"
     rm -rf mkfastq/MAKE_FASTQS_CS
@@ -157,12 +172,18 @@ workflow bcl2fastq {
     input {
         String bcl
         String samplesheet
+        String method
         String fastq_output = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
         String log_output = "gs://"+bucket+"/logs/"+basename(bcl,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/img:latest"
     }
     parameter_meta {
+        bcl: "gs:// path"
+        samplesheet: "gs:// path"
+        method: "'cellranger' or 'cellranger-arc'"
+        fastq_output: "gs:// path"
+        log_output: "gs:// path"
     }
     call getdisksize {
         input:
@@ -175,6 +196,7 @@ workflow bcl2fastq {
         input:
             bcl = bcl,
             samplesheet = samplesheet,
+            method = method,
             fastq_output = fastq_output,
             log_output = log_output,
             disksize = getdisksize.disksize,
