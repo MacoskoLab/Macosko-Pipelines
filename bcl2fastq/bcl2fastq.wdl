@@ -9,7 +9,7 @@ task mkfastq {
   input {
     String bcl
     String samplesheet
-    String method
+    String technique
     String fastq_output
     String log_output
     Int disksize
@@ -45,14 +45,14 @@ task mkfastq {
     fi
 
     # run the cellranger command
-    if [[ ~{method} == "cellranger" ]]; then
+    if [[ ~{technique} == "cellranger" ]]; then
         echo "running mkfastq"
         time stdbuf -oL -eL cellranger mkfastq                     \
           --run=BCL                                                \
           --id=mkfastq                                             \
           --csv=Indexes.csv                                        \
           --disable-ui |& ts | tee ./mkfastq.log
-    elif [[ ~{method} == "cellranger-arc" ]]; then
+    elif [[ ~{technique} == "cellranger-arc" ]]; then
         echo "running mkfastq"
             time stdbuf -oL -eL cellranger-arc mkfastq                 \
               --run=BCL                                                \
@@ -60,7 +60,7 @@ task mkfastq {
               --csv=Indexes.csv                                        \
               --disable-ui |& ts | tee ./mkfastq.log
     else
-        echo "ERROR: could not recognize method ~{method}"
+        echo "ERROR: could not recognize technique ~{technique}"
     fi
 
     echo "removing MAKE_FASTQS_CS"
@@ -172,7 +172,7 @@ workflow bcl2fastq {
     input {
         String bcl
         String samplesheet
-        String method
+        String technique
         String fastq_output = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
         String log_output = "gs://"+bucket+"/logs/"+basename(bcl,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
@@ -181,7 +181,7 @@ workflow bcl2fastq {
     parameter_meta {
         bcl: "gs:// path"
         samplesheet: "gs:// path"
-        method: "'cellranger' or 'cellranger-arc'"
+        technique: "'cellranger' or 'cellranger-arc'"
         fastq_output: "gs:// path"
         log_output: "gs:// path"
     }
@@ -196,7 +196,7 @@ workflow bcl2fastq {
         input:
             bcl = bcl,
             samplesheet = samplesheet,
-            method = method,
+            technique = technique,
             fastq_output = fastq_output,
             log_output = log_output,
             disksize = getdisksize.disksize,
