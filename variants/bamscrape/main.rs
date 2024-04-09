@@ -311,11 +311,11 @@ fn main() {
     sc_str.write_vector(&sc_group, "str_i");              // index into whitelist/sc (0-indexed)
     // write metadata
     let meta_group = file.create_group("metadata").expect(".h5 error");
-    let names= vec!["reads","no_cb","no_ub","no_rname"];
-    let counts = vec![read, no_cb, no_ub, no_rname];
-    assert_all_same(&[names.len(), counts.len()]);
-    names.write_vector(&meta_group,"names");
-    counts.write_vector(&meta_group, "read");
+    let names = vec!["reads","no_cb","no_ub","no_rname"];
+    let reads = vec![read, no_cb, no_ub, no_rname];
+    assert_all_same(&[names.len(), reads.len()]);
+    names.write_vector(&meta_group, "names");
+    reads.write_vector(&meta_group, "reads");
     
     println!("DONE");
 }
