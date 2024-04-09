@@ -307,8 +307,8 @@ fn main() {
     let sc_group = file.create_group("softclip").expect(".h5 error");
     assert_all_same(&[sc_read.len(), sc_pos.len(), sc_str.len()]);
     sc_read.write_vector(&sc_group, "read");              // bam line number (1-indexed)
-    sc_pos.write_vector(&sc_group, "start");              // 0-indexed position of reference base after skip
-    sc_str.write_vector(&sc_group, "end");                // index into whitelist/sc (0-indexed)
+    sc_pos.write_vector(&sc_group, "pos");                // 0-indexed position of reference base after skip
+    sc_str.write_vector(&sc_group, "str_i");              // index into whitelist/sc (0-indexed)
     // write metadata
     let meta_group = file.create_group("metadata").expect(".h5 error");
     let names= vec!["reads","no_cb","no_ub","no_rname"];
