@@ -248,15 +248,16 @@ fn main() {
     
     // panic!("skipping writing output");
     
-    // write to an .h5 file
+    // write string whitelists to an .h5 file
+    let file = hdf5::File::create("whitelists.h5").expect("Could not create .h5 output file");
+    cb_whitelist.into_vector().write_vector(&file, "cb");   // list of all observed cell barcodes
+    ub_whitelist.into_vector().write_vector(&file, "ub");   // list of all observed UMI barcodes
+    ins_whitelist.into_vector().write_vector(&file, "ins"); // list of all inserted strings
+    sc_whitelist.into_vector().write_vector(&file, "sc");   // list of all soft-clipped sequences
+    sq.write_vector(&file,"rname");                         // list of all RNAME
+    
+    // write reads data to an .h5 file
     let file = hdf5::File::create("reads.h5").expect("Could not create .h5 output file");
-    // write string whitelists
-    let whitelist_group = file.create_group("whitelist").expect(".h5 error");
-    cb_whitelist.into_vector().write_vector(&whitelist_group, "cb");   // list of all observed cell barcodes
-    ub_whitelist.into_vector().write_vector(&whitelist_group, "ub");   // list of all observed UMI barcodes
-    ins_whitelist.into_vector().write_vector(&whitelist_group, "ins"); // list of all inserted strings
-    sc_whitelist.into_vector().write_vector(&whitelist_group, "sc");   // list of all soft-clipped sequences
-    sq.write_vector(&whitelist_group,"rname");                         // list of all RNAME
     // write general data
     let data_group = file.create_group("data").expect(".h5 error");
     assert_all_same(&[data_read.len(), data_flag.len(), data_rname_i.len(), data_pos.len(), data_mapq.len(), data_cb.len(), data_ub.len(),data_xf.len(),data_re.len(),data_ts.len(),data_pa.len()]);
@@ -274,41 +275,41 @@ fn main() {
     // write snv data
     let snv_group = file.create_group("snv").expect(".h5 error");
     assert_all_same(&[snv_read.len(), snv_pos.len(), snv_ref.len(), snv_alt.len(), snv_qual.len()]);
-    snv_read.write_vector(&snv_group, "read");  // bam line number (1-indexed)
-    snv_pos.write_vector(&snv_group, "pos");    // 0-indexed reference position of snv
-    snv_ref.write_vector(&snv_group, "ref");    // reference base
-    snv_alt.write_vector(&snv_group, "alt");    // alternate base
-    snv_qual.write_vector(&snv_group, "qual");  // base quality
+    snv_read.write_vector(&snv_group, "read");         // bam line number (1-indexed)
+    snv_pos.write_vector(&snv_group, "pos");           // 0-indexed reference position of snv
+    snv_ref.write_vector(&snv_group, "ref");           // reference base
+    snv_alt.write_vector(&snv_group, "alt");           // alternate base
+    snv_qual.write_vector(&snv_group, "qual");         // base quality
     // write insertion data
     let ins_group = file.create_group("ins").expect(".h5 error");
     assert_all_same(&[ins_read.len(), ins_pos.len(), ins_str.len()]);
-    ins_read.write_vector(&ins_group, "read");            // bam line number (1-indexed)
-    ins_pos.write_vector(&ins_group, "pos");              // 0-indexed position of reference base after insertion
-    ins_str.write_vector(&ins_group, "str_i");            // index into whitelist/ins (0-indexed)
+    ins_read.write_vector(&ins_group, "read");         // bam line number (1-indexed)
+    ins_pos.write_vector(&ins_group, "pos");           // 0-indexed position of reference base after insertion
+    ins_str.write_vector(&ins_group, "str_i");         // index into whitelist/ins (0-indexed)
     // write deletion data
     let del_group = file.create_group("del").expect(".h5 error");
     assert_all_same(&[del_read.len(), del_pos.len(), del_len.len()]);
-    del_read.write_vector(&del_group, "read");            // bam line number (1-indexed)
-    del_pos.write_vector(&del_group, "pos");              // 0-indexed position of first deleted reference base
-    del_len.write_vector(&del_group, "len");              // number of deleted bases
+    del_read.write_vector(&del_group, "read");         // bam line number (1-indexed)
+    del_pos.write_vector(&del_group, "pos");           // 0-indexed position of first deleted reference base
+    del_len.write_vector(&del_group, "len");           // number of deleted bases
     // write refskip (N) data
     let refskip_group = file.create_group("refskip").expect(".h5 error");
     assert_all_same(&[refskip_read.len(), refskip_pos.len(), refskip_len.len()]);
-    refskip_read.write_vector(&refskip_group, "read");    // bam line number (1-indexed)
-    refskip_pos.write_vector(&refskip_group, "pos");      // 0-indexed position of first skipped reference base
-    refskip_len.write_vector(&refskip_group, "len");      // number of skipped bases
+    refskip_read.write_vector(&refskip_group, "read"); // bam line number (1-indexed)
+    refskip_pos.write_vector(&refskip_group, "pos");   // 0-indexed position of first skipped reference base
+    refskip_len.write_vector(&refskip_group, "len");   // number of skipped bases
     // write matching interval (M) data
     let match_group = file.create_group("match").expect(".h5 error");
     assert_all_same(&[match_read.len(), match_start.len(), match_end.len()]);
-    match_read.write_vector(&match_group, "read");        // bam line number (1-indexed)
-    match_start.write_vector(&match_group, "start");      // 0-indexed position of range start (inclusive)
-    match_end.write_vector(&match_group, "end");          // 0-indexed position of range end (exclusive)
+    match_read.write_vector(&match_group, "read");     // bam line number (1-indexed)
+    match_start.write_vector(&match_group, "start");   // 0-indexed position of range start (inclusive)
+    match_end.write_vector(&match_group, "end");       // 0-indexed position of range end (exclusive)
     // write soft-clipped (S) data
     let sc_group = file.create_group("softclip").expect(".h5 error");
     assert_all_same(&[sc_read.len(), sc_pos.len(), sc_str.len()]);
-    sc_read.write_vector(&sc_group, "read");              // bam line number (1-indexed)
-    sc_pos.write_vector(&sc_group, "pos");                // 0-indexed position of reference base after skip
-    sc_str.write_vector(&sc_group, "str_i");              // index into whitelist/sc (0-indexed)
+    sc_read.write_vector(&sc_group, "read");           // bam line number (1-indexed)
+    sc_pos.write_vector(&sc_group, "pos");             // 0-indexed position of reference base after skip
+    sc_str.write_vector(&sc_group, "str_i");           // index into whitelist/sc (0-indexed)
     // write metadata
     let meta_group = file.create_group("metadata").expect(".h5 error");
     let names = vec!["reads","no_cb","no_ub","no_rname"];
