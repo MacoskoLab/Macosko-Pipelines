@@ -45,6 +45,8 @@ fn main() {
     let data_ub_i: Vec<u32> = file.dataset("data/ub_i").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_ub_i.len());
     // let data_re: Vec<u64> = file.dataset("data/re").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_re.len());
     // let data_xf: Vec<u64> = file.dataset("data/xf").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_xf.len());
+    // let data_ts: Vec<u64> = file.dataset("data/ts").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_ts.len());
+    // let data_pa: Vec<u64> = file.dataset("data/pa").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_pa.len());
     
     let snv_read: Vec<u32> = file.dataset("snv/read").expect("not found").read_raw().expect("E");
     let snv_pos: Vec<u32> = file.dataset("snv/pos").expect("not found").read_raw().expect("E"); assert!(snv_read.len() == snv_pos.len());
