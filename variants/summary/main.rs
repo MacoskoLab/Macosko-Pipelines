@@ -1,58 +1,117 @@
 use std::collections::HashMap;
-// use hdf5::types::VarLenAscii;
 use itertools::izip;
 use hdf5;
-// for writing output
-use csv::{WriterBuilder, Terminator};
-use flate2::{write::GzEncoder, Compression};
-use std::fs::File;
+
+mod helpers;
+use helpers::*;
 
 const QUAL_CUTOFF: u8 = 30; // 2 12 26 34
-
-#[derive(Debug)]
-struct UMIinfo {
-    // snv
-    pos: Vec<u32>,
-    alt: Vec<u8>,
-    qual: Vec<u8>,
-    // match
-    start: Vec<u32>,
-    end: Vec<u32>,
-}
-impl UMIinfo {
-    fn new() -> UMIinfo { UMIinfo { pos: Vec::new(), alt: Vec::new(), qual: Vec::new(), start: Vec::new(), end:Vec::new() } }
-}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
-        panic!("Usage: reads.h5_path");
+        panic!("Usage: reads.h5");
     }
     let file = hdf5::File::open(&args[1]).expect("Could not open reads.h5 input file");
     
-    // let cb_whitelist: Vec<VarLenAscii> = file.dataset("whitelist/cb").expect("not found").read_raw().expect("E");
-    // let ub_whitelist: Vec<VarLenAscii> = file.dataset("whitelist/ub").expect("not found").read_raw().expect("E");
-    // let ins_whitelist: Vec<VarLenAscii> = file.dataset("whitelist/ins").expect("not found").read_raw().expect("E");
-    // let sc_whitelist: Vec<VarLenAscii> = file.dataset("whitelist/sc").expect("not found").read_raw().expect("E");
-    // let rname_whitelist: Vec<VarLenAscii> = file.dataset("whitelist/rname").expect("not found").read_raw().expect("E");
+    // load the .h5 data
+    let data = load_data(&file); // Vec<DataEntry> (read, rname_i, mapq, cb_i, ub_i)
+    let order_map: HashMap<ReadNum, usize> = data.iter().map(|e| e.read).collect::<Vec<ReadNum>>().iter().enumerate().map(|(i, &num)| (num, i)).collect();
+    let snv = load_snv(&file, &order_map); // Vec<SNVEntry> (read, pos, alt, qual)
+    let matches = load_matches(&file, &order_map); // Vec<MatchEntry> (read, start, end)
     
-    let data_read: Vec<u32> = file.dataset("data/read").expect("not found").read_raw().expect("E");
-    // let data_flag: Vec<u32> = file.dataset("data/flag").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_flag.len());
-    let data_rname_i: Vec<u32> = file.dataset("data/rname_i").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_rname_i.len());
-    // let data_pos: Vec<u64> = file.dataset("data/pos").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_pos.len());
-    // let data_mapq: Vec<u32> = file.dataset("data/mapq").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_mapq.len());
-    let data_cb_i: Vec<u32> = file.dataset("data/cb_i").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_cb_i.len());
-    let data_ub_i: Vec<u32> = file.dataset("data/ub_i").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_ub_i.len());
-    // let data_re: Vec<u64> = file.dataset("data/re").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_re.len());
-    // let data_xf: Vec<u64> = file.dataset("data/xf").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_xf.len());
-    // let data_ts: Vec<u64> = file.dataset("data/ts").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_ts.len());
-    // let data_pa: Vec<u64> = file.dataset("data/pa").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_pa.len());
+    // Create data structures (umi) (cb_i) (ub_i) (reads) (avg_mapq)
+    let mut data_umi: Vec<ReadNum> = Vec::new();
+    let mut data_cb_i: Vec<WLi> = Vec::new();
+    let mut data_ub_i: Vec<WLi> = Vec::new();
+    let mut data_rname_i: Vec<RNAMEi> = Vec::new();
+    let mut data_reads: Vec<ReadNum> = Vec::new();
+    let mut data_mapq_avg: Vec<u8> = Vec::new();
+    // Create snv table structure (snv_i) (RNAME) (POS) (ALT)
+    let mut snv_table = SNVTable::new();
+    // Create snv structures (umi) (snv_i) (hq) (lq) (total)
+    let mut snv_umi: Vec<ReadNum> = Vec::new();
+    let mut snv_snv_i: Vec<usize> = Vec::new();
+    let mut snv_hq: Vec<ReadNum> = Vec::new();
+    let mut snv_lq: Vec<ReadNum> = Vec::new();
+    let mut snv_total: Vec<ReadNum> = Vec::new();
+    // Create matches structures (umi) (start) (end)
+    let mut match_umi: Vec<ReadNum> = Vec::new();
+    let mut match_start: Vec<SeqPos> = Vec::new();
+    let mut match_end: Vec<SeqPos> = Vec::new();
+    // Create metadata structures
+    let mut chimeric_reads: ReadNum = 0;
     
-    let snv_read: Vec<u32> = file.dataset("snv/read").expect("not found").read_raw().expect("E");
-    let snv_pos: Vec<u32> = file.dataset("snv/pos").expect("not found").read_raw().expect("E"); assert!(snv_read.len() == snv_pos.len());
-    // let snv_ref: Vec<u8> = file.dataset("snv/ref").expect("not found").read_raw().expect("E"); assert!(snv_read.len() == snv_ref.len());
-    let snv_alt: Vec<u8> = file.dataset("snv/alt").expect("not found").read_raw().expect("E"); assert!(snv_read.len() == snv_alt.len());
-    let snv_qual: Vec<u8> = file.dataset("snv/qual").expect("not found").read_raw().expect("E"); assert!(snv_read.len() == snv_qual.len());
+    println!("Processing reads...");
+
+    // Loop through the reads
+    let mut umi: ReadNum = 0;
+    let mut curr_cb: WLi = data[0].cb_i;
+    let mut curr_ub: WLi = data[0].ub_i;
+    let mut snv_idx = 0; let mut matches_idx = 0;
+    let mut umi_dict: HashMap<RNAMEi,UMIinfo> = HashMap::new(); // rname_i -> (reads, mapq, snv_i, start, end)
+    for d in data { // d is (read, rname_i, mapq, cb_i, ub_i)
+        if (d.cb_i != curr_cb) || (d.ub_i != curr_ub) {
+          // remove chimerism, take dominant RNAME
+          let total_reads: ReadNum = umi_dict.values().map(|record| record.reads).sum();
+          let max_reads: ReadNum = umi_dict.values().map(|record| record.reads).max().expect("E");
+          if umi_dict.values().filter(|record| record.reads == max_reads).count() > 1 { // if two RNAME tie for max read support, discard
+              chimeric_reads += total_reads;
+          } else { // get the RNAME with the most read support
+              let (&rname_i, umi_info) = umi_dict.iter().max_by_key(|entry| entry.1.reads).expect("E");
+              // write aggregate data
+              data_umi.push(umi);
+              data_cb_i.push(curr_cb); 
+              data_ub_i.push(curr_ub);
+              data_rname_i.push(rname_i);
+              data_reads.push(umi_info.reads);
+              data_mapq_avg.push(average_round_u8(&umi_info.mapq));
+              // write aggregate snv
+              for ((snv_i, pos), (hq, lq)) in umi_info.snv_i.iter() {
+                  snv_umi.push(umi);
+                  snv_snv_i.push(*snv_i);
+                  snv_hq.push(*hq);
+                  snv_lq.push(*lq);
+                  snv_total.push(izip!(&umi_info.start, &umi_info.end).filter(|(&s, &e)| *pos >= s && *pos < e).count() as ReadNum);
+              }
+              // write aggregate matches
+              let merged_intervals = merge_intervals(&umi_info.start, &umi_info.end);
+              for interval in merged_intervals {
+                match_umi.push(umi);
+                match_start.push(interval.0);
+                match_end.push(interval.1);
+              }
+              // write metadata
+              chimeric_reads += total_reads - max_reads;
+              umi += 1;
+          }
+          // reset umi struct
+          umi_dict = HashMap::new();
+          curr_cb = d.cb_i; curr_ub = d.ub_i;
+        }
+        let umi_info: &mut UMIinfo = umi_dict.entry(d.rname_i).or_insert(UMIinfo::new());
+        umi_info.reads += 1;
+        umi_info.mapq.push(d.mapq);
+
+        // collect SNV data
+        while snv_idx<snv.len() && snv[snv_idx].read==d.read { // snv is (read, pos, alt, qual)
+            let snv_i: usize = snv_table.get(&(d.rname_i, snv[snv_idx].pos, snv[snv_idx].alt));
+            let qual: u8 = snv[snv_idx].qual;
+            umi_info.snv_i.entry((snv_i, snv[snv_idx].pos))
+                .and_modify(|e| if qual > QUAL_CUTOFF { e.0 += 1 } else { e.1 += 1 })
+                .or_insert(if qual > QUAL_CUTOFF { (1, 0) } else { (0, 1) });
+            snv_idx += 1;
+        }
+        
+        // collect matches data
+        while matches_idx<matches.len() && matches[matches_idx].read==d.read { // matches is (read, start, end)
+            umi_info.start.push(matches[matches_idx].start);
+            umi_info.end.push(matches[matches_idx].end);
+            matches_idx += 1;
+        }
+    }
+    assert!(snv_idx == snv.len());
+    assert!(matches_idx == matches.len());
     
     // let ins_read: Vec<u64> = file.dataset("ins/read").expect("not found").read_raw().expect("E");
     // let ins_pos: Vec<u64> = file.dataset("ins/pos").expect("not found").read_raw().expect("E"); assert!(ins_read.len() == ins_pos.len());
@@ -62,93 +121,44 @@ fn main() {
     // let del_pos: Vec<u64> = file.dataset("del/pos").expect("not found").read_raw().expect("E"); assert!(del_read.len() == del_pos.len());
     // let del_len: Vec<u64> = file.dataset("del/len").expect("not found").read_raw().expect("E"); assert!(del_read.len() == del_len.len());
     
-    // let refskip_read: Vec<u64> = file.dataset("refskip/read").expect("not found").read_raw().expect("E");
-    // let refskip_pos: Vec<u64> = file.dataset("refskip/pos").expect("not found").read_raw().expect("E"); assert!(refskip_read.len() == refskip_pos.len());
-    // let refskip_len: Vec<u64> = file.dataset("refskip/len").expect("not found").read_raw().expect("E"); assert!(refskip_read.len() == refskip_len.len());
+    println!("Saving output...");
     
-    let match_read: Vec<u32> = file.dataset("match/read").expect("not found").read_raw().expect("E");
-    let match_start: Vec<u32> = file.dataset("match/start").expect("not found").read_raw().expect("E"); assert!(match_read.len() == match_start.len());
-    let match_end: Vec<u32> = file.dataset("match/end").expect("not found").read_raw().expect("E"); assert!(match_read.len() == match_end.len());
-    
-    // for trans-splicing
-    // let sc_read: Vec<u64> = file.dataset("softclip/read").expect("not found").read_raw().expect("E");
-    // let sc_pos: Vec<u64> = file.dataset("softclip/pos").expect("not found").read_raw().expect("E"); assert!(sc_read.len() == sc_pos.len());
-    // let sc_str_i: Vec<u64> = file.dataset("softclip/str_i").expect("not found").read_raw().expect("E"); assert!(sc_read.len() == sc_str_i.len());
-    // let data_ts: Vec<u64> = file.dataset("data/ts").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_ts.len());
-    // let data_pa: Vec<u64> = file.dataset("data/pa").expect("not found").read_raw().expect("E"); assert!(data_read.len() == data_pa.len());
-    
-    // load read2data_i and umi_table
-    let mut read2data_i: HashMap<u32, usize> = HashMap::new(); // read -> data_i
-    let mut umi_table: HashMap<(u32,u32,u32), UMIinfo> = HashMap::new(); // (cb_i, ub_i, rname_i) -> UMIinfo
-    for i in 0..data_read.len() {
-      read2data_i.insert(data_read[i], i);
-      umi_table.entry((data_cb_i[i], data_ub_i[i], data_rname_i[i])).or_insert_with(|| UMIinfo::new());
-    }
-    
-    // get snv per umi
-    for i in 0..snv_read.len() {
-        let data_i: usize = *read2data_i.get(&snv_read[i]).expect("E"); // get the index in "data"
-        let key = (data_cb_i[data_i], data_ub_i[data_i], data_rname_i[data_i]); // get the umi
-        let umiinfo: &mut UMIinfo = umi_table.get_mut(&key).expect("E");
-        umiinfo.pos.push(snv_pos[i]);
-        umiinfo.alt.push(snv_alt[i]);
-        umiinfo.qual.push(snv_qual[i]);
-    }
-    
-    // get match ranges per umi
-    for i in 0..match_read.len() {
-        let data_i: usize = *read2data_i.get(&match_read[i]).expect("E"); // get the index in "data"
-        let key = (data_cb_i[data_i], data_ub_i[data_i], data_rname_i[data_i]); // get the umi
-        let umiinfo: &mut UMIinfo = umi_table.get_mut(&key).expect("E");
-        umiinfo.start.push(match_start[i]);
-        umiinfo.end.push(match_end[i]);
-    }
-    
-    // aggregate snv/umi counts for/against
-    //              cb_i ub_i rname_i pos alt  hq   lq  total
-    let mut ret: Vec<(u32, u32, u32, u32, u8, u32, u32, u32)> = Vec::new();
-    for ((cb_i,umi_i,rname_i), umiinfo) in umi_table.iter() {
-        // get the number of hq and lq reads for each snv
-        let mut pos: Vec<u32> = Vec::new();
-        let mut alt: Vec<u8> = Vec::new();
-        let mut hq: Vec<u32> = Vec::new();
-        let mut lq: Vec<u32> = Vec::new();
-        let mut counts_map: HashMap<(u32, u8), (u32, u32)> = HashMap::new(); // (pos, alt) -> (hq, lq)
-        for (&p, &a, &q) in izip!(&umiinfo.pos, &umiinfo.alt, &umiinfo.qual) {
-            counts_map.entry((p, a))
-                .and_modify(|e| if q > QUAL_CUTOFF { e.0 += 1 } else { e.1 += 1 })
-                .or_insert(if q > QUAL_CUTOFF { (1, 0) } else { (0, 1) });
-        }
-        for ((p, a), (h, l)) in counts_map {
-            pos.push(p); alt.push(a); hq.push(h); lq.push(l);
-        }
-        
-        // get the total number of observations for each snv
-        let total: Vec<u32> = pos.iter().map(|&p| {
-            izip!(&umiinfo.start, &umiinfo.end).filter(|(&s, &e)| p >= s && p < e).count() as u32
-        }).collect();
-        
-        // write to memory
-        assert!(pos.len() == alt.len()); assert!(pos.len() == hq.len());
-        assert!(pos.len() == lq.len()); assert!(pos.len() == total.len());
-        for i in 0..pos.len() {
-            ret.push((*cb_i, *umi_i, *rname_i, pos[i], alt[i], hq[i], lq[i], total[i]));
-        }
-    }
-    
-    // write the output
-    println!("Writing output");
-    let file = File::create("snv.tsv.gz").expect("ERROR: could not create snv.tsv.gz output file");
-    let encoder = GzEncoder::new(file, Compression::default());
-    let mut writer = WriterBuilder::new()
-        .delimiter(b'\t')
-        .terminator(Terminator::Any(b'\n'))
-        .from_writer(encoder);
-    writer.write_record(&["cb_i", "ub_i", "rname_i", "pos", "alt", "hq", "lq", "total"]).expect("E");
-    for row in ret {
-        writer.serialize(row).expect("E");
-    }
-    writer.flush().expect("E");
-    
+    // write umis data to an .h5 file
+    let file = hdf5::File::create("umis.h5").expect("Could not create .h5 output file");
+    // write general data
+    let data_group = file.create_group("data").expect(".h5 error");
+    assert_all_same(&[data_umi.len(), data_cb_i.len(), data_ub_i.len(), data_rname_i.len(), data_reads.len(), data_mapq_avg.len()]);
+    data_umi.write_vector(&data_group, "umi");           // umi number (key)
+    data_cb_i.write_vector(&data_group, "cb_i");         // cb whitelist index (0-indexed)
+    data_ub_i.write_vector(&data_group, "ub_i");         // ub whitelist index (0-indexed)
+    data_rname_i.write_vector(&data_group, "rname_i");   // rname whitelist index (0-indexed)
+    data_reads.write_vector(&data_group, "reads");       // number of reads for the umi
+    data_mapq_avg.write_vector(&data_group, "mapq_avg"); // integer average mapq for all reads of the umi
+    // write the SNV table
+    let tab_group = file.create_group("snv_table").expect(".h5 error");
+    let (tab_snv_i, tab_rname_i, tab_pos, tab_alt) = snv_table.into_vectors();
+    assert_all_same(&[tab_snv_i.len(), tab_rname_i.len(), tab_pos.len(), tab_alt.len()]);
+    tab_snv_i.write_vector(&tab_group, "snv_i");     // SNV table index (0-indexed)
+    tab_rname_i.write_vector(&tab_group, "rname_i"); // RNAME whitelist index (0-indexed)
+    tab_pos.write_vector(&tab_group, "pos");         // POS of SNV
+    tab_alt.write_vector(&tab_group, "alt");         // ALT base
+    // write the SNV data
+    let snv_group = file.create_group("snv").expect(".h5 error");
+    assert_all_same(&[snv_umi.len(), snv_snv_i.len(), snv_hq.len(), snv_lq.len(), snv_total.len()]);
+    snv_umi.write_vector(&snv_group, "umi");         // umi number (key)
+    snv_snv_i.write_vector(&snv_group, "snv_i");     // SNV table index (0-indexed)
+    snv_hq.write_vector(&snv_group, "hq");           // number of high-quality reads
+    snv_lq.write_vector(&snv_group, "lq");           // number of low-quality reads
+    snv_total.write_vector(&snv_group, "total");     // number of total reads
+    // write the matches data
+    let match_group = file.create_group("match").expect(".h5 error");
+    assert_all_same(&[match_umi.len(), match_start.len(), match_end.len()]);
+    match_umi.write_vector(&match_group, "umi");     // umi number (key)
+    match_start.write_vector(&match_group, "start"); // 0-indexed position of range start (inclusive)
+    match_end.write_vector(&match_group, "end");     // 0-indexed position of range end (exclusive)
+    // write metadata
+    let meta_group = file.create_group("metadata").expect(".h5 error");
+    vec![chimeric_reads].write_vector(&meta_group, "reads_chimeric");
+  
     println!("DONE");
 }
