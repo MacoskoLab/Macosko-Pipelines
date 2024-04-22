@@ -41,14 +41,14 @@ task mkfastq {
 
     # run the cellranger command
     if [[ ~{technique} == "cellranger" ]]; then
-        echo "Running cellranger mkfastq"
+        echo; echo "Running cellranger mkfastq"
         time stdbuf -oL -eL cellranger mkfastq                     \
           --run=BCL                                                \
           --id=mkfastq                                             \
           --csv=Indexes.csv                                        \
           --disable-ui |& ts | tee ./mkfastq.log
     elif [[ ~{technique} == "cellranger-arc" ]]; then
-        echo "Running cellranger-arc mkfastq"
+        echo; echo "Running cellranger-arc mkfastq"
             time stdbuf -oL -eL cellranger-arc mkfastq             \
               --run=BCL                                            \
               --id=mkfastq                                         \
@@ -89,7 +89,7 @@ task mkfastq {
   runtime {
     docker: docker
     memory: "64 GB"
-    disks: "local-disk ~{disksize} LOCAL"
+    disks: "local-disk ~{disksize} HDD"
     cpu: 8
     preemptible: 0
   }
