@@ -6,10 +6,8 @@
 
 #### Inputs
 
-bcl: gs:// path to BCL
-
-samplesheet: gs:// path to samplesheet
-
+bcl: gs:// path to BCL 
+samplesheet: gs:// path to samplesheet 
 technique: "cellranger" or "cellranger-arc" (TODO bcl2fastq)
 
 #### Outputs
