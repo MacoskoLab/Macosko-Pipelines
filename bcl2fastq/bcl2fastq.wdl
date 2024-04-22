@@ -14,10 +14,10 @@ task mkfastq {
     echo "<< starting mkfastq >>"
     dstat --time --cpu --disk --mem --io &> mkfastq.usage &
 
-    #export PATH="/usr/local/bcl2fastq/bin:$PATH"
+    # export PATH="/usr/local/bcl2fastq/bin:$PATH"
     export PATH="/software/cellranger-8.0.0/bin:$PATH"
     export PATH="/software/cellranger-arc-2.0.2/bin:$PATH"
-    export PATH="/software/cellranger-atac-2.1.0/bin:$PATH"
+    # export PATH="/software/cellranger-atac-2.1.0/bin:$PATH"
     
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
@@ -41,18 +41,18 @@ task mkfastq {
 
     # run the cellranger command
     if [[ ~{technique} == "cellranger" ]]; then
-        echo "running mkfastq"
+        echo "running cellranger mkfastq"
         time stdbuf -oL -eL cellranger mkfastq                     \
           --run=BCL                                                \
           --id=mkfastq                                             \
           --csv=Indexes.csv                                        \
           --disable-ui |& ts | tee ./mkfastq.log
     elif [[ ~{technique} == "cellranger-arc" ]]; then
-        echo "running mkfastq"
-            time stdbuf -oL -eL cellranger-arc mkfastq                 \
-              --run=BCL                                                \
-              --id=mkfastq                                             \
-              --csv=Indexes.csv                                        \
+        echo "running cellranger-arc mkfastq"
+            time stdbuf -oL -eL cellranger-arc mkfastq             \
+              --run=BCL                                            \
+              --id=mkfastq                                         \
+              --csv=Indexes.csv                                    \
               --disable-ui |& ts | tee ./mkfastq.log
     else
         echo "ERROR: could not recognize technique ~{technique}"
@@ -95,10 +95,7 @@ task mkfastq {
   }
 }
 
-# Compute disk size needed to run mkfastq
-# Assert that the bcl exists and is not too large
-# Assert that the samplesheet exists
-# Assert that the fastq_output_path is blank (to avoid overwriting)
+# Compute disk size needed for mkfastq and run checks
 task getdisksize {
     input {
         String bcl
