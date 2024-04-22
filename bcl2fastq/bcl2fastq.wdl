@@ -1,10 +1,5 @@
 version 1.0
 
-# This workflow currently only has cellranger mkfastq implemented
-# TODO: add bcl2fastq support (as needed)
-
-# Run cellranger-arc mkfastq on the bcl and samplesheet
-# Upload output files to fastq_output and log_output
 task mkfastq {
   input {
     String bcl
