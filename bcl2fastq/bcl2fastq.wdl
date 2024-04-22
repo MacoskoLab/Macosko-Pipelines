@@ -12,7 +12,7 @@ task mkfastq {
   }
   command <<<
     echo "<< starting mkfastq >>"
-    dstat --time --cpu --disk --mem --io &> mkfastq.usage &
+    dstat --time --cpu --mem --disk --io --output mkfastq.usage &
 
     # export PATH="/usr/local/bcl2fastq/bin:$PATH"
     export PATH="/software/cellranger-8.0.0/bin:$PATH"
@@ -24,12 +24,12 @@ task mkfastq {
 
     # get the samplesheet
     gcloud storage cp "~{samplesheet}" Indexes.csv |& ts
-    echo "Indexes.csv:" ; cat Indexes.csv ; echo
+    echo; echo "Indexes.csv:" ; cat Indexes.csv ; echo
 
     # assert that the samplesheet is not blank
     if [[ -s Indexes.csv ]]
     then
-        echo "downloading bcl"
+        echo "Downloading BCL:"
         mkdir BCL
         bclpath="~{bcl}"
         bclpath="${bclpath%/}"
@@ -41,14 +41,14 @@ task mkfastq {
 
     # run the cellranger command
     if [[ ~{technique} == "cellranger" ]]; then
-        echo "running cellranger mkfastq"
+        echo "Running cellranger mkfastq"
         time stdbuf -oL -eL cellranger mkfastq                     \
           --run=BCL                                                \
           --id=mkfastq                                             \
           --csv=Indexes.csv                                        \
           --disable-ui |& ts | tee ./mkfastq.log
     elif [[ ~{technique} == "cellranger-arc" ]]; then
-        echo "running cellranger-arc mkfastq"
+        echo "Running cellranger-arc mkfastq"
             time stdbuf -oL -eL cellranger-arc mkfastq             \
               --run=BCL                                            \
               --id=mkfastq                                         \
@@ -58,7 +58,7 @@ task mkfastq {
         echo "ERROR: could not recognize technique ~{technique}"
     fi
 
-    echo "removing MAKE_FASTQS_CS"
+    echo "Removing MAKE_FASTQS_CS"
     rm -rf mkfastq/MAKE_FASTQS_CS
 
     if [[ -f mkfastq/outs/fastq_path/Reports/html/index.html ]]
