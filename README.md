@@ -16,7 +16,7 @@ rm -rf mkfastq/MAKE_FASTQS_CS
 /fastqs: output fastqs  
 /logs: mkfastq.log and mkfastq.usage
 
-**Notes** 
+**Notes**
 * memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,64)} LOCAL"  
 * throws an error if the fastq directory already exists
 
