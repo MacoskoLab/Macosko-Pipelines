@@ -12,7 +12,7 @@ task mkfastq {
   }
   command <<<
     echo "<< starting mkfastq >>"
-    dstat --time --cpu --mem --disk --io --output mkfastq.usage &
+    dstat --time --cpu --mem --disk --io --output mkfastq.usage &> /dev/null &
 
     # export PATH="/usr/local/bcl2fastq/bin:$PATH"
     export PATH="/software/cellranger-8.0.0/bin:$PATH"
