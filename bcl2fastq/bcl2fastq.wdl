@@ -5,8 +5,8 @@ task mkfastq {
     String bcl
     String samplesheet
     String technique
-    String fastq_output
-    String log_output
+    String fastq_output_path
+    String log_output_path
     Int disksize
     String docker
   }
@@ -64,7 +64,7 @@ task mkfastq {
     if [[ -f mkfastq/outs/fastq_path/Reports/html/index.html ]]
     then
       echo "Success, uploading fastqs"
-      gcloud storage cp -r mkfastq "~{fastq_output}"
+      gcloud storage cp -r mkfastq "~{fastq_output_path}"
       echo "true" > DONE
     else
       echo "ERROR: CANNOT FIND: index.html"
@@ -78,8 +78,8 @@ task mkfastq {
     ( echo; echo "CPU INFO:"; lscpu ) >> mkfastq.log
     
     echo "uploading logs"
-    gcloud storage cp mkfastq.log "~{log_output}/mkfastq.log"
-    gcloud storage cp mkfastq.usage "~{log_output}/mkfastq.usage"
+    gcloud storage cp mkfastq.log "~{log_output_path}/mkfastq.log"
+    gcloud storage cp mkfastq.usage "~{log_output_path}/mkfastq.usage"
     
     echo "<< completed mkfastq >>"
   >>>
@@ -98,12 +98,12 @@ task mkfastq {
 # Compute disk size needed to run mkfastq
 # Assert that the bcl exists and is not too large
 # Assert that the samplesheet exists
-# Assert that the fastq_output path is blank (to avoid overwriting)
+# Assert that the fastq_output_path is blank (to avoid overwriting)
 task getdisksize {
     input {
         String bcl
         String samplesheet
-        String fastq_output
+        String fastq_output_path
         String docker
     }
     command <<<
@@ -142,7 +142,7 @@ task getdisksize {
         fi
 
         # assert that the fastq output is blank (avoid overwiting)
-        if gsutil ls "~{fastq_output}" &> /dev/null
+        if gsutil ls "~{fastq_output_path}" &> /dev/null
         then
             echo "ERROR: fastq output already exists"
             rm SIZE
@@ -168,8 +168,8 @@ workflow bcl2fastq {
         String bcl
         String samplesheet
         String technique
-        String fastq_output = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
-        String log_output = "gs://"+bucket+"/logs/"+basename(bcl,"/")
+        String fastq_output_path = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
+        String log_output_path = "gs://"+bucket+"/logs/"+basename(bcl,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/img:latest"
     }
@@ -177,14 +177,14 @@ workflow bcl2fastq {
         bcl: "gs:// path"
         samplesheet: "gs:// path"
         technique: "'cellranger' or 'cellranger-arc'"
-        fastq_output: "gs:// path"
-        log_output: "gs:// path"
+        fastq_output_path: "gs:// path"
+        log_output_path: "gs:// path"
     }
     call getdisksize {
         input:
             bcl = bcl,
             samplesheet = samplesheet,
-            fastq_output = fastq_output,
+            fastq_output_path = fastq_output_path,
             docker = docker
     }
     call mkfastq {
@@ -192,8 +192,8 @@ workflow bcl2fastq {
             bcl = bcl,
             samplesheet = samplesheet,
             technique = technique,
-            fastq_output = fastq_output,
-            log_output = log_output,
+            fastq_output_path = fastq_output_path,
+            log_output_path = log_output_path,
             disksize = getdisksize.disksize,
             docker = docker
     }
