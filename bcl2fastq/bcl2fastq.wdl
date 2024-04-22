@@ -24,7 +24,7 @@ task mkfastq {
 
     # get the samplesheet
     gcloud storage cp "~{samplesheet}" Indexes.csv |& ts
-    echo; echo "Indexes.csv:" ; cat Indexes.csv ; echo; echo
+    echo; echo "Indexes.csv:"; cat Indexes.csv; echo; echo
 
     # assert that the samplesheet is not blank
     if [[ -s Indexes.csv ]]
