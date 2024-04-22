@@ -7,6 +7,11 @@ bcl: gs:// path to BCL
 samplesheet: gs:// path to samplesheet  
 technique: "cellranger" or "cellranger-arc" (TODO bcl2fastq)
 
+### Commands
+cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+rm -rf mkfastq/MAKE_FASTQS_CS  
+
 ### Outputs
 /fastqs: output fastqs  
 /logs: mkfastq.log and mkfastq.usage
