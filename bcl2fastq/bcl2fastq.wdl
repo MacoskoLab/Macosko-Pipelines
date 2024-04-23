@@ -32,7 +32,7 @@ task mkfastq {
         echo "Downloading BCL:"
         mkdir BCL
         bclpath="~{bcl}"
-        gcloud storage cp -r ${bclpath%/}/* BCL |& ts
+        gcloud storage cp -r "${bclpath%/}/*" BCL |& ts
     else
         echo "ERROR: empty samplesheet"
         rm Indexes.csv
