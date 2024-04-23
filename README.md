@@ -18,8 +18,8 @@ rm -rf mkfastq/MAKE_FASTQS_CS
 
 **Notes**
 * memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,64)} HDD"  
-* throws an error if the fastq directory already exists
 * throws an error if the disk is >6TB (edit WDL to increase cap)
+* throws an error if the fastq directory already exists
 
 # Docker Images
 **us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/img:latest**  
