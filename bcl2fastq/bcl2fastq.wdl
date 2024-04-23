@@ -64,12 +64,12 @@ task mkfastq {
     if [[ -f mkfastq/outs/fastq_path/Reports/html/index.html ]]
     then
         echo "Success, uploading fastqs"
-        if ! gsutil ls "~{fastq_output_path}" &> /dev/null
+        if gsutil ls "~{fastq_output_path}" &> /dev/null
         then
+            echo "ERROR: fastq output already exists"
+        else
             gcloud storage cp -r mkfastq "~{fastq_output_path}"
             echo "true" > DONE
-        else
-            echo "ERROR: fastq output already exists"
         fi
     else
         echo "ERROR: CANNOT FIND: index.html"
