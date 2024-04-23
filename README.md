@@ -21,6 +21,27 @@ rm -rf mkfastq/MAKE_FASTQS_CS
 * throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)
 * throws an error if the fastq directory already exists
 
+## cellranger-count
+
+**Inputs**  
+bcl: gs:// path to BCL  
+samplesheet: gs:// path to samplesheet  
+technique: "cellranger" or "cellranger-arc" (TODO bcl2fastq)
+
+**Commands**  
+cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+rm -rf mkfastq/MAKE_FASTQS_CS  
+
+**Outputs**  
+/fastqs: output fastqs  
+/logs: mkfastq.log and mkfastq.usage
+
+**Notes**
+* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,64)} HDD"  
+* throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)
+* throws an error if the fastq directory already exists
+
 # Docker Images
 **us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/img:latest**  
 bcl2fastq2 v2.20  
