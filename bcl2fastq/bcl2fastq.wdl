@@ -32,8 +32,7 @@ task mkfastq {
         echo "Downloading BCL:"
         mkdir BCL
         bclpath="~{bcl}"
-        bclpath="${bclpath%/}"
-        gcloud storage cp -r $bclpath/* BCL |& ts
+        gcloud storage cp -r ${bclpath%/}/* BCL |& ts
     else
         echo "ERROR: empty samplesheet"
         rm Indexes.csv
@@ -61,13 +60,19 @@ task mkfastq {
     echo "Removing MAKE_FASTQS_CS"
     rm -rf mkfastq/MAKE_FASTQS_CS
 
+    # upload the results
     if [[ -f mkfastq/outs/fastq_path/Reports/html/index.html ]]
     then
-      echo "Success, uploading fastqs"
-      gcloud storage cp -r mkfastq "~{fastq_output_path}"
-      echo "true" > DONE
+        echo "Success, uploading fastqs"
+        if ! gsutil ls "~{fastq_output_path}" &> /dev/null
+        then
+            gcloud storage cp -r mkfastq "~{fastq_output_path}"
+            echo "true" > DONE
+        else
+            echo "ERROR: fastq output already exists"
+        fi
     else
-      echo "ERROR: CANNOT FIND: index.html"
+        echo "ERROR: CANNOT FIND: index.html"
     fi
 
     echo "writing logs"
@@ -78,8 +83,9 @@ task mkfastq {
     ( echo; echo "CPU INFO:"; lscpu ) >> mkfastq.log
     
     echo "uploading logs"
-    gcloud storage cp mkfastq.log "~{log_output_path}/mkfastq.log"
-    gcloud storage cp mkfastq.usage "~{log_output_path}/mkfastq.usage"
+    log_output_path="~{log_output_path}"
+    gcloud storage cp mkfastq.log "${log_output_path%/}/mkfastq.log"
+    gcloud storage cp mkfastq.usage "${log_output_path%/}/mkfastq.usage"
     
     echo "<< completed mkfastq >>"
   >>>
