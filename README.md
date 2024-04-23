@@ -28,5 +28,13 @@ Cell Ranger 8.0.0
 Cell Ranger ATAC 2.1.0  
 Cell Ranger ARC 2.0.2  
 
+**us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest**  
+Cell Ranger 8.0.0  
+Cell Ranger ATAC 2.1.0  
+Cell Ranger ARC 2.0.2  
+Python3 3.7.3  
+Julia 1.8.5  
+R 4.3.3
+
 # Test BCLs
 Normal: 230521_SL-NXA_2112_AH3FLKBGXT (4 lanes, 24.06 GiB)
