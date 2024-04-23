@@ -107,6 +107,7 @@ task getdisksize {
         String bcl
         String samplesheet
         String fastq_output_path
+        String log_output_path
         String docker
     }
     command <<<
@@ -151,6 +152,12 @@ task getdisksize {
             rm SIZE
         fi
 
+        # assert that the paths are actually gs:// paths
+        [[ ! "~{bcl}"         =~ gs:// ]] && echo "Error: bcl does not contain gs://" && rm SIZE
+        [[ ! "~{samplesheet}" =~ gs:// ]] && echo "Error: samplesheet does not contain gs://" && rm SIZE
+        [[ ! "~{fastq_output_path}" =~ gs:// ]] && echo "Error: fastq_output_path does not contain gs://" && rm SIZE
+        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "Error: log_output_path does not contain gs://" && rm SIZE
+
         echo "<< completed getdisksize >>"
     >>>
     output {
@@ -176,18 +183,12 @@ workflow bcl2fastq {
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/img:latest"
     }
-    parameter_meta {
-        bcl: "gs:// path"
-        samplesheet: "gs:// path"
-        technique: "'cellranger' or 'cellranger-arc'"
-        fastq_output_path: "gs:// path"
-        log_output_path: "gs:// path"
-    }
     call getdisksize {
         input:
             bcl = bcl,
             samplesheet = samplesheet,
             fastq_output_path = fastq_output_path,
+            log_output_path = log_output_path,
             docker = docker
     }
     call mkfastq {
