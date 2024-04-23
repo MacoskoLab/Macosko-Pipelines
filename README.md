@@ -17,7 +17,7 @@ rm -rf mkfastq/MAKE_FASTQS_CS
 /logs: mkfastq.log and mkfastq.usage
 
 **Notes**
-* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,64)} LOCAL"  
+* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,64)} HDD"  
 * throws an error if the fastq directory already exists
 
 # Docker Images
