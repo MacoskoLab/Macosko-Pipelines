@@ -50,6 +50,17 @@ task count {
         --nosecondary
         --disable-ui |& ts | tee ./count.log
 
+
+time cellranger count \
+        --id=SI-TT-A2        \
+        --transcriptome=/home/nsachdev/avengers/references/refdata-gex-GRCm39-2024-A  \
+        --fastqs=/home/nsachdev/avengers/fastqs       \
+        --sample=SI-TT-A2  \
+        --create-bam=true  \
+        --include-introns=true  \
+        --nosecondary            \
+        --disable-ui
+
     # run the cellranger command
     if [[ ~{technique} == "cellranger" ]]; then
         echo; echo "Running cellranger mkfastq"
@@ -121,26 +132,40 @@ task getdisksize {
         String reference
         Array[Int] lanes
         String count_output_path
-        String docker
+        String log_output_path       #
+        String docker                #
     }
     command <<<
         echo "<< starting getdisksize >>"
+        
+        # id is the name of the output directory
+        if [ ~{length(lanes)} -eq 0 ]; then
+            id="~{prefix}"
+        else
+            id="~{prefix}_~{sep='' lanes}"
+        fi
+        echo id: $id
+        
+        
 
-        # Get the size of the bcl * 3
+~{sep='' lanes}
+~{sep=',' lanes}
+        
+        # Get the size of the fastqs * 6 + 20
         gsutil du -sc "~{bcl}" | grep total | 
         awk '{size=$1/1024/1024/1024 ; size=size*3 ; if (size<64) size=64 ; printf "%d\n", size}' > SIZE
 
         # Assert that the disksize file exists
         if [[ ! -s SIZE ]]
         then
-            echo "ERROR: gsutil du command failed on input bcl path"
+            echo "ERROR: gsutil du command failed on input fastq path"
             rm SIZE
         fi
 
         # Assert that the disksize is not too large
         if [[ $(cat SIZE) -gt 6000 ]]
         then
-            echo "ERROR: BCL size limit reached, increase cap"
+            echo "ERROR: cellranger-count disk size limit reached, increase cap"
             rm SIZE
         fi
 
@@ -151,10 +176,10 @@ task getdisksize {
             rm SIZE
         fi
 
-        # Assert that the samplesheet exists
-        if ! gsutil stat "~{samplesheet}" &> /dev/null
+        # Assert that the reference exists
+        if ! gsutil ls "~{reference}" &> /dev/null
         then
-            echo "ERROR: gsutil stat command failed on input samplesheet path"
+            echo "ERROR: gsutil ls command failed on input reference path"
             rm SIZE
         fi
 
@@ -164,6 +189,18 @@ task getdisksize {
             echo "ERROR: fastq output already exists"
             rm SIZE
         fi
+
+
+
+
+
+
+
+        # assert that the paths are actually gs:// paths
+        [[ ! "~{fastq_path}" =~ gs:// ]] && echo "Error: fastq_path does not contain gs://" && rm SIZE
+        [[ ! "~{reference}"  =~ gs:// ]] && echo "Error: reference does not contain gs://" && rm SIZE
+        [[ ! "~{count_output_path}" =~ gs:// ]] && echo "Error: count_output_path does not contain gs://" && rm SIZE
+        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "Error: log_output_path does not contain gs://" && rm SIZE
 
         echo "<< completed getdisksize >>"
     >>>
@@ -199,6 +236,7 @@ workflow cellranger_count {
             reference = reference,
             lanes = lanes,
             count_output_path = count_output_path,
+            log_output_path = log_output_path,
             docker = docker
     }
     call count {
