@@ -68,7 +68,8 @@ task mkfastq {
         then
             echo "ERROR: fastq output already exists"
         else
-            gcloud storage cp -r mkfastq "~{fastq_output_path}"
+            fastq_output_path="~{fastq_output_path}"
+            gcloud storage cp -r mkfastq "${fastq_output_path%/}"
             echo "true" > DONE
         fi
     else
