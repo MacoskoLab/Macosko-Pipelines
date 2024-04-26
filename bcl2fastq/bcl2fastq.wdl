@@ -41,18 +41,18 @@ task mkfastq {
     # run the cellranger command
     if [[ ~{technique} == "cellranger" ]]; then
         echo; echo "Running cellranger mkfastq"
-        time stdbuf -oL -eL cellranger mkfastq                     \
-          --run=BCL                                                \
-          --id=mkfastq                                             \
-          --csv=Indexes.csv                                        \
+        time stdbuf -oL -eL cellranger mkfastq              \
+          --run=BCL                                         \
+          --id=mkfastq                                      \
+          --csv=Indexes.csv                                 \
           --disable-ui |& ts
     elif [[ ~{technique} == "cellranger-arc" ]]; then
         echo; echo "Running cellranger-arc mkfastq"
-            time stdbuf -oL -eL cellranger-arc mkfastq             \
-              --run=BCL                                            \
-              --id=mkfastq                                         \
-              --csv=Indexes.csv                                    \
-              --disable-ui |& ts
+        time stdbuf -oL -eL cellranger-arc mkfastq          \
+          --run=BCL                                         \
+          --id=mkfastq                                      \
+          --csv=Indexes.csv                                 \
+          --disable-ui |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
