@@ -65,7 +65,16 @@ task getdisksize {
             grep -P $regex PATHS > temp_file && mv temp_file PATHS
         fi
         cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*6+20 ; if (size<64) size=64 ; printf "%d\n", size}' > SIZE
-        
+        if [ ~{length(lanes)} -gt 0 ]; then
+            lanes=(~{sep=' ' lanes})
+            for lane in "${lanes[@]}"; do
+                if ! grep -q "_L0*${lane}_" PATHS; then
+                    echo "ERROR: No fastqs found for lane ${lane}"
+                    rm SIZE
+                fi
+            done
+        fi
+
         echo "FASTQ files:"
         cat PATHS; echo
 
