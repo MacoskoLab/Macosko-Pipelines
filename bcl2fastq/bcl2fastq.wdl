@@ -11,8 +11,9 @@ task mkfastq {
     String docker
   }
   command <<<
+    script --flush --quiet ./mkfastq.log
     echo "<< starting mkfastq >>"
-    dstat --time --cpu --mem --disk --io --output mkfastq.usage &> /dev/null &
+    dstat --time --cpu --mem --freespace --disk --io --output mkfastq.usage &> /dev/null &
 
     # export PATH="/usr/local/bcl2fastq/bin:$PATH"
     export PATH="/software/cellranger-8.0.0/bin:$PATH"
@@ -45,14 +46,14 @@ task mkfastq {
           --run=BCL                                                \
           --id=mkfastq                                             \
           --csv=Indexes.csv                                        \
-          --disable-ui |& ts | tee ./mkfastq.log
+          --disable-ui |& ts
     elif [[ ~{technique} == "cellranger-arc" ]]; then
         echo; echo "Running cellranger-arc mkfastq"
             time stdbuf -oL -eL cellranger-arc mkfastq             \
               --run=BCL                                            \
               --id=mkfastq                                         \
               --csv=Indexes.csv                                    \
-              --disable-ui |& ts | tee ./mkfastq.log
+              --disable-ui |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
@@ -78,10 +79,11 @@ task mkfastq {
 
     echo "writing logs"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
-    ( echo; echo "BCL size:"; du -sh BCL ) >> mkfastq.log
-    ( echo; echo "mkfastq size:"; du -sh mkfastq ) >> mkfastq.log
-    ( echo; echo "free space:"; df -h ) >> mkfastq.log
-    ( echo; echo "CPU INFO:"; lscpu ) >> mkfastq.log
+    echo; echo "BCL size:"; du -sh BCL
+    echo; echo "mkfastq size:"; du -sh mkfastq
+    echo; echo "free space:"; df -h
+    echo; echo "CPU INFO:"; lscpu
+    exit
     
     echo "uploading logs"
     log_output_path="~{log_output_path}"
