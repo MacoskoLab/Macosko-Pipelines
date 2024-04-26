@@ -12,7 +12,7 @@ task mkfastq {
   }
   command <<<
     echo "<< starting mkfastq >>"
-    dstat --time --cpu --mem --freespace --disk --io --output mkfastq.usage &> /dev/null &
+    dstat --time --cpu --mem --disk --io --freespace --output mkfastq.usage &> /dev/null &
 
     # export PATH="/usr/local/bcl2fastq/bin:$PATH"
     export PATH="/software/cellranger-8.0.0/bin:$PATH"
@@ -76,11 +76,11 @@ task mkfastq {
         echo "ERROR: CANNOT FIND: index.html"
     fi
 
-    echo "writing logs"
+    echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
     echo; echo "BCL size:"; du -sh BCL
     echo; echo "mkfastq size:"; du -sh mkfastq
-    echo; echo "free space:"; df -h
+    echo; echo "FREE SPACE:"; df -h
     echo; echo "CPU INFO:"; lscpu
     
     echo "uploading logs"
