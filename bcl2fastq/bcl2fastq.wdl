@@ -11,7 +11,6 @@ task mkfastq {
     String docker
   }
   command <<<
-    script --flush --quiet ./mkfastq.log
     echo "<< starting mkfastq >>"
     dstat --time --cpu --mem --freespace --disk --io --output mkfastq.usage &> /dev/null &
 
@@ -83,11 +82,13 @@ task mkfastq {
     echo; echo "mkfastq size:"; du -sh mkfastq
     echo; echo "free space:"; df -h
     echo; echo "CPU INFO:"; lscpu
-    exit
     
     echo "uploading logs"
+    cp /cromwell_root/stdout mkfastq.out
+    cp /cromwell_root/stderr mkfastq.err
     log_output_path="~{log_output_path}"
-    gcloud storage cp mkfastq.log "${log_output_path%/}/mkfastq.log"
+    gcloud storage cp mkfastq.out "${log_output_path%/}/mkfastq.out"
+    gcloud storage cp mkfastq.err "${log_output_path%/}/mkfastq.err"
     gcloud storage cp mkfastq.usage "${log_output_path%/}/mkfastq.usage"
     
     echo "<< completed mkfastq >>"
@@ -98,7 +99,7 @@ task mkfastq {
   runtime {
     docker: docker
     memory: "64 GB"
-    disks: "local-disk ~{disksize} HDD"
+    disks: "local-disk ~{disksize} SSD"
     cpu: 8
     preemptible: 0
   }
