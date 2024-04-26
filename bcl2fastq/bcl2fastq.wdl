@@ -149,14 +149,14 @@ task getdisksize {
             rm SIZE
         fi
 
-        # assert that the fastq output is blank (avoid overwiting)
+        # Assert that the fastq output is blank (avoid overwiting)
         if gsutil ls "~{fastq_output_path}" &> /dev/null
         then
             echo "ERROR: fastq output already exists"
             rm SIZE
         fi
 
-        # assert that the paths are actually gs:// paths
+        # Assert that the paths are actually gs:// paths
         [[ ! "~{bcl}"         =~ gs:// ]] && echo "Error: bcl does not contain gs://" && rm SIZE
         [[ ! "~{samplesheet}" =~ gs:// ]] && echo "Error: samplesheet does not contain gs://" && rm SIZE
         [[ ! "~{fastq_output_path}" =~ gs:// ]] && echo "Error: fastq_output_path does not contain gs://" && rm SIZE
