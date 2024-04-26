@@ -1,16 +1,46 @@
-# Workflows
+Workflows
+=========
 
-## bcl2fastq
+bcl2fastq
+---------
 
 **Inputs**  
 bcl: gs:// path to BCL  
 samplesheet: gs:// path to samplesheet  
-technique: "cellranger" or "cellranger-arc" (TODO bcl2fastq)
+technique: "cellranger" or "cellranger-arc" (TODO bcl2fastq)  
+fastq_output_path (optional): gs:// path to write fastqs (default fastqs/{basename(bcl)})
+log_output_path (optional): gs:// path to write logs (default logs/{basename(bcl)})
 
 **Commands**  
 cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 rm -rf mkfastq/MAKE_FASTQS_CS  
+
+**Outputs**  
+/fastqs: output fastqs
+/logs: mkfastq.log and mkfastq.usage
+
+**Notes**
+* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,64)} HDD"  
+* throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)  
+* throws an error if the fastq directory already exists
+
+cellranger-count
+----------------
+
+**Inputs**  
+fastqs: gs:// path to the fastq folder  
+sample: fastq filename prefix to select (usually the 10X index)  
+reference: gs:// path to the transcriptome  
+technique: "cellranger" or "cellranger-arc"  
+lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
+count_output_path (optional): gs:// path to write outs (default cellranger-count/{basename(fastqs)})  
+log_output_path (optional): gs:// path to write logs (default logs/{basename(fastqs)})
+
+**Commands**  
+cellranger count 
+cellranger-arc count 
+rm -rf {id}/SC_RNA_COUNTER_CS
 
 **Outputs**  
 /fastqs: output fastqs  
@@ -21,28 +51,8 @@ rm -rf mkfastq/MAKE_FASTQS_CS
 * throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)
 * throws an error if the fastq directory already exists
 
-## cellranger-count
-
-**Inputs**  
-bcl: gs:// path to BCL  
-samplesheet: gs:// path to samplesheet  
-technique: "cellranger" or "cellranger-arc" (TODO bcl2fastq)
-
-**Commands**  
-cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
-cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
-rm -rf mkfastq/MAKE_FASTQS_CS  
-
-**Outputs**  
-/fastqs: output fastqs  
-/logs: mkfastq.log and mkfastq.usage
-
-**Notes**
-* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,64)} HDD"  
-* throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)
-* throws an error if the fastq directory already exists
-
-# Docker Images
+Docker Images
+=============
 **us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/img:latest**  
 bcl2fastq2 v2.20  
 Cell Ranger 8.0.0  
