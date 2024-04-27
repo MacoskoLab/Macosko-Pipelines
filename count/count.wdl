@@ -14,7 +14,7 @@ task count {
   }
   command <<<
     echo "<< starting count >>"
-    dstat --time --cpu --mem --disk --io --freespace --output mkfastq.usage &> /dev/null &
+    dstat --time --cpu --mem --disk --io --freespace --output count-~{id}.usage &> /dev/null &
 
     # export PATH="/usr/local/bcl2fastq/bin:$PATH"
     export PATH="/software/cellranger-8.0.0/bin:$PATH"
@@ -83,8 +83,8 @@ task count {
     echo; echo "CPU INFO:"; lscpu
     
     echo "uploading logs"
-    cp /cromwell_root/stdout mkfastq.out
-    cp /cromwell_root/stderr mkfastq.err
+    cp /cromwell_root/stdout count-~{id}.out
+    cp /cromwell_root/stderr count-~{id}.err
     log_output_path="~{log_output_path}"
     gcloud storage cp count-~{id}.out "${log_output_path%/}/count-~{id}.out"
     gcloud storage cp count-~{id}.err "${log_output_path%/}/count-~{id}.err"
