@@ -22,7 +22,7 @@ rm -rf mkfastq/MAKE_FASTQS_CS
 /logs: mkfastq.log and mkfastq.usage
 
 **Notes**
-* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,64)} HDD"  
+* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,128)} HDD"  
 * throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)  
 * throws an error if the fastq directory already exists
 
@@ -48,7 +48,7 @@ rm -rf {id}/SC_RNA_COUNTER_CS
 /logs: mkfastq.log and mkfastq.usage
 
 **Notes**
-* memory: "64 GB", cpu: 8, disks: "local-disk {max(fastqs*6+20,64)} SSD"  
+* memory: "64 GB", cpu: 8, disks: "local-disk {max(fastqs*6+20,128)} SSD"  
 * throws an error if the disk is >6TB (edit count.wdl to increase cap)
 * throws an error if the counts directory already exists
 * cellranger expects the fastqs to be named as [sample]\_S[number]\_L00[lane]\_[R1/R2/I1/I2]\_001.fastq.gz
