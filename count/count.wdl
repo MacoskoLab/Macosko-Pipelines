@@ -14,9 +14,82 @@ task count {
   }
   command <<<
     echo "<< starting count >>"
+    dstat --time --cpu --mem --disk --io --freespace --output mkfastq.usage &> /dev/null &
 
-    echo "true" > DONE
+    # export PATH="/usr/local/bcl2fastq/bin:$PATH"
+    export PATH="/software/cellranger-8.0.0/bin:$PATH"
+    export PATH="/software/cellranger-arc-2.0.2/bin:$PATH"
+    export PATH="/software/cellranger-atac-2.1.0/bin:$PATH"
 
+    gcloud config set storage/process_count 16
+    gcloud config set storage/thread_count  2
+
+    # Download the reference
+    echo "Downloading reference:"
+    mkdir reference
+    reference="~{reference}"
+    gcloud storage cp -r "${reference%/}"/* reference
+    
+    # Download the fastqs
+    echo "Downloading fastqs:"
+    mkdir fastqs
+    gcloud storage cp ~{sep=' ' fastq_paths} fastqs
+
+    # Run the cellranger command
+    if [[ ~{technique} == "cellranger" ]]; then
+        echo; echo "Running cellranger count"
+        time stdbuf -oL -eL cellranger count  \
+        --id=~{id}                            \
+        --transcriptome=reference             \
+        --fastqs=fastqs                       \
+        --sample=~{sample}                    \
+        --create-bam=true                     \
+        --include-introns=true                \
+        --nosecondary --disable-ui |& ts      \
+    elif [[ ~{technique} == "cellranger-atac" ]]; then
+        echo; echo "Running cellranger-atac count"
+        time stdbuf -oL -eL cellranger-atac count \
+        --id=~{id}                                \
+        --reference=reference                     \
+        --fastqs=fastqs                           \
+        --disable-ui |& ts                        \
+    else
+        echo "ERROR: could not recognize technique ~{technique}"
+    fi
+
+    echo "Removing SC_RNA_COUNTER_CS"
+    rm -rf ~{id}/SC_RNA_COUNTER_CS
+
+    if [[ -f ~{id}/outs/metrics_summary.csv ]]
+    then
+        echo "Success, uploading counts"
+        count_output_path="~{count_output_path}"
+        if gsutil ls ""${count_output_path%/}/~{id}" &> /dev/null
+        then
+            echo "ERROR: count output already exists"
+        else
+            gcloud storage cp -r ~{id} "${count_output_path%/}/~{id}"
+            echo "true" > DONE
+        fi
+    else
+        echo "ERROR: CANNOT FIND: metrics_summary.csv"
+    fi
+
+    echo; echo "Writing logs:"
+    kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
+    echo; echo "fastqs size:"; du -sh fastqs
+    echo; echo "counts size:"; du -sh ~{id}
+    echo; echo "FREE SPACE:"; df -h
+    echo; echo "CPU INFO:"; lscpu
+    
+    echo "uploading logs"
+    cp /cromwell_root/stdout mkfastq.out
+    cp /cromwell_root/stderr mkfastq.err
+    log_output_path="~{log_output_path}"
+    gcloud storage cp count-~{id}.out "${log_output_path%/}/count-~{id}.out"
+    gcloud storage cp count-~{id}.err "${log_output_path%/}/count-~{id}.err"
+    gcloud storage cp count-~{id}.usage "${log_output_path%/}/count-~{id}.usage"
+    
     echo "<< completed count >>"
   >>>
   output {
@@ -49,7 +122,7 @@ task getdisksize {
         if [ ~{length(lanes)} -eq 0 ]; then
             id="~{sample}"
         else
-            id="~{sample}_~{sep='' lanes}"
+            id="~{sample}_L~{sep='-' lanes}"
         fi
         echo "fastqs: ~{fastqs}"
         echo "sample: ~{sample}"
@@ -70,7 +143,7 @@ task getdisksize {
             for lane in "${lanes[@]}"; do
                 if ! grep -q "_L0*${lane}_" PATHS; then
                     echo "ERROR: No fastqs found for lane ${lane}"
-                    rm SIZE
+                    rm -f SIZE
                 fi
             done
         fi
@@ -107,7 +180,7 @@ task getdisksize {
             rm SIZE
         fi
 
-        # assert that the count output is blank (avoid overwiting)
+        # Assert that the count output is blank (avoid overwiting)
         count_output_path="~{count_output_path}"
         if gsutil ls "${count_output_path%/}/$id" &> /dev/null
         then
@@ -117,7 +190,7 @@ task getdisksize {
             echo "Output path: ${count_output_path%/}/$id"
         fi
 
-        # assert that the paths are actually gs:// paths
+        # Assert that the paths are actually gs:// paths
         [[ ! "~{fastqs}" =~ gs:// ]] && echo "Error: fastq_path does not contain gs://" && rm SIZE
         [[ ! "~{reference}"  =~ gs:// ]] && echo "Error: reference does not contain gs://" && rm SIZE
         [[ ! "~{count_output_path}" =~ gs:// ]] && echo "Error: count_output_path does not contain gs://" && rm SIZE
