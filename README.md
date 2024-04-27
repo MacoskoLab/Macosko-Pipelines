@@ -51,7 +51,7 @@ rm -rf {id}/SC_RNA_COUNTER_CS
 * memory: "64 GB", cpu: 8, disks: "local-disk {max(fastqs*6+20,64)} SSD"  
 * throws an error if the disk is >6TB (edit count.wdl to increase cap)
 * throws an error if the counts directory already exists
-* cellranger expects the fastqs to be named as [sample]_S[number]_L00[lane]_[R1/R2/I1/I2]_001.fastq.gz
+* cellranger expects the fastqs to be named as [sample]\_S[number]\_L00[lane]\_[R1/R2/I1/I2]\_001.fastq.gz
 * the output folder is {id}: equal to {sample} if all lanes are used, {sample}_{lanes} otherwise
 
 Docker Images
