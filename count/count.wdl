@@ -64,7 +64,7 @@ task count {
     then
         echo "Success, uploading counts"
         count_output_path="~{count_output_path}"
-        if gsutil ls ""${count_output_path%/}/~{id}" &> /dev/null
+        if gsutil ls "${count_output_path%/}/~{id}" &> /dev/null
         then
             echo "ERROR: count output already exists"
         else
