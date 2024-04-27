@@ -13,6 +13,7 @@ log_output_path (optional): gs:// path to write logs (default logs/{basename(bcl
 
 **Commands**  
 cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 rm -rf mkfastq/MAKE_FASTQS_CS  
 
