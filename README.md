@@ -18,7 +18,7 @@ cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui
 rm -rf mkfastq/MAKE_FASTQS_CS  
 
 **Outputs**  
-/fastqs: output fastqs
+/fastqs: output fastqs  
 /logs: mkfastq.log and mkfastq.usage
 
 **Notes**
