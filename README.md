@@ -7,14 +7,14 @@ bcl2fastq
 **Inputs**  
 bcl: gs:// path to BCL  
 samplesheet: gs:// path to samplesheet  
-technique: "cellranger" or "cellranger-atac" or "cellranger-arc" (TODO bcl2fastq)  
+technique: "cellranger" or "cellranger-arc" or "cellranger-atac" (TODO bcl2fastq)  
 fastq_output_path (optional): gs:// path to write fastqs (default fastqs/{basename(bcl)})
 log_output_path (optional): gs:// path to write logs (default logs/{basename(bcl)})
 
 **Commands**  
 cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
-cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 rm -rf mkfastq/MAKE_FASTQS_CS  
 
 **Outputs**  
@@ -72,8 +72,8 @@ R 4.3.3
 
 # Test BCLs
 Normal: 230521_SL-NXA_2112_AH3FLKBGXT (4 lanes, 24.06 GiB)  
-Multiome GEX: 230824_VH01286_38_AACVHVJM5  
-Multiome ATAC: 230827_VH01286_40_AACVHVLM5  
+Multiome GEX: 230824_VH01286_38_AACVHVJM5 (1 lane, 23G)  
+Multiome ATAC: 230827_VH01286_40_AACVHVLM5 (1 lane, 20G)  
 
 Links
 =====
