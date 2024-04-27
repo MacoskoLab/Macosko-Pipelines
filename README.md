@@ -70,4 +70,12 @@ Julia 1.8.5
 R 4.3.3
 
 # Test BCLs
-Normal: 230521_SL-NXA_2112_AH3FLKBGXT (4 lanes, 24.06 GiB)
+Normal: 230521_SL-NXA_2112_AH3FLKBGXT (4 lanes, 24.06 GiB)  
+Multiome GEX: 230824_VH01286_38_AACVHVJM5  
+Multiome ATAC: 230827_VH01286_40_AACVHVLM5  
+
+Links
+=====
+Cell Ranger downloads: https://www.10xgenomics.com/support/software/cell-ranger/downloads  
+Cell Ranger ATAC downloads: https://support.10xgenomics.com/single-cell-atac/software/downloads/latest  
+Cell Ranger ARC downloads: https://support.10xgenomics.com/single-cell-multiome-atac-gex/software/downloads/latest  
