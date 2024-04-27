@@ -45,14 +45,14 @@ task count {
         --sample=~{sample}                    \
         --create-bam=true                     \
         --include-introns=true                \
-        --nosecondary --disable-ui |& ts      \
+        --nosecondary --disable-ui |& ts
     elif [[ ~{technique} == "cellranger-atac" ]]; then
         echo; echo "Running cellranger-atac count"
         time stdbuf -oL -eL cellranger-atac count \
         --id=~{id}                                \
         --reference=reference                     \
         --fastqs=fastqs                           \
-        --disable-ui |& ts                        \
+        --disable-ui |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
