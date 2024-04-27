@@ -76,6 +76,9 @@ Multiome ATAC: 230827_VH01286_40_AACVHVLM5
 
 Links
 =====
-Cell Ranger downloads: https://www.10xgenomics.com/support/software/cell-ranger/downloads  
-Cell Ranger ATAC downloads: https://support.10xgenomics.com/single-cell-atac/software/downloads/latest  
-Cell Ranger ARC downloads: https://support.10xgenomics.com/single-cell-multiome-atac-gex/software/downloads/latest  
+Cell Ranger downloads:  
+https://www.10xgenomics.com/support/software/cell-ranger/downloads  
+Cell Ranger ATAC downloads:  
+https://support.10xgenomics.com/single-cell-atac/software/downloads/latest  
+Cell Ranger ARC downloads:  
+https://support.10xgenomics.com/single-cell-multiome-atac-gex/software/downloads/latest  
