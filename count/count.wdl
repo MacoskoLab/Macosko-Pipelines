@@ -137,7 +137,7 @@ task getdisksize {
             regex=$(printf "_L0*%s_ " "${lanes[@]}" | sed 's/ $//' | sed 's/ /|/g')
             grep -P $regex PATHS > temp_file && mv temp_file PATHS
         fi
-        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*6+20 ; if (size<64) size=64 ; printf "%d\n", size}' > SIZE
+        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*6+20 ; if (size<128) size=128 ; printf "%d\n", size}' > SIZE
         if [ ~{length(lanes)} -gt 0 ]; then
             lanes=(~{sep=' ' lanes})
             for lane in "${lanes[@]}"; do
