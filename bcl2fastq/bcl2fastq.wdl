@@ -53,6 +53,13 @@ task mkfastq {
           --id=mkfastq                                      \
           --csv=Indexes.csv                                 \
           --disable-ui |& ts
+    elif [[ ~{technique} == "cellranger-atac" ]]; then
+        echo; echo "Running cellranger-atac mkfastq"
+        time stdbuf -oL -eL cellranger-atac mkfastq         \
+          --run=BCL                                         \
+          --id=mkfastq                                      \
+          --csv=Indexes.csv                                 \
+          --disable-ui |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
