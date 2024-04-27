@@ -132,35 +132,35 @@ task getdisksize {
         if [[ ! -s SIZE ]]
         then
             echo "ERROR: gsutil du command failed on input bcl path"
-            rm SIZE
+            rm -f SIZE
         fi
 
         # Assert that the disksize is not too large
         if [[ $(cat SIZE) -gt 6000 ]]
         then
             echo "ERROR: BCL size limit reached, increase cap"
-            rm SIZE
+            rm -f SIZE
         fi
 
         # Assert that the bcl exists
         if ! gsutil ls "~{bcl}" &> /dev/null
         then
             echo "ERROR: gsutil ls command failed on input bcl path"
-            rm SIZE
+            rm -f SIZE
         fi
 
         # Assert that the samplesheet exists
         if ! gsutil stat "~{samplesheet}" &> /dev/null
         then
             echo "ERROR: gsutil stat command failed on input samplesheet path"
-            rm SIZE
+            rm -f SIZE
         fi
 
         # Assert that the fastq output is blank (avoid overwiting)
         if gsutil ls "~{fastq_output_path}" &> /dev/null
         then
             echo "ERROR: fastq output already exists"
-            rm SIZE
+            rm -f SIZE
         fi
 
         # Assert that the paths are actually gs:// paths
