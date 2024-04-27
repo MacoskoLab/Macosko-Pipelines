@@ -158,26 +158,26 @@ task getdisksize {
         if [[ ! -s PATHS ]]
         then
             echo "ERROR: gsutil ls command failed on input fastqs"
-            rm SIZE
+            rm -f SIZE
         fi
         if [[ ! -s SIZE ]]
         then
             echo "ERROR: gsutil du command failed on input fastqs"
-            rm SIZE
+            rm -f SIZE
         fi
 
         # Assert that the disksize is not too large
         if [[ $(cat SIZE) -gt 6000 ]]
         then
             echo "ERROR: cellranger-count disk size limit reached, increase cap"
-            rm SIZE
+            rm -f SIZE
         fi
 
         # Assert that the reference exists
         if ! gsutil ls "~{reference}" &> /dev/null
         then
             echo "ERROR: gsutil ls command failed on input reference path"
-            rm SIZE
+            rm -f SIZE
         fi
 
         # Assert that the count output is blank (avoid overwiting)
@@ -185,7 +185,7 @@ task getdisksize {
         if gsutil ls "${count_output_path%/}/$id" &> /dev/null
         then
             echo "ERROR: cellranger-count output already exists"
-            rm SIZE
+            rm -f SIZE
         else
             echo "Output path: ${count_output_path%/}/$id"
         fi
