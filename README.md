@@ -22,7 +22,7 @@ rm -rf mkfastq/MAKE_FASTQS_CS
 /logs: mkfastq.log and mkfastq.usage
 
 **Notes**
-* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,128)} HDD"  
+* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,128)} SSD"  
 * throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)  
 * throws an error if the fastq directory already exists
 
