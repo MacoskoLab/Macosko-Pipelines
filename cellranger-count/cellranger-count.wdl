@@ -157,7 +157,7 @@ task getdisksize {
         # Assert that the fastqs exist
         if [[ ! -s PATHS ]]
         then
-            echo "ERROR: gsutil ls command failed on input fastqs"
+            echo "ERROR: gsutil ls command returned a blank file"
             rm -f SIZE
         fi
         if [[ ! -s SIZE ]]
