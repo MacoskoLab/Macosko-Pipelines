@@ -31,9 +31,9 @@ cellranger-count
 
 **Inputs**  
 fastqs: gs:// path to the fastq folder  
-sample: fastq filename prefix to select - specified in the sample sheet supplied to the FASTQ generation software  
+sample: fastq filename prefix to select (specified in the sample sheet supplied to the FASTQ generation software)  
 reference: gs:// path to the transcriptome  
-technique: "cellranger" or "cellranger-arc"  
+technique: "cellranger" or "cellranger-atac"  
 lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
 count_output_path (optional): gs:// path to write outs (default cellranger-count/{basename(fastqs)})  
 log_output_path (optional): gs:// path to write logs (default logs/{basename(fastqs)})
