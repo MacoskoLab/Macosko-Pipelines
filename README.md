@@ -8,7 +8,7 @@ bcl2fastq
 bcl: gs:// path to BCL  
 samplesheet: gs:// path to samplesheet  
 technique: "cellranger" or "cellranger-arc" or "cellranger-atac" (TODO bcl2fastq)  
-fastq_output_path (optional): gs:// path to write fastqs (default fastqs/{basename(bcl)})
+fastq_output_path (optional): gs:// path to write fastqs (default fastqs/{basename(bcl)})  
 log_output_path (optional): gs:// path to write logs (default logs/{basename(bcl)})
 
 **Commands**  
