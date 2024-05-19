@@ -39,8 +39,8 @@ count_output_path (optional): gs:// path to write outs (default cellranger-count
 log_output_path (optional): gs:// path to write logs (default logs/{basename(fastqs)})
 
 **Commands**  
-cellranger count 
-cellranger-arc count 
+cellranger count  
+cellranger-arc count  
 rm -rf {id}/SC_RNA_COUNTER_CS
 
 **Outputs**  
