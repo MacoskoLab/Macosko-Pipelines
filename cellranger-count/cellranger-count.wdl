@@ -18,7 +18,7 @@ task count {
 
     # export PATH="/usr/local/bcl2fastq/bin:$PATH"
     export PATH="/software/cellranger-8.0.0/bin:$PATH"
-    export PATH="/software/cellranger-arc-2.0.2/bin:$PATH"
+    # export PATH="/software/cellranger-arc-2.0.2/bin:$PATH"
     export PATH="/software/cellranger-atac-2.1.0/bin:$PATH"
 
     gcloud config set storage/process_count 16
