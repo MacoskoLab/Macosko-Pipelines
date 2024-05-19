@@ -54,7 +54,7 @@ rm -rf {id}/SC_RNA_COUNTER_CS
 * cellranger expects the fastqs to be named as [sample]\_S[number]\_L00[lane]\_[R1/R2/I1/I2]\_001.fastq.gz
 * the output folder is {id}: equal to {sample} if all lanes are used, {sample}_{lanes} otherwise
 
-Input→Output Summary
+Input→Output
 ====================
 bcl2fastq: bcls, samplesheets → fastqs  
 cellranger-count: fastqs, references → cellranger-count  
