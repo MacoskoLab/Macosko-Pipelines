@@ -73,6 +73,7 @@ Input→Output
 ====================
 bcl2fastq: bcls, samplesheets → fastqs  
 cellranger-count: fastqs, references → cellranger-count  
+spatial-count: fastqs, pucks → spatial-count  
 
 Docker Images
 =============
