@@ -28,7 +28,7 @@ task count {
     echo "Downloading reference:"
     mkdir reference
     reference="~{reference}"
-    gcloud storage cp -r "${reference%/}"/* reference
+    gcloud storage cp -r "${reference%/}/*" reference
     
     # Download the fastqs
     echo "Downloading fastqs:"
