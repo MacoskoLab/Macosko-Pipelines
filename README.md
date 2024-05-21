@@ -39,8 +39,8 @@ count_output_path (optional): gs:// path to write outs (default cellranger-count
 log_output_path (optional): gs:// path to write logs (default logs/{basename(fastqs)})
 
 **Commands**  
-cellranger count --id=id --transcriptome=reference --fastqs=fastqs --sample=sample --create-bam=true --include-introns=true --nosecondary --disable-ui  
-cellranger-atac count --id=id --reference=reference --fastqs=fastqs --disable-ui  
+cellranger count --id={id} --transcriptome=reference --fastqs=fastqs --sample={sample} --create-bam=true --include-introns=true --nosecondary --disable-ui  
+cellranger-atac count --id={id} --reference=reference --fastqs=fastqs --disable-ui  
 rm -rf {id}/SC_RNA_COUNTER_CS
 
 **Outputs**  
