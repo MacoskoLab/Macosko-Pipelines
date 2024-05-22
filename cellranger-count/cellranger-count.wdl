@@ -215,19 +215,19 @@ task getdisksize {
 workflow cellranger_count {
     String pipeline_version = "1.0.0"
     input {
-        String fastqs
+        String fastq_path
         String sample
         String reference
         String technique
         Array[Int] lanes = []
-        String count_output_path = "gs://"+bucket+"/cellranger-count/"+basename(fastqs,"/")
-        String log_output_path = "gs://"+bucket+"/logs/"+basename(fastqs,"/")
+        String count_output_path = "gs://"+bucket+"/cellranger-count/"+basename(fastq_path,"/")
+        String log_output_path = "gs://"+bucket+"/logs/"+basename(fastq_path,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest"
     }
     call getdisksize {
         input:
-            fastqs = fastqs,
+            fastqs = fastq_path,
             sample = sample,
             reference = reference,
             lanes = lanes,
