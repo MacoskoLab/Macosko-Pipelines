@@ -44,8 +44,8 @@ cellranger-atac count --id={id} --reference=reference --fastqs=fastqs --disable-
 rm -rf {id}/SC_RNA_COUNTER_CS
 
 **Outputs**  
-/fastqs: output fastqs  
-/logs: mkfastq.log and mkfastq.usage
+/cellranger-count: output cellranger results  
+/logs: count-{id}.out, count-{id}.err, count-{id}.usage  
 
 **Notes**
 * memory: "64 GB", cpu: 8, disks: "local-disk {max(fastqs*6+20,128)} SSD"  
@@ -64,10 +64,14 @@ hi
 hi
 
 **Outputs**  
-hi
+/spatial-count: SBcounts.h5  
+/logs: count-{id}.out, count-{id}.err, count-{id}.usage  
 
 **Notes**
-hi
+* memory: "{max(fastqs\*2.5,64)} GB", cpu: 8, disks: "local-disk {max(fastqs\*2.5,64)} SSD"  
+* throws an error if the disk is >256GB (edit spatial-count.wdl to increase cap)
+* WDL expects the fastqs to be named as [sample]\_S[number]\_L00[lane]\_[R1/R2/I1/I2]\_001.fastq.gz
+* the output folder is {id}: equal to {sample} if all lanes are used, {sample}_{lanes} otherwise
 
 Input→Output
 ====================
