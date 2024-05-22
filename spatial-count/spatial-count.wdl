@@ -3,10 +3,8 @@ version 1.0
 task count {
   input {
     String id
-    String reference
+    Array[String] pucks
     Array[String] fastq_paths
-    String sample
-    String technique
     String count_output_path
     String log_output_path
     Int disksize
@@ -16,69 +14,39 @@ task count {
     echo "<< starting count >>"
     dstat --time --cpu --mem --disk --io --freespace --output count-~{id}.usage &> /dev/null &
 
-    # export PATH="/usr/local/bcl2fastq/bin:$PATH"
-    export PATH="/software/cellranger-8.0.0/bin:$PATH"
-    # export PATH="/software/cellranger-arc-2.0.2/bin:$PATH"
-    export PATH="/software/cellranger-atac-2.1.0/bin:$PATH"
-
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
-    # Download the reference
-    echo "Downloading reference:"
-    mkdir reference
-    reference="~{reference}"
-    gcloud storage cp -r "${reference%/}/*" reference
-    
+    # Download the script
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/spatial-count/spatial-count.jl
+
+    # Download the pucks
+    echo "Downloading pucks:"
+    mkdir pucks
+    gcloud storage cp ~{sep=' ' pucks} pucks
+
     # Download the fastqs
     echo "Downloading fastqs:"
     mkdir fastqs
     gcloud storage cp ~{sep=' ' fastq_paths} fastqs
 
-    # Run the cellranger command
-    if [[ ~{technique} == "cellranger" ]]; then
-        echo; echo "Running cellranger count"
-        time stdbuf -oL -eL cellranger count  \
-        --id=~{id}                            \
-        --transcriptome=reference             \
-        --fastqs=fastqs                       \
-        --sample=~{sample}                    \
-        --create-bam=true                     \
-        --include-introns=true                \
-        --nosecondary --disable-ui |& ts
-    elif [[ ~{technique} == "cellranger-atac" ]]; then
-        echo; echo "Running cellranger-atac count"
-        time stdbuf -oL -eL cellranger-atac count \
-        --id=~{id}                                \
-        --reference=reference                     \
-        --fastqs=fastqs                           \
-        --disable-ui |& ts
-    else
-        echo "ERROR: could not recognize technique ~{technique}"
-    fi
+    # Run the script
+    julia spatial-count.jl fastqs pucks
 
-    echo "Removing SC_RNA_COUNTER_CS"
-    rm -rf ~{id}/SC_RNA_COUNTER_CS
-
-    if [[ -f ~{id}/outs/metrics_summary.csv ]]
+    if [[ -f SBcounts.h5 ]]
     then
         echo "Success, uploading counts"
         count_output_path="~{count_output_path}"
-        if gsutil ls "${count_output_path%/}/~{id}" &> /dev/null
-        then
-            echo "ERROR: count output already exists"
-        else
-            gcloud storage cp -r ~{id} "${count_output_path%/}/~{id}"
-            echo "true" > DONE
-        fi
+        gcloud storage cp -r SBcounts.h5 "${count_output_path%/}/~{id}/SBcounts.h5"
+        echo "true" > DONE
     else
-        echo "ERROR: CANNOT FIND: metrics_summary.csv"
+        echo "ERROR: CANNOT FIND: SBcounts.h5"
     fi
 
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
     echo; echo "fastqs size:"; du -sh fastqs
-    echo; echo "counts size:"; du -sh ~{id}
+    echo; echo "pucks size:"; du -sh pucks
     echo; echo "FREE SPACE:"; df -h
     echo; echo "CPU INFO:"; lscpu
     
@@ -97,9 +65,9 @@ task count {
   }
   runtime {
     docker: docker
-    memory: "64 GB"
+    memory: "~{disksize} GB"
     disks: "local-disk ~{disksize} SSD"
-    cpu: 8
+    cpu: 1
     preemptible: 0
   }
 }
@@ -109,7 +77,7 @@ task getdisksize {
     input {
         String fastqs
         String sample
-        String reference
+        Array[String] pucks
         Array[Int] lanes
         String count_output_path
         String log_output_path       
@@ -128,6 +96,8 @@ task getdisksize {
         echo "sample: ~{sample}"
         echo "lanes: ~{sep=',' lanes}"
         echo "id: $id"; echo
+        count_output_path="~{count_output_path}"        
+        echo "Output path: ${count_output_path%/}/$id"
         echo $id > ID
 
         # Get the fastq files and their total size
@@ -137,7 +107,7 @@ task getdisksize {
             regex=$(printf "_L0*%s_ " "${lanes[@]}" | sed 's/ $//' | sed 's/ /|/g')
             grep -P $regex PATHS > temp_file && mv temp_file PATHS
         fi
-        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*6+20 ; if (size<128) size=128 ; printf "%d\n", size}' > SIZE
+        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*2.5 ; if (size<64) size=64 ; printf "%d\n", size}' > SIZE
         if [ ~{length(lanes)} -gt 0 ]; then
             lanes=(~{sep=' ' lanes})
             for lane in "${lanes[@]}"; do
@@ -167,34 +137,30 @@ task getdisksize {
         fi
 
         # Assert that the disksize is not too large
-        if [[ $(cat SIZE) -gt 6000 ]]
+        if [[ $(cat SIZE) -gt 256 ]]
         then
-            echo "ERROR: cellranger-count disk size limit reached, increase cap"
+            echo "ERROR: spatial-count memory and disk size limit reached, increase cap"
             rm -f SIZE
         fi
 
-        # Assert that the reference exists
-        if ! gsutil ls "~{reference}" &> /dev/null
-        then
-            echo "ERROR: gsutil ls command failed on input reference path"
-            rm -f SIZE
-        fi
-
-        # Assert that the count output is blank (avoid overwiting)
-        count_output_path="~{count_output_path}"
-        if gsutil ls "${count_output_path%/}/$id" &> /dev/null
-        then
-            echo "ERROR: cellranger-count output already exists"
-            rm -f SIZE
-        else
-            echo "Output path: ${count_output_path%/}/$id"
-        fi
+        # Assert that the pucks exist
+        pucks=(~{sep=' ' pucks})
+        for puck in "${pucks[@]}"
+        do
+            if [[ ! "$puck"  =~ gs:// ]] ; then
+                echo "ERROR: puck $puck does not contain gs://"
+                rm -f SIZE
+            fi
+            if ! gsutil ls "$puck" &> /dev/null ; then
+                echo "ERROR: gsutil ls command failed on puck $puck"
+                rm -f SIZE
+            fi
+        done
 
         # Assert that the paths are actually gs:// paths
-        [[ ! "~{fastqs}" =~ gs:// ]] && echo "Error: fastq_path does not contain gs://" && rm SIZE
-        [[ ! "~{reference}"  =~ gs:// ]] && echo "Error: reference does not contain gs://" && rm SIZE
-        [[ ! "~{count_output_path}" =~ gs:// ]] && echo "Error: count_output_path does not contain gs://" && rm SIZE
-        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "Error: log_output_path does not contain gs://" && rm SIZE
+        [[ ! "~{fastqs}" =~ gs:// ]] && echo "ERROR: fastq_path does not contain gs://" && rm -f SIZE
+        [[ ! "~{count_output_path}" =~ gs:// ]] && echo "ERROR: count_output_path does not contain gs://" && rm -f SIZE
+        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && rm -f SIZE
 
         echo "<< completed getdisksize >>"
     >>>
@@ -216,20 +182,19 @@ workflow spatial_count {
     String pipeline_version = "1.0.0"
     input {
         String fastq_path
-        String fastq_prefix
-        String pucks
-        String technique
+        String sample
+        Array[String] pucks
         Array[Int] lanes = []
-        String count_output_path = "gs://"+bucket+"/cellranger-count/"+basename(fastqs,"/")
-        String log_output_path = "gs://"+bucket+"/logs/"+basename(fastqs,"/")
+        String count_output_path = "gs://"+bucket+"/spatial-count/"+basename(fastq_path,"/")
+        String log_output_path = "gs://"+bucket+"/logs/"+basename(fastq_path,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest"
     }
     call getdisksize {
         input:
-            fastqs = fastqs,
+            fastqs = fastq_path,
             sample = sample,
-            reference = reference,
+            pucks = pucks,
             lanes = lanes,
             count_output_path = count_output_path,
             log_output_path = log_output_path,
@@ -238,10 +203,8 @@ workflow spatial_count {
     call count {
         input:
             id = getdisksize.id,
-            reference = reference,
+            pucks = pucks,
             fastq_paths = getdisksize.fastq_paths,
-            sample = sample,
-            technique = technique,
             count_output_path = count_output_path,
             log_output_path = log_output_path,
             disksize = getdisksize.disksize,
