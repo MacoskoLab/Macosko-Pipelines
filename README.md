@@ -36,7 +36,7 @@ reference: gs:// path to the transcriptome
 technique: "cellranger" or "cellranger-atac"  
 lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
 count_output_path (optional): gs:// path to write outs (default cellranger-count/{basename(fastq_path)})  
-log_output_path (optional): gs:// path to write logs (default logs/{basename(fastqs)})
+log_output_path (optional): gs:// path to write logs (default logs/{basename(fastq_path)})
 
 **Commands**  
 cellranger count --id={id} --transcriptome=reference --fastqs=fastqs --sample={sample} --create-bam=true --include-introns=true --nosecondary --disable-ui  
@@ -48,7 +48,7 @@ rm -rf {id}/SC_RNA_COUNTER_CS
 /logs: count-{id}.out, count-{id}.err, count-{id}.usage  
 
 **Notes**
-* memory: "64 GB", cpu: 8, disks: "local-disk {max(fastqs*6+20,128)} SSD"  
+* memory: "64 GB", cpu: 8, disks: "local-disk {max(fastqs\*6+20,128)} SSD"  
 * throws an error if the disk is >6TB (edit cellranger-count.wdl to increase cap)
 * throws an error if the counts directory already exists
 * cellranger expects the fastqs to be named as [sample]\_S[number]\_L00[lane]\_[R1/R2/I1/I2]\_001.fastq.gz
@@ -58,17 +58,22 @@ spatial-count
 ----------------
 
 **Inputs**  
-hi
+fastq_path: gs:// path to the fastq folder  
+sample: fastq filename prefix to select (specified in the sample sheet supplied to the FASTQ generation software)  
+pucks: array of gs:// paths to the pucks  
+lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
+count_output_path (optional): gs:// path to write outs (default spatial-count/{basename(fastq_path)})  
+log_output_path (optional): gs:// path to write logs (default logs/{basename(fastq_path)})
 
 **Commands**  
-hi
+julia spatial-count.jl fastqs pucks  
 
 **Outputs**  
 /spatial-count: SBcounts.h5  
 /logs: count-{id}.out, count-{id}.err, count-{id}.usage  
 
 **Notes**
-* memory: "{max(fastqs\*2.5,64)} GB", cpu: 8, disks: "local-disk {max(fastqs\*2.5,64)} SSD"  
+* memory: "{max(fastqs\*2.5,64)} GB", cpu: 1, disks: "local-disk {max(fastqs\*2.5,64)} SSD"  
 * throws an error if the disk is >256GB (edit spatial-count.wdl to increase cap)
 * WDL expects the fastqs to be named as [sample]\_S[number]\_L00[lane]\_[R1/R2/I1/I2]\_001.fastq.gz
 * the output folder is {id}: equal to {sample} if all lanes are used, {sample}_{lanes} otherwise
