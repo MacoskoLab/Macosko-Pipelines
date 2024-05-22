@@ -3,8 +3,8 @@ version 1.0
 task count {
   input {
     String id
-    Array[String] pucks
     Array[String] fastq_paths
+    Array[String] pucks
     String count_output_path
     String log_output_path
     Int disksize
@@ -203,8 +203,8 @@ workflow spatial_count {
     call count {
         input:
             id = getdisksize.id,
-            pucks = pucks,
             fastq_paths = getdisksize.fastq_paths,
+            pucks = pucks,
             count_output_path = count_output_path,
             log_output_path = log_output_path,
             disksize = getdisksize.disksize,
