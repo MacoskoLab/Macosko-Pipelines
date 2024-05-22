@@ -60,7 +60,7 @@ spatial-count
 **Inputs**  
 fastq_path: gs:// path to the fastq folder  
 sample: fastq filename prefix to select (specified in the sample sheet supplied to the FASTQ generation software)  
-pucks: array of gs:// paths to the pucks  
+pucks: array of gs:// paths to each puck  
 lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
 count_output_path (optional): gs:// path to write outs (default spatial-count/{basename(fastq_path)})  
 log_output_path (optional): gs:// path to write logs (default logs/{basename(fastq_path)})
