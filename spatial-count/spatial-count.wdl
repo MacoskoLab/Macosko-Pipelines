@@ -20,15 +20,15 @@ task count {
     # Download the script
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/spatial-count/spatial-count.jl
 
-    # Download the pucks
-    echo "Downloading pucks:"
-    mkdir pucks
-    gcloud storage cp ~{sep=' ' pucks} pucks
-
     # Download the fastqs
     echo "Downloading fastqs:"
     mkdir fastqs
     gcloud storage cp ~{sep=' ' fastq_paths} fastqs
+
+    # Download the pucks
+    echo "Downloading pucks:"
+    mkdir pucks
+    gcloud storage cp ~{sep=' ' pucks} pucks
 
     # Run the script
     julia spatial-count.jl fastqs pucks
