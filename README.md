@@ -101,6 +101,10 @@ Python3 3.7.3
 Julia 1.8.5  
 R 4.3.3
 
+**us-central1-docker.pkg.dev/velina-208320/docker-recon/img:latest**  
+Python 3.11  
+CUDA 12.2  
+
 # Test BCLs
 Normal: 230521_SL-NXA_2112_AH3FLKBGXT (4 lanes, 24.06 GiB)  
 Multiome GEX: 230824_VH01286_38_AACVHVJM5 (1 lane, 23G)  
