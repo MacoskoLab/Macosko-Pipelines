@@ -5,21 +5,21 @@ bcl2fastq
 ---------
 
 **Inputs**  
-bcl: gs:// path to BCL  
-samplesheet: gs:// path to samplesheet  
-technique: "cellranger" or "cellranger-arc" or "cellranger-atac" (TODO bcl2fastq)  
-fastq_output_path (optional): gs:// path to write fastqs (default fastqs/{basename(bcl)})  
-log_output_path (optional): gs:// path to write logs (default logs/{basename(bcl)})
+* bcl: gs:// path to BCL  
+* samplesheet: gs:// path to samplesheet  
+* technique: "cellranger" or "cellranger-arc" or "cellranger-atac" (TODO bcl2fastq)  
+* fastq_output_path (optional): gs:// path to write fastqs (default fastqs/{basename(bcl)})  
+* log_output_path (optional): gs:// path to write logs (default logs/{basename(bcl)})
 
 **Commands**  
-cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
-cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
-cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
-rm -rf mkfastq/MAKE_FASTQS_CS  
+* cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+* cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+* cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+* rm -rf mkfastq/MAKE_FASTQS_CS  
 
 **Outputs**  
-/fastqs: output fastqs  
-/logs: mkfastq.log and mkfastq.usage
+* /fastqs: output fastqs  
+* /logs: mkfastq.log and mkfastq.usage
 
 **Notes**
 * memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,128)} SSD"  
@@ -30,22 +30,22 @@ cellranger-count
 ----------------
 
 **Inputs**  
-fastq_path: gs:// path to the fastq folder  
-sample: fastq filename prefix to select (specified in the sample sheet supplied to the FASTQ generation software)  
-reference: gs:// path to the transcriptome  
-technique: "cellranger" or "cellranger-atac"  
-lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
-count_output_path (optional): gs:// path to write outs (default cellranger-count/{basename(fastq_path)})  
-log_output_path (optional): gs:// path to write logs (default logs/{basename(fastq_path)})
+* fastq_path: gs:// path to the fastq folder  
+* sample: fastq filename prefix to select (specified in the sample sheet supplied to the FASTQ generation software)  
+* reference: gs:// path to the transcriptome  
+* technique: "cellranger" or "cellranger-atac"  
+* lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
+* count_output_path (optional): gs:// path to write outs (default cellranger-count/{basename(fastq_path)})  
+* log_output_path (optional): gs:// path to write logs (default logs/{basename(fastq_path)})
 
 **Commands**  
-cellranger count --id={id} --transcriptome=reference --fastqs=fastqs --sample={sample} --create-bam=true --include-introns=true --nosecondary --disable-ui  
-cellranger-atac count --id={id} --reference=reference --fastqs=fastqs --disable-ui  
-rm -rf {id}/SC_RNA_COUNTER_CS
+* cellranger count --id={id} --transcriptome=reference --fastqs=fastqs --sample={sample} --create-bam=true --include-introns=true --nosecondary --disable-ui  
+* cellranger-atac count --id={id} --reference=reference --fastqs=fastqs --disable-ui  
+* rm -rf {id}/SC_RNA_COUNTER_CS
 
 **Outputs**  
-/cellranger-count: output cellranger results  
-/logs: count-{id}.out, count-{id}.err, count-{id}.usage  
+* /cellranger-count: output cellranger results  
+* /logs: count-{id}.out, count-{id}.err, count-{id}.usage  
 
 **Notes**
 * memory: "64 GB", cpu: 8, disks: "local-disk {max(fastqs\*6+20,128)} SSD"  
@@ -58,19 +58,19 @@ spatial-count
 ----------------
 
 **Inputs**  
-fastq_path: gs:// path to the fastq folder  
-sample: fastq filename prefix to select (specified in the sample sheet supplied to the FASTQ generation software)  
-pucks: array of gs:// paths to each puck  
-lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
-count_output_path (optional): gs:// path to write outs (default spatial-count/{basename(fastq_path)})  
-log_output_path (optional): gs:// path to write logs (default logs/{basename(fastq_path)})
+* fastq_path: gs:// path to the fastq folder  
+* sample: fastq filename prefix to select (specified in the sample sheet supplied to the FASTQ generation software)  
+* pucks: array of gs:// paths to each puck  
+* lanes (optional): Array[Int] of lanes to subset (default is [], meaning all lanes)  
+* count_output_path (optional): gs:// path to write outs (default spatial-count/{basename(fastq_path)})  
+* log_output_path (optional): gs:// path to write logs (default logs/{basename(fastq_path)})
 
 **Commands**  
-julia spatial-count.jl fastqs pucks  
+* julia spatial-count.jl fastqs pucks  
 
 **Outputs**  
-/spatial-count: SBcounts.h5  
-/logs: count-{id}.out, count-{id}.err, count-{id}.usage  
+* /spatial-count: SBcounts.h5  
+* /logs: count-{id}.out, count-{id}.err, count-{id}.usage  
 
 **Notes**
 * memory: "{max(fastqs\*2.5,64)} GB", cpu: 1, disks: "local-disk {max(fastqs\*2.5,64)} SSD"  
@@ -80,9 +80,9 @@ julia spatial-count.jl fastqs pucks
 
 Input→Output
 ====================
-bcl2fastq: bcls, samplesheets → fastqs  
-cellranger-count: fastqs, references → cellranger-count  
-spatial-count: fastqs, pucks → spatial-count  
+* bcl2fastq: bcls, samplesheets → fastqs  
+* cellranger-count: fastqs, references → cellranger-count  
+* spatial-count: fastqs, pucks → spatial-count  
 
 Docker Images
 =============
