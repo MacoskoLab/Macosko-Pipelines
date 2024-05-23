@@ -11,6 +11,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+from cuml.manifold.umap import UMAP as cuUMAP
 from helpers import *
 
 # generate spase matrix from matching, with selection on anchor or target
@@ -46,30 +47,22 @@ def get_args():
         required=True,
     )
     parser.add_argument(
-        "-c", "--core",
-        help="define core type to use.",
-        type=str,
-        default='CPU',
-    )
-    parser.add_argument(
         "-e", "--exptype",
         help="define experiment type (seq or tags).",
         type=str,
-        default='tags',
+        required=True,
     )
     args = parser.parse_args()
     return args
 
 args = get_args()
 path = args.fastqpath
-core = args.core
 exptype = args.exptype
-# path = "/home/nsachdev/Slide_recon/D701"
 anchor = "V15T" # just for naming
 target = "V10T" # just for naming
 
 print("loading data")
-blind_raw = pd.read_csv(os.path.join(path, 'blind_raw_reads_filtered.csv.gz'))
+blind_raw = pd.read_csv('blind_raw_reads_filtered.csv.gz')
 blind_sum = blind_raw.groupby(['R1_bc', 'R2_bc']).size().reset_index(name='cnt')
 if exptype == 'seq':
     blind_sum.columns = [anchor, target, 'cnt'] #if seq
