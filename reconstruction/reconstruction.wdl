@@ -3,10 +3,10 @@ version 1.0
 task recon {
   input {
     String id
-    String reference
     Array[String] fastq_paths
-    String sample
-    String technique
+    String read2type
+    String exptype
+    String parameters
     String recon_output_path
     String log_output_path
     Int disksize
@@ -14,51 +14,55 @@ task recon {
   }
   command <<<
     echo "<< starting count >>"
-    dstat --time --cpu --mem --disk --io --freespace --output count-~{id}.usage &> /dev/null &
+    dstat --time --cpu --mem --disk --io --freespace --output recon-~{id}.usage &> /dev/null &
 
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
-    # Download the reference
-    echo "Downloading reference:"
-    mkdir reference
-    reference="~{reference}"
-    gcloud storage cp -r "${reference%/}/*" reference
+    # Download the scripts
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/fiducial_seq_blind_whitelist.py
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/reconstruction_blind.py
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/helpers.py
     
-    # Download the fastqs
-    echo "Downloading fastqs:"
-    mkdir fastqs
-    gcloud storage cp ~{sep=' ' fastq_paths} fastqs
+    recon_output_path="~{recon_output_path}"
+    recon_output_path="${recon_output_path%/}/~{id}"
+    echo "Output directory: $recon_output_path"
 
-    if [[ -f ~{id}/outs/metrics_summary.csv ]]
-    then
-        echo "Success, uploading counts"
-        recon_output_path="~{recon_output_path}"
-        if gsutil ls "${recon_output_path%/}/~{id}" &> /dev/null
-        then
-            echo "ERROR: count output already exists"
-        else
-            gcloud storage cp -r ~{id} "${recon_output_path%/}/~{id}"
-            echo "true" > DONE
-        fi
+    # Run fiducial_seq_blind_whitelist.py
+    if gsutil ls "$recon_output_path/blind_raw_reads_filtered.csv.gz" &> /dev/null ; then
+        echo "fiducial_seq_blind_whitelist.py has already been run, reusing results"
+        gcloud storage cp "$recon_output_path/blind_raw_reads_filtered.csv.gz" .
     else
-        echo "ERROR: CANNOT FIND: metrics_summary.csv"
+        echo "Downloading fastqs:"
+        mkdir fastqs
+        gcloud storage cp ~{sep=' ' fastq_paths} fastqs
+
+        echo "Running fiducial_seq_blind_whitelist.py"
+        python fiducial_seq_blind_whitelist.py --fastqpath fastqs --read2type ~{read2type}
+        gcloud storage cp blind_raw_reads_filtered.csv.gz blind_statistics_filtered.csv QC.pdf "$recon_output_path"
     fi
 
+    # Run reconstruction_blind.py
+    if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
+        python reconstruction_blind.py --csvpath . --exptype ~{exptype} ~{parameters}
+        directory=$(find . -maxdepth 1 -type d -name "RUN-*" -print -quit)
+        gcloud storage cp -r "${directory}" "$recon_output_path"
+    else
+        echo "Cannot run reconstruction_blind.py, blind_raw_reads_filtered.csv.gz not found" 
+    fi
+    
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
-    echo; echo "fastqs size:"; du -sh fastqs
-    echo; echo "counts size:"; du -sh ~{id}
     echo; echo "FREE SPACE:"; df -h
     echo; echo "CPU INFO:"; lscpu
     
     echo "uploading logs"
-    cp /cromwell_root/stdout count-~{id}.out
-    cp /cromwell_root/stderr count-~{id}.err
+    cp /cromwell_root/stdout recon-~{id}.out
+    cp /cromwell_root/stderr recon-~{id}.err
     log_output_path="~{log_output_path}"
-    gcloud storage cp count-~{id}.out "${log_output_path%/}/count-~{id}.out"
-    gcloud storage cp count-~{id}.err "${log_output_path%/}/count-~{id}.err"
-    gcloud storage cp count-~{id}.usage "${log_output_path%/}/count-~{id}.usage"
+    gcloud storage cp recon-~{id}.out "${log_output_path%/}/recon-~{id}.out"
+    gcloud storage cp recon-~{id}.err "${log_output_path%/}/recon-~{id}.err"
+    gcloud storage cp recon-~{id}.usage "${log_output_path%/}/recon-~{id}.usage"
     
     echo "<< completed count >>"
   >>>
@@ -67,10 +71,14 @@ task recon {
   }
   runtime {
     docker: docker
-    memory: "64 GB"
+    memory: "~{disksize} GB"
     disks: "local-disk ~{disksize} SSD"
     cpu: 8
     preemptible: 0
+    gpuType: "nvidia-tesla-k80"
+    gpuCount: 1
+    nvidiaDriverVersion: "418.87.00"
+    zones: ["us-central1"] 
   }
 }
 
@@ -106,7 +114,7 @@ task getdisksize {
             regex=$(printf "_L0*%s_ " "${lanes[@]}" | sed 's/ $//' | sed 's/ /|/g')
             grep -P $regex PATHS > temp_file && mv temp_file PATHS
         fi
-        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*6+20 ; if (size<128) size=128 ; printf "%d\n", size}' > SIZE
+        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*3 ; if (size<64) size=64 ; printf "%d\n", size}' > SIZE
         if [ ~{length(lanes)} -gt 0 ]; then
             lanes=(~{sep=' ' lanes})
             for lane in "${lanes[@]}"; do
@@ -136,9 +144,9 @@ task getdisksize {
         fi
 
         # Assert that the disksize is not too large
-        if [[ $(cat SIZE) -gt 6000 ]]
+        if [[ $(cat SIZE) -gt 256 ]]
         then
-            echo "ERROR: cellranger-count disk size limit reached, increase cap"
+            echo "ERROR: reconstruction disk size limit reached, increase cap"
             rm -f SIZE
         fi
 
@@ -169,11 +177,13 @@ workflow reconstruction {
         String fastq_path
         String sample
         String parameters
+        String read2type = "V15"
+        String exptype = "tags"
         Array[Int] lanes = []
         String recon_output_path = "gs://"+bucket+"/reconstruction/"+basename(fastq_path,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(fastq_path,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
-        String docker = ""
+        String docker = "us-central1-docker.pkg.dev/velina-208320/docker-recon/img:latest"
     }
     call getdisksize {
         input:
@@ -187,10 +197,10 @@ workflow reconstruction {
     call recon {
         input:
             id = getdisksize.id,
-            reference = reference,
             fastq_paths = getdisksize.fastq_paths,
-            sample = sample,
-            technique = technique,
+            read2type = read2type,
+            exptype = exptype,
+            parameters = parameters,
             recon_output_path = recon_output_path,
             log_output_path = log_output_path,
             disksize = getdisksize.disksize,
