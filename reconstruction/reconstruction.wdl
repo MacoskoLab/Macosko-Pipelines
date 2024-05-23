@@ -16,6 +16,8 @@ task recon {
     echo "<< starting count >>"
     dstat --time --cpu --mem --disk --io --freespace --output recon-~{id}.usage &> /dev/null &
 
+    export NUMBA_CUDA_DRIVER=/usr/local/cuda/compat/libcuda.so
+
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
