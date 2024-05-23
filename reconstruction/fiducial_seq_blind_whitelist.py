@@ -149,6 +149,12 @@ def get_args():
         required=True,
     )
     parser.add_argument(
+        "-f", "--outputpath",
+        help="path to the output",
+        type=str,
+        default=".",
+    )
+    parser.add_argument(
         "-r2", "--read2type",
         help="input bead type of read2",
         type=str,
@@ -159,24 +165,25 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
-    path = args.fastqpath ; print(f"path: {path}")
+    in_path = args.fastqpath ; print(f"FASTQ path: {in_path}")
+    out_path = args.outputpath ; print(f"Output path: {out_path}")
     r2type = args.read2type ; print(f"read2type: {r2type}")
 
     print("loading files")
-    fq_files = [f for f in os.listdir(path) if not f.startswith('.')]
+    fq_files = [f for f in os.listdir(in_path) if not f.startswith('.')]
     R1s = [it for it in fq_files if "R1" in it]
     R2s = [it for it in fq_files if "R2" in it]
     print(f"R1s: {R1s}")
     print(f"R2s: {R2s}")
     assert len(R1s) == len(R2s) == 1
-    R1 = os.path.join(path, R1s[0])
-    R2 = os.path.join(path, R2s[0])
+    R1 = os.path.join(in_path, R1s[0])
+    R2 = os.path.join(in_path, R2s[0])
     
     print("extracting barcode")
     aln_dict, stat, R1_bc_list, R2_bc_list = barcode_extract(R1, R2, r2type)
     
     print("creating barcode rank plots")
-    qc_pdf_file = os.path.join(path, 'QC.pdf')
+    qc_pdf_file = os.path.join(out_path, 'QC.pdf')
     qc_pdfs = PdfPages(qc_pdf_file)
     R1_threshold = bc_rankplot(R1_bc_list, 'R1', qc_pdfs, max_expected_barcodes=1000000)
     R2_threshold = bc_rankplot(R2_bc_list, 'R2', qc_pdfs, max_expected_barcodes=1000000)
@@ -189,4 +196,4 @@ if __name__ == '__main__':
     aln_dict_new, stat_new = bc_collapsing(aln_dict, R1_bc_list, R2_bc_list, min_reads_R1=R1_threshold, min_reads_R2=R2_threshold, alignment_stat = stat)
     
     print("writing results")
-    write_blind(aln_dict_new, stat_new, path)
+    write_blind(aln_dict_new, stat_new, out_path)
