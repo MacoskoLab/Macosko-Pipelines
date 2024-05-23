@@ -41,8 +41,14 @@ def get_matrix(match_df, min_a_cnt, max_a_cnt, min_t_cnt, max_t_cnt, anchor, tar
 
 def get_args():
     parser = argparse.ArgumentParser(description='Process recon seq data.')
-    parser.add_argument("-f", "--fastqpath",
-        help="path to the R1s and R2s",
+    parser.add_argument("-f", "--csvpath",
+        help="path to the blind_raw_reads_filtered.csv.gz",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "-e", "--exptype",
+        help="define experiment type (seq or tags).",
         type=str,
         required=True,
     )
@@ -56,13 +62,13 @@ def get_args():
     return args
 
 args = get_args()
-path = args.fastqpath
+inpath = args.csvpath
 exptype = args.exptype
 anchor = "V15T" # just for naming
 target = "V10T" # just for naming
 
 print("loading data")
-blind_raw = pd.read_csv('blind_raw_reads_filtered.csv.gz')
+blind_raw = pd.read_csv(os.path.join(inpath,'blind_raw_reads_filtered.csv.gz'))
 blind_sum = blind_raw.groupby(['R1_bc', 'R2_bc']).size().reset_index(name='cnt')
 if exptype == 'seq':
     blind_sum.columns = [anchor, target, 'cnt'] #if seq
