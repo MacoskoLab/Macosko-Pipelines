@@ -161,8 +161,6 @@ if __name__ == '__main__':
     args = get_args()
     path = args.fastqpath ; print(f"path: {path}")
     r2type = args.read2type ; print(f"read2type: {r2type}")
-    # path = "/home/nsachdev/Slide_recon/D701"
-    # r2type = "V15"
 
     print("loading files")
     fq_files = [f for f in os.listdir(path) if not f.startswith('.')]
