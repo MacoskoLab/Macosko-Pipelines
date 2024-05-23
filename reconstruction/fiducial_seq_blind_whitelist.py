@@ -181,6 +181,9 @@ if __name__ == '__main__':
     
     print("extracting barcode")
     aln_dict, stat, R1_bc_list, R2_bc_list = barcode_extract(R1, R2, r2type)
+
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
     
     print("creating barcode rank plots")
     qc_pdf_file = os.path.join(out_path, 'QC.pdf')
