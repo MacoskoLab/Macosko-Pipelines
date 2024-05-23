@@ -26,11 +26,11 @@ task recon {
     
     recon_output_path="~{recon_output_path}"
     recon_output_path="${recon_output_path%/}/~{id}"
-    echo "Output directory: $recon_output_path"
+    echo "Output directory: $recon_output_path" ; echo
 
     # Run fiducial_seq_blind_whitelist.py
     if gsutil ls "$recon_output_path/blind_raw_reads_filtered.csv.gz" &> /dev/null ; then
-        echo "fiducial_seq_blind_whitelist.py has already been run, reusing results"
+        echo "NOTE: fiducial_seq_blind_whitelist.py has already been run, reusing results"
         gcloud storage cp "$recon_output_path/blind_raw_reads_filtered.csv.gz" .
     else
         echo "Downloading fastqs:"
@@ -79,7 +79,7 @@ task recon {
     preemptible: 1
     gpuType: "nvidia-tesla-v100"
     gpuCount: 1
-    nvidiaDriverVersion: "525.60.13"
+    nvidiaDriverVersion: "535.86.10"
     zones: "us-central1-a us-central1-b us-central1-c us-central1-f"
   }
 }
