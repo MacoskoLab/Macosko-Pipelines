@@ -176,7 +176,7 @@ workflow reconstruction {
     input {
         String fastq_path
         String sample
-        String parameters
+        String parameters = ""
         String read2type = "V15"
         String exptype = "tags"
         Array[Int] lanes = []
