@@ -53,22 +53,41 @@ def get_args():
         required=True,
     )
     parser.add_argument(
-        "-e", "--exptype",
-        help="define experiment type (seq or tags).",
-        type=str,
-        required=True,
+        "-n", "--n_epochs",
+        help="n_epochs paramter",
+        type=int,
+        default=50000,
+    )
+    parser.add_argument(
+        "-d", "--min_dist",
+        help="min_dist paramter",
+        type=float,
+        default=0.99,
+    )
+    parser.add_argument(
+        "-m", "--min",
+        help="I don't know what this does",
+        type=int,
+        default=0,
     )
     args = parser.parse_args()
     return args
 
 args = get_args()
-inpath = args.csvpath
+in_path = args.csvpath
 exptype = args.exptype
+n_epochs = args.n_epochs
+min_dist = args.min_dist
+m = args.min
 anchor = "V15T" # just for naming
 target = "V10T" # just for naming
 
+out_path = f"RUN-n_epochs{n_epochs}-min_dist{min_dist}-min{m}"
+if not os.path.exists(out_path):
+    os.makedirs(out_path)
+
 print("loading data")
-blind_raw = pd.read_csv(os.path.join(inpath,'blind_raw_reads_filtered.csv.gz'))
+blind_raw = pd.read_csv(os.path.join(in_path,'blind_raw_reads_filtered.csv.gz'))
 blind_sum = blind_raw.groupby(['R1_bc', 'R2_bc']).size().reset_index(name='cnt')
 if exptype == 'seq':
     blind_sum.columns = [anchor, target, 'cnt'] #if seq
@@ -79,44 +98,44 @@ del blind_raw
 print("plot blind cnt distribution")
 a_all = blind_sum.groupby(anchor)['cnt'].sum().reset_index(name='total_cnt')
 t_all = blind_sum.groupby(target)['cnt'].sum().reset_index(name='total_cnt')
-plot_blind_cnt_distribution(a_all, anchor, path=os.path.join(path,anchor+'_blind_cnt_distribution.png'))
-plot_blind_cnt_distribution(t_all, target, path=os.path.join(path,target+'_blind_cnt_distribution.png'))
+plot_blind_cnt_distribution(a_all, anchor, path=os.path.join(out_path,anchor+'_blind_cnt_distribution.png'))
+plot_blind_cnt_distribution(t_all, target, path=os.path.join(out_path,target+'_blind_cnt_distribution.png'))
 del a_all, t_all
 
 print("plot bc covered")
 a_cover_bc = blind_sum.groupby(anchor).count()
 t_cover_bc = blind_sum.groupby(target).count()
-plot_blind_cover_bc_distribution(a_cover_bc, anchor, path=os.path.join(path,anchor+'_blind_cover_bc_distribution.png'))
-plot_blind_cover_bc_distribution(t_cover_bc, target, path=os.path.join(path,target+'_blind_cover_bc_distribution.png'))
+plot_blind_cover_bc_distribution(a_cover_bc, anchor, path=os.path.join(out_path,anchor+'_blind_cover_bc_distribution.png'))
+plot_blind_cover_bc_distribution(t_cover_bc, target, path=os.path.join(out_path,target+'_blind_cover_bc_distribution.png'))
 del a_cover_bc, t_cover_bc
 
 # generate matrix and reconstruction with CPU
-a_min = 0
+a_min = m
 a_max = 1000000
-t_min = 0
+t_min = m
 t_max = 1000000
 counts, a_sel, t_sel = get_matrix(blind_sum, min_a_cnt=a_min, max_a_cnt=a_max, min_t_cnt=t_min, max_t_cnt=t_max, anchor=anchor, target=target)
 
-reducer = umap.UMAP(metric='cosine',
-                    n_neighbors=25, 
-                    min_dist=0.99,
-                    low_memory=True, 
-                    n_components=2, 
-                    # random_state=0, 
-                    verbose=True, 
-                    n_epochs=50000,
-                    # output_dens = True,
-                    # local_connectivity = 30,
-                    learning_rate = 1)
+reducer = cuUMAP(metric='cosine',
+                 n_neighbors=25, 
+                 min_dist=min_dist,
+                 low_memory=True, 
+                 n_components=2, 
+                 # random_state=0, 
+                 verbose=True, 
+                 n_epochs=n_epochs,
+                 # output_dens = True,
+                 # local_connectivity = 30,
+                 learning_rate = 1)
 embedding = reducer.fit_transform(np.log1p(counts))
 
 print("output reconstruction result")
 a_recon = pd.DataFrame(embedding)
 a_recon.columns = ['xcoord','ycoord']
 a_recon.insert(loc=0, column=anchor, value=a_sel[anchor])
-a_recon.to_csv(os.path.join(path,f'{anchor}_recon_loc.csv'), index=False)
+a_recon.to_csv(os.path.join(out_path,'_recon_loc.csv'), index=False)
 
 print("creating plots")
-plot_umap(embedding, path=os.path.join(path,f'{anchor}_UMAP.png'))
-plot_density(embedding, counts, path=os.path.join(path,f'{anchor}_UMAP_density.png'))
-plot_convex(embedding, anchor, path=os.path.join(path,f'{anchor}_UMAP_convex.png'))
+plot_umap(embedding, path=os.path.join(out_path,'_UMAP.png'))
+plot_density(embedding, counts, path=os.path.join(out_path,'_UMAP_density.png'))
+plot_convex(embedding, anchor, path=os.path.join(out_path,'_UMAP_convex.png'))
