@@ -142,7 +142,8 @@ def write_blind(aln_dict_new, alignment_stat, out_dir):
 
 def get_args():
     parser = argparse.ArgumentParser(description='Process recon seq data.')
-    parser.add_argument("-f", "--fastqpath",
+    parser.add_argument(
+        "-f", "--fastqpath",
         help="path to the R1s and R2s",
         type=str,
         required=True,
@@ -151,7 +152,7 @@ def get_args():
         "-r2", "--read2type",
         help="input bead type of read2",
         type=str,
-        default='V15',
+        required=True,
     )
     args = parser.parse_args()
     return args
