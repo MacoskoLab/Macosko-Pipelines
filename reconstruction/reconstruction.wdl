@@ -28,7 +28,7 @@ task recon {
     recon_output_path="${recon_output_path%/}/~{id}"
     echo "Output directory: $recon_output_path"
 
-    socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
+    # socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
 
     # Run fiducial_seq_blind_whitelist.py
     if gsutil ls "$recon_output_path/blind_raw_reads_filtered.csv.gz" &> /dev/null ; then
@@ -40,13 +40,13 @@ task recon {
         gcloud storage cp ~{sep=' ' fastq_paths} fastqs
 
         echo "Running fiducial_seq_blind_whitelist.py"
-        python fiducial_seq_blind_whitelist.py --fastqpath fastqs --read2type ~{read2type}
+        /opt/conda/bin/python fiducial_seq_blind_whitelist.py --fastqpath fastqs --outputpath . --read2type ~{read2type}
         gcloud storage cp blind_raw_reads_filtered.csv.gz blind_statistics_filtered.csv QC.pdf "$recon_output_path"
     fi
 
     # Run reconstruction_blind.py
     if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
-        python reconstruction_blind.py --csvpath . --exptype ~{exptype} ~{parameters}
+        /opt/conda/bin/python reconstruction_blind.py --csvpath . --exptype ~{exptype} ~{parameters}
         directory=$(find . -maxdepth 1 -type d -name "RUN-*" -print -quit)
         gcloud storage cp -r "${directory}" "$recon_output_path"
     else
