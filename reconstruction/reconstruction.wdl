@@ -78,7 +78,7 @@ task recon {
     gpuType: "nvidia-tesla-k80"
     gpuCount: 1
     nvidiaDriverVersion: "418.87.00"
-    zones: ["us-central1"] 
+    zones: ["us-central1-c"] 
   }
 }
 
