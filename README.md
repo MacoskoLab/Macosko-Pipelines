@@ -120,3 +120,8 @@ Cell Ranger ATAC downloads:
 https://support.10xgenomics.com/single-cell-atac/software/downloads/latest  
 Cell Ranger ARC downloads:  
 https://support.10xgenomics.com/single-cell-multiome-atac-gex/software/downloads/latest  
+
+.h5 commands
+============
+* h5dump -n SBcounts.h5: list all contents
+* h5dump -d /metadata/num_reads SBcounts.h5: print a specific dataset
