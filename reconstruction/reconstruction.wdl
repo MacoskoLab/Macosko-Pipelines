@@ -59,7 +59,7 @@ task recon {
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
     echo; echo "FREE SPACE:"; df -h
-    echo; echo "CPU INFO:"; lscpu
+    echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
     cp /cromwell_root/stdout recon-~{id}.out
