@@ -88,7 +88,7 @@ task mkfastq {
     echo; echo "BCL size:"; du -sh BCL
     echo; echo "mkfastq size:"; du -sh mkfastq
     echo; echo "FREE SPACE:"; df -h
-    echo; echo "CPU INFO:"; lscpu
+    echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
     cp /cromwell_root/stdout mkfastq.out
