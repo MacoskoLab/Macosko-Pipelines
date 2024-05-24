@@ -149,7 +149,7 @@ def get_args():
         required=True,
     )
     parser.add_argument(
-        "-f", "--outputpath",
+        "-o", "--outputpath",
         help="path to the output",
         type=str,
         default=".",
