@@ -80,7 +80,7 @@ task count {
     echo; echo "fastqs size:"; du -sh fastqs
     echo; echo "counts size:"; du -sh ~{id}
     echo; echo "FREE SPACE:"; df -h
-    echo; echo "CPU INFO:"; lscpu
+    echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
     cp /cromwell_root/stdout count-~{id}.out
