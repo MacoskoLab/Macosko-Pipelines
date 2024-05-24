@@ -48,6 +48,7 @@ task recon {
 
     # Run reconstruction_blind.py
     if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
+        echo "Running reconstruction_blind.py"
         /opt/conda/bin/python reconstruction_blind.py --csvpath . --exptype ~{exptype} ~{parameters}
         directory=$(find . -maxdepth 1 -type d -name "RUN-*" -print -quit)
         gcloud storage cp -r "${directory}" "$recon_output_path"
