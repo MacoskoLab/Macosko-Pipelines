@@ -119,7 +119,7 @@ counts, a_sel, t_sel = get_matrix(blind_sum, min_a_cnt=a_min, max_a_cnt=a_max, m
 reducer = cuUMAP(metric='cosine',
                  n_neighbors=25, 
                  min_dist=min_dist,
-                 low_memory=True, 
+                 # low_memory=True, 
                  n_components=2, 
                  # random_state=0, 
                  verbose=True, 
