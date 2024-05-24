@@ -13,7 +13,7 @@ task recon {
     String docker
   }
   command <<<
-    echo "<< starting count >>"
+    echo "<< starting recon >>"
     dstat --time --cpu --mem --disk --io --freespace --output recon-~{id}.usage &> /dev/null &
 
     export NUMBA_CUDA_DRIVER=/usr/local/cuda/compat/libcuda.so
@@ -69,7 +69,7 @@ task recon {
     gcloud storage cp recon-~{id}.err "${log_output_path%/}/recon-~{id}.err"
     gcloud storage cp recon-~{id}.usage "${log_output_path%/}/recon-~{id}.usage"
     
-    echo "<< completed count >>"
+    echo "<< completed recon >>"
   >>>
   output {
     Boolean DONE = read_boolean("DONE")
