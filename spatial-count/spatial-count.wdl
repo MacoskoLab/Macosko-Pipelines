@@ -31,7 +31,7 @@ task count {
     gcloud storage cp ~{sep=' ' pucks} pucks
 
     # Run the script
-    julia spatial-count.jl fastqs pucks
+    /software/julia-1.8.5/bin/julia spatial-count.jl fastqs pucks
 
     if [[ -f SBcounts.h5 ]]
     then
@@ -92,13 +92,13 @@ task getdisksize {
         else
             id="~{sample}_L~{sep='-' lanes}"
         fi
-        echo "fastqs: ~{fastqs}"
+        echo "FASTQ path: ~{fastqs}"
         echo "sample: ~{sample}"
         echo "lanes: ~{sep=',' lanes}"
         echo "id: $id"; echo
         count_output_path="~{count_output_path}"        
         echo "Output path: ${count_output_path%/}/$id"
-        echo $id > ID
+        echo $id > ID ; echo
 
         # Get the fastq files and their total size
         gsutil ls -r ~{fastqs} | fgrep ".fastq.gz" | fgrep "~{sample}_S" | fgrep -v "_I1_" | fgrep -v "_I2_" > PATHS
