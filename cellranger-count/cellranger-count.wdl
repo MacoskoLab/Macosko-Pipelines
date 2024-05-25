@@ -124,10 +124,10 @@ task getdisksize {
         else
             id="~{sample}_L~{sep='-' lanes}"
         fi
-        echo "fastqs: ~{fastqs}"
+        echo "FASTQ path: ~{fastqs}"
         echo "sample: ~{sample}"
         echo "lanes: ~{sep=',' lanes}"
-        echo "id: $id"; echo
+        echo "id: $id" ; echo
         echo $id > ID
 
         # Get the fastq files and their total size
