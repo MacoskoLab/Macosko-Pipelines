@@ -35,12 +35,12 @@ task count {
 
     if [[ -f SBcounts.h5 ]]
     then
-        echo "Success, uploading counts"
+        echo ; echo "Success, uploading counts"
         count_output_path="~{count_output_path}"
         gcloud storage cp -r SBcounts.h5 "${count_output_path%/}/~{id}/SBcounts.h5"
         echo "true" > DONE
     else
-        echo "ERROR: CANNOT FIND: SBcounts.h5"
+        echo ; echo "ERROR: CANNOT FIND: SBcounts.h5"
     fi
 
     echo; echo "Writing logs:"
