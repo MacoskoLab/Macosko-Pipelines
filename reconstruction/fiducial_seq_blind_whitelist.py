@@ -20,6 +20,7 @@ from scipy.signal import find_peaks
 from bead_matching import barcode_matching
 from scipy.ndimage import gaussian_filter1d
 from matplotlib.backends.backend_pdf import PdfPages
+from helpers import *
 
 
 def barcode_extract(fq1_file, fq2_file, r2type):
