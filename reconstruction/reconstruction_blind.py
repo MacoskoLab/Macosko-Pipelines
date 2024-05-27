@@ -17,29 +17,6 @@ import matplotlib.pyplot as plt
 from scipy.spatial import ConvexHull
 from helpers import *
 
-
-# plot the distribution of umi each bead has
-def blind_cnt_distribution(bead_all, bead_type):
-    plt.figure(figsize=(8,6))
-    sns.histplot(np.log10(bead_all['total_cnt']), bins=50)
-    plt.xlabel('log10(total count)')
-    plt.ylabel('number of '+bead_type)
-    plt.title('blind '+bead_type+' total count distribution ({}), median={}'.format(len(bead_all), bead_all['total_cnt'].median()))
-    plt.savefig(os.path.join(out_dir,bead_type+'_blind_cnt_distribution.png'),dpi=300)
-    plt.close()
-
-
-# plot the distribution of how many bc each bead covered
-def blind_cover_bc_distribution(bead_cover_bc, bead_type):
-    plt.figure(figsize=(8,6))
-    sns.histplot(bead_cover_bc['cnt'], bins=50)
-    plt.xlabel('bead covered')
-    plt.ylabel('number of '+bead_type)
-    plt.title(bead_type+' bead covered distribution ({}), median={}'.format(len(bead_cover_bc), bead_cover_bc['cnt'].median()))
-    plt.savefig(os.path.join(out_dir,bead_type+'_blind_cover_bc_distribution.png'),dpi=300)
-    plt.close()
-
-
 # generate spase matrix from matching, with selection on anchor or target
 def get_matrix(match_df,min_a_cnt,max_a_cnt, min_t_cnt,max_t_cnt, anchor, target):
     a_all = match_df.groupby(anchor)['cnt'].size().reset_index(name='bead_cnt')   
