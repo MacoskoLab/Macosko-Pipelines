@@ -2,7 +2,7 @@ import os
 from collections import Counter
 import editdistance
 
-# matching bead barcode 
+### matching bead barcode ###
 def build_6mer_dist(bc_list):
     start_km = {}
     mid_km = {}
@@ -59,6 +59,24 @@ def barcode_matching(bc_pos_dict,spatial_bc_list,max_dist=1):
                     bc_matching_dict[bc_old] = fz[0][0]
     return bc_matching_dict,exact_match,fuzzy_match
 
+### plots for reconstruction_blind.py ###
 
+# plot the distribution of umi each bead has
+def blind_cnt_distribution(bead_all, bead_type, path=os.path.join(out_dir,bead_type+'_blind_cnt_distribution.png')):
+    plt.figure(figsize=(8,6))
+    sns.histplot(np.log10(bead_all['total_cnt']), bins=50)
+    plt.xlabel('log10(total count)')
+    plt.ylabel('number of '+bead_type)
+    plt.title('blind '+bead_type+' total count distribution ({}), median={}'.format(len(bead_all), bead_all['total_cnt'].median()))
+    plt.savefig(path, dpi=300)
+    plt.close()
 
-
+# plot the distribution of how many bc each bead covered
+def blind_cover_bc_distribution(bead_cover_bc, bead_type, path=os.path.join(out_dir,bead_type+'_blind_cover_bc_distribution.png')):
+    plt.figure(figsize=(8,6))
+    sns.histplot(bead_cover_bc['cnt'], bins=50)
+    plt.xlabel('bead covered')
+    plt.ylabel('number of '+bead_type)
+    plt.title(bead_type+' bead covered distribution ({}), median={}'.format(len(bead_cover_bc), bead_cover_bc['cnt'].median()))
+    plt.savefig(path, dpi=300)
+    plt.close()
