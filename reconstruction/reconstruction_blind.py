@@ -15,6 +15,7 @@ import seaborn as sns
 import scipy.sparse as sp
 import matplotlib.pyplot as plt
 from scipy.spatial import ConvexHull
+from helpers import *
 
 
 # plot the distribution of umi each bead has
