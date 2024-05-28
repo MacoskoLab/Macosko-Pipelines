@@ -4,21 +4,16 @@ input blind collapsed reads
 output reconstrution result
 always recon for anchors
 """
-
-
 import os
 import umap
 import argparse
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import scipy.sparse as sp
-import matplotlib.pyplot as plt
-from scipy.spatial import ConvexHull
 from helpers import *
 
 # generate spase matrix from matching, with selection on anchor or target
-def get_matrix(match_df,min_a_cnt,max_a_cnt, min_t_cnt,max_t_cnt, anchor, target):
+def get_matrix(match_df, min_a_cnt, max_a_cnt, min_t_cnt, max_t_cnt, anchor, target):
     a_all = match_df.groupby(anchor)['cnt'].size().reset_index(name='bead_cnt')   
     a_sel = a_all.loc[(a_all['bead_cnt']>min_a_cnt) & (a_all['bead_cnt']<max_a_cnt),]
     t_all = match_df.groupby(target)['cnt'].size().reset_index(name='bead_cnt')  
@@ -42,39 +37,15 @@ def get_matrix(match_df,min_a_cnt,max_a_cnt, min_t_cnt,max_t_cnt, anchor, target
     counts = counts_coo.tocsr()
     return counts, a_list, t_list
 
-def ot_random_ref(n):
-    RADIUS = 1500
-    r_vals = np.sqrt(np.random.uniform(size=n)) * RADIUS
-    thet_vals = np.random.uniform(size=n) * 2 * np.pi
-    a_random = np.column_stack((r_vals * np.cos(thet_vals), r_vals * np.sin(thet_vals)))
-    a_random = a_random.astype(float)
-    a_random = pd.DataFrame(a_random)
-    a_random.columns = ['xcoord','ycoord']
-    return a_random
-
-
 def get_args():
-    parser = argparse.ArgumentParser(description='Process recon seq data.')
-    parser.add_argument("-d", "--date",
-        help="input experiment data.",
+    parser = argparse.ArgumentParser(description='process recon seq data')
+    parser.add_argument("-i", "--in_dir",
+        help="input data folder",
         type=str,
         required=True,
     )
-    parser.add_argument(
-        "-s", "--sample",
-        help="input sample id.",
-        type=str,
-        required=True,
-    )
-    parser.add_argument(
-        "-a", "--anchor",
-        help="define anchor bead.",
-        type=str,
-        required=True,
-    )
-    parser.add_argument(
-        "-t", "--target",
-        help="define target bead.",
+    parser.add_argument("-o", "--out_dir",
+        help="output data folder",
         type=str,
         required=True,
     )
@@ -86,53 +57,48 @@ def get_args():
     )
     parser.add_argument(
         "-c", "--core",
-        help="define core type to use.",
+        help="define core type to use (CPU or GPU)",
         type=str,
-        default='CPU',
+        required=True,
     )
     args = parser.parse_args()
     return args
 
-
-
 args = get_args()
-sample = args.sample
-date = args.date
-anchor = args.anchor
-target = args.target 
-#sample_folder = os.path.join("/broad/thechenlab/Chenlei/spotmapping/fiducial/data",date,sample)
-sample_folder = os.path.join("/mnt/thechenlab/Chenlei/spotmapping/fiducial/data",date,sample)
-
-
-# make output dir
-out_dir = os.path.join(sample_folder,'recon')
+in_dir = args.in_dir
+out_dir = args.out_dir
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
+exptype = args.exptype
+core = args.core
+anchor = "anchor"
+target = "target"
 
-blind_raw = pd.read_csv(os.path.join(sample_folder, sample+'_blind_raw_reads_filtered.csv.gz'))
+print("loading data")
+blind_raw = pd.read_csv(os.path.join(in_dir, 'blind_raw_reads_filtered.csv.gz'))
 blind_sum = blind_raw.groupby(['R1_bc', 'R2_bc']).size().reset_index(name='cnt')
-if args.exptype == 'seq':
-    blind_sum.columns = [anchor, target, 'cnt'] #if seq
-elif args.exptype == 'tags':
-    blind_sum.columns = [target, anchor, 'cnt'] #if tags
+if exptype == 'seq':
+    blind_sum.columns = [anchor, target, 'cnt']
+elif exptype == 'tags':
+    blind_sum.columns = [target, anchor, 'cnt']
+else:
+    assert False, f"unknown exptype ({exptype})"
 
-# plot blind cnt distribution
+print("plotting blind cnt distribution")
 a_all = blind_sum.groupby(anchor)['cnt'].sum().reset_index(name='total_cnt')
 t_all = blind_sum.groupby(target)['cnt'].sum().reset_index(name='total_cnt')
+blind_cnt_distribution(a_all, anchor, os.path.join(out_dir, f'blind_cnt_distribution_{anchor}.png'))
+blind_cnt_distribution(t_all, target, os.path.join(out_dir, f'blind_cnt_distribution_{target}.png'))
 
-blind_cnt_distribution(a_all, anchor)
-blind_cnt_distribution(t_all, target)
-
-# plot bc covered
+print("plotting bc covered")
 a_cover_bc = blind_sum.groupby(anchor).count()
 t_cover_bc = blind_sum.groupby(target).count()
+blind_cover_bc_distribution(a_cover_bc, anchor, os.path.join(out_dir, f'blind_cover_bc_distribution_{anchor}.png'))
+blind_cover_bc_distribution(t_cover_bc, target, os.path.join(out_dir, f'blind_cover_bc_distribution_{target}.png'))
 
-blind_cover_bc_distribution(a_cover_bc, anchor)
-blind_cover_bc_distribution(t_cover_bc, target)
-
-
+print("performing reconstruction")
 # generate matrix and reconstruction with CPU
-if args.core == 'CPU':
+if core == 'CPU':
     a_min = 0
     a_max = 1000
     t_min = 0
@@ -157,49 +123,22 @@ if args.core == 'CPU':
     a_recon = pd.DataFrame(embedding)
     a_recon.columns = ['xcoord','ycoord']
     a_recon.insert(loc=0, column=anchor, value=a_sel[anchor])
-    a_recon.to_csv(os.path.join(out_dir,'{}_recon_loc.csv'.format(anchor)), index=False)
-
-    # plot the shape 
-    plt.figure(figsize=(6,6))
-    plt.scatter(embedding[:,0],embedding[:,1],s=1)
-    plt.title(anchor+' umap ({})'.format(len(embedding)))
-    plt.savefig(os.path.join(out_dir,'{}_UMAP.png'.format(anchor)),dpi=300)
-    plt.close()
-    # plt.show()
-
-    # plot uniformness
-    a_random = ot_random_ref(len(counts))
-    fig, axes = plt.subplots(ncols=2, figsize=(10, 4))
-    im1 = sns.kdeplot(x=a_random.xcoord, y=a_random.ycoord, cmap="Blues", fill=True, levels=30, ax=axes[0], cbar = True)
-    axes[0].set_title('random (max={:.7f})'.format(im1.collections[0].colorbar.vmax))
-    im2 = sns.kdeplot(x=embedding[:,0],y=embedding[:,1], cmap="Blues", fill=True, levels=30, ax=axes[1], cbar = True)
-    axes[1].set_title('recon (max={:.7f})'.format(im2.collections[0].colorbar.vmax))
-    plt.savefig(os.path.join(out_dir,'{}_UMAP_density.png'.format(anchor)),dpi=300)
-    plt.close()
-
-    # plot covex
-    hull = ConvexHull(embedding)
-    area = hull.volume
-    perimeter = np.sum(np.linalg.norm(embedding[hull.vertices] - np.roll(embedding[hull.vertices], -1, axis=0), axis=1))
-    plt.figure(figsize=(6,6))
-    plt.scatter(embedding[:,0], embedding[:,1], s=1, alpha=0.8)
-    for simplex in hull.simplices:
-        plt.plot(embedding[simplex, 0], embedding[simplex, 1], 'r-', linewidth=1.5, alpha = 0.7)
-    plt.title(anchor+' umap convex hull ({:.5f})'.format(perimeter**2/area / (4*np.pi)), fontsize=16, pad=20)
-    plt.savefig(os.path.join(out_dir,'{}_UMAP_convex.png'.format(anchor)),dpi=300)
-    plt.close()
-
+    a_recon.to_csv(os.path.join(out_dir, f'{anchor}_recon_loc.csv'), index=False)
+        
+    plot_shape(embedding, anchor, os.path.join(out_dir, f'UMAP_{anchor}.png'))
+    plot_uniformness(embedding, counts, os.path.join(out_dir, f'UMAP_density_{anchor}.png'))
+    plot_convex(embedding, anchor, os.path.join(out_dir, f'UMAP_convex_{anchor}.png'))
 
 # generate matrix and reconstruction with GPU
-elif args.core == 'GPU':
+elif core == 'GPU':
     from cuml.manifold.umap import UMAP as cuUMAP
-    min_list = [0,50,100]
-    min_dist_list = [0.3,0.99]
-    n_epo_list = [100000]
+    min_list = [0, 50, 100]
+    min_dist_list = [0.3, 0.65, 0.99]
+    n_epo_list = [10000, 50000, 100000]
     for m in min_list:
         for md in min_dist_list:
             for nepo in n_epo_list:
-                out_gpu = os.path.join(out_dir,'recon_GPU_{}_{}_{}'.format(m,md,nepo))
+                out_gpu = os.path.join(out_dir,'recon_GPU_{}_{}_{}'.format(m, md, nepo))
                 if not os.path.exists(out_gpu):
                     os.makedirs(out_gpu)
 
@@ -212,13 +151,10 @@ elif args.core == 'GPU':
 
                 reducer = cuUMAP(metric='cosine',
                                     n_neighbors=25, 
-                                    min_dist=md, 
-                                    low_memory=False, 
+                                    min_dist=md,
                                     n_components=2, 
-                                    # random_state=0, 
                                     verbose=True, 
                                     n_epochs=nepo,
-                                    # output_dens = True,
                                     # local_connectivity = 30,
                                     learning_rate = 1)
                 embedding = reducer.fit_transform(np.log1p(counts))
@@ -227,37 +163,10 @@ elif args.core == 'GPU':
                 a_recon = pd.DataFrame(embedding)
                 a_recon.columns = ['xcoord','ycoord']
                 a_recon.insert(loc=0, column=anchor, value=a_sel[anchor])
-                a_recon.to_csv(os.path.join(out_gpu,'{}_recon_loc.csv'.format(anchor)), index=False)
+                a_recon.to_csv(os.path.join(out_gpu, f'{anchor}_recon_loc.csv'), index=False)
 
-                # plot the shape 
-                plt.figure(figsize=(6,6))
-                plt.scatter(embedding[:,0],embedding[:,1],s=1)
-                plt.title(anchor+' umap ({})'.format(len(embedding)))
-                plt.savefig(os.path.join(out_gpu,'{}_UMAP.png'.format(anchor)),dpi=300)
-                plt.close()
-                # plt.show()
-
-                # plot uniformness
-                a_random = ot_random_ref(len(counts))
-                fig, axes = plt.subplots(ncols=2, figsize=(10, 4))
-                im1 = sns.kdeplot(x=a_random.xcoord, y=a_random.ycoord, cmap="Blues", fill=True, levels=30, ax=axes[0], cbar = True)
-                axes[0].set_title('random (max={:.7f})'.format(im1.collections[0].colorbar.vmax))
-                im2 = sns.kdeplot(x=embedding[:,0],y=embedding[:,1], cmap="Blues", fill=True, levels=30, ax=axes[1], cbar = True)
-                axes[1].set_title('recon (max={:.7f})'.format(im2.collections[0].colorbar.vmax))
-                plt.savefig(os.path.join(out_gpu,'{}_UMAP_density.png'.format(anchor)),dpi=300)
-                plt.close()
-
-                # plot covex
-                hull = ConvexHull(embedding)
-                area = hull.volume
-                perimeter = np.sum(np.linalg.norm(embedding[hull.vertices] - np.roll(embedding[hull.vertices], -1, axis=0), axis=1))
-                plt.figure(figsize=(6,6))
-                plt.scatter(embedding[:,0], embedding[:,1], s=1, alpha=0.8)
-                for simplex in hull.simplices:
-                    plt.plot(embedding[simplex, 0], embedding[simplex, 1], 'r-', linewidth=1.5, alpha = 0.7)
-                plt.title(anchor+' umap convex hull ({:.5f})'.format(perimeter**2/area / (4*np.pi)), fontsize=16, pad=20)
-                plt.savefig(os.path.join(out_gpu,'{}_UMAP_convex.png'.format(anchor)),dpi=300)
-                plt.close()
-
-
-
+                plot_shape(embedding, anchor, os.path.join(out_gpu, f'UMAP_{anchor}.png'))
+                plot_uniformness(embedding, counts, os.path.join(out_gpu, f'UMAP_density_{anchor}.png'))
+                plot_convex(embedding, anchor, os.path.join(out_gpu, f'UMAP_convex_{anchor}.png'))
+else:
+    assert False, f"unknown core ({core})"
