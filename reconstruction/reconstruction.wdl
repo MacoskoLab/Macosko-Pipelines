@@ -75,10 +75,10 @@ task recon {
     docker: docker
     memory: "~{disksize} GB"
     disks: "local-disk ~{disksize} SSD"
-    cpu: 8
+    cpu: 12
     preemptible: 1
     gpuType: "nvidia-tesla-v100"
-    gpuCount: 1
+    gpuCount: 2
     nvidiaDriverVersion: "535.129.03"
     zones: "us-central1-a us-central1-b us-central1-c us-central1-f"
   }
