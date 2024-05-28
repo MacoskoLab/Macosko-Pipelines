@@ -49,8 +49,7 @@ task recon {
     # Run reconstruction_blind.py
     if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
         echo "Running reconstruction_blind.py"
-        /opt/conda/bin/python reconstruction_blind.py --csvpath . --exptype ~{exptype} ~{parameters}
-        /opt/conda/bin/python reconstruction_blind.py -i . -o plots -e tags -c GPU
+        /opt/conda/bin/python reconstruction_blind.py -i . -o plots -e ~{exptype} -c GPU ~{parameters}
         gcloud storage cp -r plots/* "$recon_output_path"
     else
         echo "Cannot run reconstruction_blind.py, blind_raw_reads_filtered.csv.gz not found" 
