@@ -78,7 +78,7 @@ task recon {
     cpu: 12
     preemptible: 1
     gpuType: "nvidia-tesla-v100"
-    gpuCount: 2
+    gpuCount: 4
     nvidiaDriverVersion: "535.129.03"
     zones: "us-central1-a us-central1-b us-central1-c us-central1-f"
   }
