@@ -40,7 +40,7 @@ task recon {
         gcloud storage cp ~{sep=' ' fastq_paths} fastqs
 
         echo "Running fiducial_seq_blind_whitelist.py"
-        /opt/conda/bin/python fiducial_seq_blind_whitelist.py --fastqpath fastqs --outputpath . --read2type ~{read2type}
+        /opt/conda/bin/python fiducial_seq_blind_whitelist.py -i fastqs -o . -r ~{read2type}
         gcloud storage cp blind_raw_reads_filtered.csv.gz blind_statistics_filtered.csv QC.pdf "$recon_output_path"
     fi
 
@@ -50,8 +50,8 @@ task recon {
     if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
         echo "Running reconstruction_blind.py"
         /opt/conda/bin/python reconstruction_blind.py --csvpath . --exptype ~{exptype} ~{parameters}
-        directory=$(find . -maxdepth 1 -type d -name "RUN-*" -print -quit)
-        gcloud storage cp -r "${directory}" "$recon_output_path"
+        /opt/conda/bin/python reconstruction_blind.py -i . -o plots -e tags -c GPU
+        gcloud storage cp -r plots/* "$recon_output_path"
     else
         echo "Cannot run reconstruction_blind.py, blind_raw_reads_filtered.csv.gz not found" 
     fi
@@ -62,11 +62,9 @@ task recon {
     echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
-    cp /cromwell_root/stdout recon-~{id}.out
-    cp /cromwell_root/stderr recon-~{id}.err
     log_output_path="~{log_output_path}"
-    gcloud storage cp recon-~{id}.out "${log_output_path%/}/recon-~{id}.out"
-    gcloud storage cp recon-~{id}.err "${log_output_path%/}/recon-~{id}.err"
+    gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/recon-~{id}.out"
+    gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/recon-~{id}.err"
     gcloud storage cp recon-~{id}.usage "${log_output_path%/}/recon-~{id}.usage"
     
     echo "<< completed recon >>"
@@ -78,10 +76,10 @@ task recon {
     docker: docker
     memory: "~{disksize} GB"
     disks: "local-disk ~{disksize} SSD"
-    cpu: 8
+    cpu: 20
     preemptible: 1
     gpuType: "nvidia-tesla-v100"
-    gpuCount: 8
+    gpuCount: 1
     nvidiaDriverVersion: "535.129.03"
     zones: "us-central1-a us-central1-b us-central1-c us-central1-f"
   }
@@ -181,9 +179,9 @@ workflow reconstruction {
     input {
         String fastq_path
         String sample
-        String parameters = ""
         String read2type = "V15"
         String exptype = "tags"
+        String parameters = ""
         Array[Int] lanes = []
         String recon_output_path = "gs://"+bucket+"/reconstruction/"+basename(fastq_path,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(fastq_path,"/")
