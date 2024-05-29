@@ -1,5 +1,6 @@
 version 1.0
 
+# Run the reconstruction scripts
 task recon {
   input {
     String id
@@ -15,14 +16,14 @@ task recon {
   command <<<
     echo "<< starting recon >>"
 
-    export LD_LIBRARY_PATH=/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
-    export PATH=/usr/local/nvidia/bin:${PATH}
+    # export LD_LIBRARY_PATH=/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
+    # export PATH=/usr/local/nvidia/bin:${PATH}
 
     # fix dstat bug before invocation (https://bugs.launchpad.net/ubuntu/+source/dstat/+bug/1905665)
     sed -i '547s/.*/            if isinstance(self.val[name], (tuple, list)):/g' /usr/bin/dstat
     sed -i '552s/.*/            elif isinstance(self.val[name], str):/g' /usr/bin/dstat
     dstat --time --cpu --mem --disk --io --freespace --output recon-~{id}.usage &> /dev/null &
-    nvidia-smi --query-gpu=timestamp,index,utilization.gpu,utilization.memory,memory.total,memory.used,memory.free --format=csv -l 1 &> recon-~{id}.usage.gpu &
+    # nvidia-smi --query-gpu=timestamp,index,utilization.gpu,utilization.memory,memory.total,memory.used,memory.free --format=csv -l 1 &> recon-~{id}.usage.gpu &
 
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
@@ -50,12 +51,10 @@ task recon {
         gcloud storage cp blind_raw_reads_filtered.csv.gz blind_statistics_filtered.csv QC.pdf "$recon_output_path"
     fi
 
-    # socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
-
     # Run reconstruction_blind.py
     if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
         echo "Running reconstruction_blind.py"
-        /opt/conda/bin/python reconstruction_blind.py -i . -o plots -e ~{exptype} -c GPU ~{parameters}
+        /opt/conda/bin/python reconstruction_blind.py -i . -o plots -e ~{exptype} ~{parameters}
         gcloud storage cp -r plots/* "$recon_output_path"
     else
         echo "Cannot run reconstruction_blind.py, blind_raw_reads_filtered.csv.gz not found" 
@@ -63,10 +62,10 @@ task recon {
 
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
-    kill $(ps aux | fgrep nvidia-smi | fgrep -v grep | awk '{print $2}')
+    # kill $(ps aux | fgrep nvidia-smi | fgrep -v grep | awk '{print $2}')
     echo; echo "FREE SPACE:"; df -h
     echo; echo "CPU INFO:"; lscpu
-    echo; echo "GPU INFO:"; nvidia-smi --query-gpu=name,index,pci.bus_id,driver_version,pstate,pcie.link.gen.max,pcie.link.gen.current,memory.total --format=csv
+    # echo; echo "GPU INFO:"; nvidia-smi --query-gpu=name,index,pci.bus_id,driver_version,pstate,pcie.link.gen.max,pcie.link.gen.current,memory.total --format=csv
     echo;
     
     echo "uploading logs"
@@ -74,7 +73,7 @@ task recon {
     gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/recon-~{id}.out"
     gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/recon-~{id}.err"
     gcloud storage cp recon-~{id}.usage "${log_output_path%/}/recon-~{id}.usage"
-    gcloud storage cp recon-~{id}.usage.gpu "${log_output_path%/}/recon-~{id}.usage.gpu"
+    # gcloud storage cp recon-~{id}.usage.gpu "${log_output_path%/}/recon-~{id}.usage.gpu"
     
     echo "<< completed recon >>"
   >>>
@@ -85,12 +84,12 @@ task recon {
     docker: docker
     memory: "~{disksize} GB"
     disks: "local-disk ~{disksize} SSD"
-    cpu: 12
+    cpu: 20
     preemptible: 1
-    gpuType: "nvidia-tesla-v100"
-    gpuCount: 1
-    nvidiaDriverVersion: "535.129.03"
-    zones: "us-central1-a us-central1-b us-central1-c us-central1-f"
+    # gpuType: "nvidia-tesla-v100"
+    # gpuCount: 1
+    # nvidiaDriverVersion: "535.129.03"
+    # zones: "us-central1-a us-central1-b us-central1-c us-central1-f"
   }
 }
 
@@ -126,7 +125,7 @@ task getdisksize {
             regex=$(printf "_L0*%s_ " "${lanes[@]}" | sed 's/ $//' | sed 's/ /|/g')
             grep -P $regex PATHS > temp_file && mv temp_file PATHS
         fi
-        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*3 ; if (size<64) size=64 ; printf "%d\n", size}' > SIZE
+        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*2 ; if (size<64) size=64 ; printf "%d\n", size}' > SIZE
         if [ ~{length(lanes)} -gt 0 ]; then
             lanes=(~{sep=' ' lanes})
             for lane in "${lanes[@]}"; do
