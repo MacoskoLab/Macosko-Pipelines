@@ -137,7 +137,7 @@ if args.core == 'CPU':
                         metric = args.metric,
                         
                         low_memory = False, 
-                        verbose = True,
+                        verbose = True
                         # local_connectivity = 30
                         )
     embedding = reducer.fit_transform(np.log1p(counts))
