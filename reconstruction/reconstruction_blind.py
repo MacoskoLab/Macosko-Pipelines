@@ -138,9 +138,8 @@ if args.core == 'CPU':
                         
                         low_memory = False, 
                         verbose = True,
-                        # local_connectivity = 30,
-                        
-                        random_state = 42)
+                        # local_connectivity = 30
+                        )
     embedding = reducer.fit_transform(np.log1p(counts))
 
     # output reconstruction result
