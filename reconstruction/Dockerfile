@@ -15,8 +15,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends libfreetype6-dev libcairo2-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev
 
 # fix dstat bug (https://bugs.launchpad.net/ubuntu/+source/dstat/+bug/1905665)
-sed -i '547s/.*/            if isinstance(self.val[name], (tuple, list)):/g' /usr/bin/dstat
-sed -i '552s/.*/            elif isinstance(self.val[name], str):/g' /usr/bin/dstat
+RUN sed -i '547s/.*/            if isinstance(self.val[name], (tuple, list)):/g' /usr/bin/dstat
+RUN sed -i '552s/.*/            elif isinstance(self.val[name], str):/g' /usr/bin/dstat
 
 # Install Google Cloud SDK
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
