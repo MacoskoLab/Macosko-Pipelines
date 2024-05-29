@@ -19,9 +19,6 @@ task recon {
     # export LD_LIBRARY_PATH=/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
     # export PATH=/usr/local/nvidia/bin:${PATH}
 
-    # fix dstat bug before invocation (https://bugs.launchpad.net/ubuntu/+source/dstat/+bug/1905665)
-    sed -i '547s/.*/            if isinstance(self.val[name], (tuple, list)):/g' /usr/bin/dstat
-    sed -i '552s/.*/            elif isinstance(self.val[name], str):/g' /usr/bin/dstat
     dstat --time --cpu --mem --disk --io --freespace --output recon-~{id}.usage &> /dev/null &
     # nvidia-smi --query-gpu=timestamp,index,utilization.gpu,utilization.memory,memory.total,memory.used,memory.free --format=csv -l 1 &> recon-~{id}.usage.gpu &
 
