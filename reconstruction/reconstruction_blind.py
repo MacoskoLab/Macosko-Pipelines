@@ -92,7 +92,7 @@ def get_args():
 args = get_args()
 in_dir = args.in_dir
 out_dir = args.out_dir
-out_dir = os.path.join(out_dir,f'N{args.n_epochs}_n{args.n_neighbors}_d{min_dist}')
+out_dir = os.path.join(out_dir,f'N{args.n_epochs}_n{args.n_neighbors}_d{args.min_dist}')
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 exptype = args.exptype
