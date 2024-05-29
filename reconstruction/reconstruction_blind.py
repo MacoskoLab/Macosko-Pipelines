@@ -143,9 +143,9 @@ elif core == 'GPU':
                     os.makedirs(out_gpu)
 
                 a_min = m
-                a_max = 1000000
+                a_max = 1000
                 t_min = m
-                t_max = 1000000
+                t_max = 1000
 
                 counts, a_sel, t_sel = get_matrix(blind_sum, min_a_cnt=a_min, max_a_cnt=a_max, min_t_cnt=t_min, max_t_cnt=t_max, anchor=anchor, target=target)
 
