@@ -130,14 +130,14 @@ counts, a_sel, t_sel = get_matrix(blind_sum, min_a_cnt=a_min, max_a_cnt=a_max, m
 
 print("Performing reconstruction...")
 if args.core == 'CPU':
-    reducer = umap.UMAP(n_components=2, 
+    reducer = umap.UMAP(n_components = 2, 
                         n_neighbors = args.n_neighbors, 
                         min_dist = args.min_dist, 
                         n_epochs = args.n_epochs,
                         metric = args.metric,
                         
-                        low_memory=False, 
-                        verbose=True,
+                        low_memory = False, 
+                        verbose = True,
                         # local_connectivity = 30,
                         
                         random_state = 42)
