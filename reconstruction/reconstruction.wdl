@@ -82,7 +82,7 @@ task recon {
     memory: "~{disksize} GB"
     disks: "local-disk ~{disksize} SSD"
     cpu: 20
-    preemptible: 1
+    preemptible: 0
     # gpuType: "nvidia-tesla-v100"
     # gpuCount: 1
     # nvidiaDriverVersion: "535.129.03"
