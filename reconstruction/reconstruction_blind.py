@@ -51,11 +51,35 @@ def get_args():
     )
     parser.add_argument(
         "-e", "--exptype",
-        help="define experiment type (seq or tags).",
+        help="define experiment type (seq or tags)",
         type=str,
         required=True,
     )
     # Optional args
+    parser.add_argument(
+        "-n", "--n_neighbors",
+        help="the number of neighboring sample points used for manifold approximation",
+        type=int,
+        default=25,
+    )
+    parser.add_argument(
+        "-m", "--metric",
+        help="the metric to use to compute distances in high dimensional space",
+        type=str,
+        default="cosine",
+    )
+    parser.add_argument(
+        "-N", "--n_epochs",
+        help="the number of training epochs to be used in optimizing the low dimensional embedding",
+        type=int,
+        default=50000,
+    )
+    parser.add_argument(
+        "-d", "--min_dist",
+        help="the effective minimum distance between embedded points",
+        type=float,
+        default=0.99,
+    )
     parser.add_argument(
         "-c", "--core",
         help="define core type to use (CPU or GPU)",
@@ -68,6 +92,7 @@ def get_args():
 args = get_args()
 in_dir = args.in_dir
 out_dir = args.out_dir
+out_dir = os.path.join(out_dir,f'N{args.n_epochs}_n{args.n_neighbors}_d{min_dist}')
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 exptype = args.exptype
@@ -105,17 +130,17 @@ counts, a_sel, t_sel = get_matrix(blind_sum, min_a_cnt=a_min, max_a_cnt=a_max, m
 
 print("Performing reconstruction...")
 if args.core == 'CPU':
-    reducer = umap.UMAP(metric='cosine',
-                        n_neighbors=25, 
-                        min_dist=0.99, 
+    reducer = umap.UMAP(n_components=2, 
+                        n_neighbors = args.n_neighbors, 
+                        min_dist = args.min_dist, 
+                        n_epochs = args.n_epochs,
+                        metric = args.metric,
+                        
                         low_memory=False, 
-                        n_components=2, 
-                        # random_state=0, 
-                        verbose=True, 
-                        n_epochs=50000,
-                        # output_dens = True,
+                        verbose=True,
                         # local_connectivity = 30,
-                        learning_rate = 1)
+                        
+                        random_state = 42)
     embedding = reducer.fit_transform(np.log1p(counts))
 
     # output reconstruction result
