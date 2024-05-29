@@ -55,11 +55,12 @@ def get_args():
         type=str,
         required=True,
     )
+    # Optional args
     parser.add_argument(
         "-c", "--core",
         help="define core type to use (CPU or GPU)",
         type=str,
-        required=True,
+        default="CPU",
     )
     args = parser.parse_args()
     return args
@@ -70,11 +71,10 @@ out_dir = args.out_dir
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 exptype = args.exptype
-core = args.core
 anchor = "anchor"
 target = "target"
 
-print("loading data")
+print("Loading data...")
 blind_raw = pd.read_csv(os.path.join(in_dir, 'blind_raw_reads_filtered.csv.gz'))
 blind_sum = blind_raw.groupby(['R1_bc', 'R2_bc']).size().reset_index(name='cnt')
 if exptype == 'seq':
@@ -84,28 +84,27 @@ elif exptype == 'tags':
 else:
     assert False, f"unknown exptype ({exptype})"
 
-print("plotting blind cnt distribution")
+print("Plotting blind cnt distribution...")
 a_all = blind_sum.groupby(anchor)['cnt'].sum().reset_index(name='total_cnt')
 t_all = blind_sum.groupby(target)['cnt'].sum().reset_index(name='total_cnt')
 blind_cnt_distribution(a_all, anchor, os.path.join(out_dir, f'blind_cnt_distribution_{anchor}.png'))
 blind_cnt_distribution(t_all, target, os.path.join(out_dir, f'blind_cnt_distribution_{target}.png'))
 
-print("plotting bc covered")
+print("Plotting bc covered...")
 a_cover_bc = blind_sum.groupby(anchor).count()
 t_cover_bc = blind_sum.groupby(target).count()
 blind_cover_bc_distribution(a_cover_bc, anchor, os.path.join(out_dir, f'blind_cover_bc_distribution_{anchor}.png'))
 blind_cover_bc_distribution(t_cover_bc, target, os.path.join(out_dir, f'blind_cover_bc_distribution_{target}.png'))
 
-print("performing reconstruction")
-# generate matrix and reconstruction with CPU
-if core == 'CPU':
-    a_min = 0
-    a_max = 1000
-    t_min = 0
-    t_max = 1000
+print("Generating matrix...")
+a_min = 0
+a_max = 1000
+t_min = 0
+t_max = 1000
+counts, a_sel, t_sel = get_matrix(blind_sum, min_a_cnt=a_min, max_a_cnt=a_max, min_t_cnt=t_min, max_t_cnt=t_max, anchor=anchor, target=target)
 
-    counts, a_sel, t_sel = get_matrix(blind_sum, min_a_cnt=a_min, max_a_cnt=a_max, min_t_cnt=t_min, max_t_cnt=t_max, anchor=anchor, target=target)
-
+print("Performing reconstruction...")
+if args.core == 'CPU':
     reducer = umap.UMAP(metric='cosine',
                         n_neighbors=25, 
                         min_dist=0.99, 
@@ -129,44 +128,36 @@ if core == 'CPU':
     plot_uniformness(embedding, counts, os.path.join(out_dir, f'UMAP_density_{anchor}.png'))
     plot_convex(embedding, anchor, os.path.join(out_dir, f'UMAP_convex_{anchor}.png'))
 
-# generate matrix and reconstruction with GPU
-elif core == 'GPU':
+elif args.core == 'GPU':
     from cuml.manifold.umap import UMAP as cuUMAP
-    min_list = [0, 50, 100]
     min_dist_list = [0.3, 0.65, 0.99]
     n_epo_list = [10000, 50000, 100000]
-    for m in min_list:
-        for md in min_dist_list:
-            for nepo in n_epo_list:
-                out_gpu = os.path.join(out_dir,'recon_GPU_{}_{}_{}'.format(m, md, nepo))
-                if not os.path.exists(out_gpu):
-                    os.makedirs(out_gpu)
+    for md in min_dist_list:
+        for nepo in n_epo_list:
+            out_gpu = os.path.join(out_dir,'recon_GPU_{}_{}_{}'.format(m, md, nepo))
+            if not os.path.exists(out_gpu):
+                os.makedirs(out_gpu)
+            
+            reducer = cuUMAP(metric='cosine',
+                                n_neighbors=25, 
+                                min_dist=md,
+                                n_components=2, 
+                                verbose=True, 
+                                n_epochs=nepo,
+                                # local_connectivity = 30,
+                                learning_rate = 1)
+            embedding = reducer.fit_transform(np.log1p(counts))
 
-                a_min = m
-                a_max = 1000
-                t_min = m
-                t_max = 1000
+            # output reconstruction result
+            a_recon = pd.DataFrame(embedding)
+            a_recon.columns = ['xcoord','ycoord']
+            a_recon.insert(loc=0, column=anchor, value=a_sel[anchor])
+            a_recon.to_csv(os.path.join(out_gpu, f'{anchor}_recon_loc.csv'), index=False)
 
-                counts, a_sel, t_sel = get_matrix(blind_sum, min_a_cnt=a_min, max_a_cnt=a_max, min_t_cnt=t_min, max_t_cnt=t_max, anchor=anchor, target=target)
-
-                reducer = cuUMAP(metric='cosine',
-                                    n_neighbors=25, 
-                                    min_dist=md,
-                                    n_components=2, 
-                                    verbose=True, 
-                                    n_epochs=nepo,
-                                    # local_connectivity = 30,
-                                    learning_rate = 1)
-                embedding = reducer.fit_transform(np.log1p(counts))
-
-                # output reconstruction result
-                a_recon = pd.DataFrame(embedding)
-                a_recon.columns = ['xcoord','ycoord']
-                a_recon.insert(loc=0, column=anchor, value=a_sel[anchor])
-                a_recon.to_csv(os.path.join(out_gpu, f'{anchor}_recon_loc.csv'), index=False)
-
-                plot_shape(embedding, anchor, os.path.join(out_gpu, f'UMAP_{anchor}.png'))
-                plot_uniformness(embedding, counts, os.path.join(out_gpu, f'UMAP_density_{anchor}.png'))
-                plot_convex(embedding, anchor, os.path.join(out_gpu, f'UMAP_convex_{anchor}.png'))
+            plot_shape(embedding, anchor, os.path.join(out_gpu, f'UMAP_{anchor}.png'))
+            plot_uniformness(embedding, counts, os.path.join(out_gpu, f'UMAP_density_{anchor}.png'))
+            plot_convex(embedding, anchor, os.path.join(out_gpu, f'UMAP_convex_{anchor}.png'))
 else:
-    assert False, f"unknown core ({core})"
+    assert False, f"ERROR: unknown core ({args.core})"
+
+print("Done!")
