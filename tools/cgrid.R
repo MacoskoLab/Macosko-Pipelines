@@ -164,6 +164,22 @@ cgrid2splines <- function(cgrid) {
   return(append(dfs1,dfs2))
 }
 
+# take in cgrid (x,y,i,r), return (x,y,i,r) of perimeter
+cgrid2poly <- function(cgrid) {
+  validate.cgrid(cgrid)
+  dfs = list(cgrid %>% dplyr::filter(i==1) %>% dplyr::arrange(r),
+             cgrid %>% dplyr::filter(r==1) %>% dplyr::arrange(dplyr::desc(i)),
+             cgrid %>% dplyr::filter(i==0) %>% dplyr::arrange(dplyr::desc(r)),
+             cgrid %>% dplyr::filter(r==0) %>% dplyr::arrange(i)
+  )
+  stopifnot(dfs[[1]] %>% dplyr::slice_tail(n=1) == dfs[[2]] %>% dplyr::slice_head(n=1))
+  stopifnot(dfs[[2]] %>% dplyr::slice_tail(n=1) == dfs[[3]] %>% dplyr::slice_head(n=1))
+  stopifnot(dfs[[3]] %>% dplyr::slice_tail(n=1) == dfs[[4]] %>% dplyr::slice_head(n=1))
+  stopifnot(dfs[[4]] %>% dplyr::slice_tail(n=1) == dfs[[1]] %>% dplyr::slice_head(n=1))
+  poly <- do.call(rbind, dfs)
+  return(poly)
+}
+
 # get the median width of a cgrid (x,y,i,r)
 cgrid.width <- function(cgrid) {
   validate.cgrid(cgrid)
@@ -246,7 +262,7 @@ cgridmerge <- function(cgrid1, cgrid2, flip=F) {
   avg2 <- cgrid.width(cgrid2)
   
   # Adjust r
-  update_cgrid <- function(cgrid1, cgrid2) { # first argument gets r changed to match the second
+  update_r <- function(cgrid1, cgrid2) { # first argument gets r changed to match the second
       # Get the seams
       if (cgrid2above1(cgrid1, cgrid2)) {
           path1 = cgrid1 %>% dplyr::filter(i==max(i)) %>% dplyr::arrange(r)
@@ -279,9 +295,9 @@ cgridmerge <- function(cgrid1, cgrid2, flip=F) {
   d1 = sum(path.dists(cgrid1 %>% dplyr::filter(i==min(i)) %>% dplyr::arrange(r)))
   d2 = sum(path.dists(cgrid2 %>% dplyr::filter(i==max(i)) %>% dplyr::arrange(r)))
   if (xor(d2 > d1, flip)) { # change cgrid1
-      cgrid1 = update_cgrid(cgrid1, cgrid2)
+      cgrid1 = update_r(cgrid1, cgrid2)
   } else { # change cgrid2
-      cgrid2 = update_cgrid(cgrid2, cgrid1)
+      cgrid2 = update_r(cgrid2, cgrid1)
   }
   stopifnot(sort(unique(cgrid1$r)) == sort(unique(cgrid2$r)))
   stopifnot(range(cgrid1$i)==c(0,1), range(cgrid2$i)==c(0,1))
@@ -298,51 +314,63 @@ cgridmerge <- function(cgrid1, cgrid2, flip=F) {
   return(cgrid)
 }
 
-
-
 # assign i,r to x,y using a cgrid
 xy2ir <- function(xy, cgrid) {
-  xy %<>% dplyr::select(1:2) ; stopifnot(names(xy)==c("x","y"))
-  cgrid %<>% dplyr::select(1:4) ; validate.cgrid(cgrid)
+  validate.xydf(xy) ; validate.cgrid(cgrid)
+  xy %<>% dplyr::select(1:2) ; cgrid %<>% dplyr::select(1:4)
   xy %<>% dplyr::mutate(row=dplyr::row_number())
   
   # split in and out points
-  dfs = list(cgrid %>% dplyr::filter(i==1) %>% dplyr::arrange(r),
-             cgrid %>% dplyr::filter(r==1) %>% dplyr::arrange(dplyr::desc(i)),
-             cgrid %>% dplyr::filter(i==0) %>% dplyr::arrange(dplyr::desc(r)),
-             cgrid %>% dplyr::filter(r==0) %>% dplyr::arrange(i)
-  )
-  stopifnot(dfs[[1]] %>% dplyr::slice_tail(n=1) == dfs[[2]] %>% dplyr::slice_head(n=1))
-  stopifnot(dfs[[2]] %>% dplyr::slice_tail(n=1) == dfs[[3]] %>% dplyr::slice_head(n=1))
-  stopifnot(dfs[[3]] %>% dplyr::slice_tail(n=1) == dfs[[4]] %>% dplyr::slice_head(n=1))
-  stopifnot(dfs[[4]] %>% dplyr::slice_tail(n=1) == dfs[[1]] %>% dplyr::slice_head(n=1))
-  poly <- do.call(rbind,dfs)
-  m <- in.bounds(xy,poly[,c("x","y")])
+  poly <- cgrid2poly(cgrid)
+  m <- in.bounds(xy, poly[,c("x","y")])
   indf <- xy[m,] ; outdf <- xy[!m,]
   
-  # assign <out> points
-  avg <- cgrid.width(cgrid[,1:4])
-  index = cdist(outdf[,c("x","y")],poly[,c("x","y")]) %>% apply(1,which.min)
-  outdf$d <- sqrt((outdf$x - poly[index,]$x)^2 + (outdf$y - poly[index,]$y)^2)
-  outdf$r <- poly[index,]$r
-  outdf$sign <- poly[index,]$i * 2 - 1
-  outdf$i = poly[index,]$i + outdf$sign * outdf$d / avg
-  outdf %<>% dplyr::select(row,i,r)
-  
+  # geometry helpers
+  proj <- function(A, B, P) {
+    AB = B - A
+    AP = P - A
+    return(sum(AP*AB) / sum(AB^2))
+  }
   point_line_distance <- function(pt, l1, l2) {
-    return(abs((l2[[1]]-l1[[1]])*(l1[[2]]-pt[[2]])-(l1[[1]]-pt[[1]])*(l2[[2]]-l1[[2]]))/sqrt((l2[[1]]-l1[[1]])^2 + (l2[[2]]-l1[[2]])^2))
+    dx = l2[[1]]-l1[[1]]
+    dy = l2[[2]]-l1[[2]]
+    return(abs((l1[[2]]-pt[[2]])*dx-(l1[[1]]-pt[[1]])*dy)/sqrt(dx^2+dy^2))
   }
   
+  # assign <out> points
+  avg <- cgrid.width(cgrid)
+  outdf = map_dfr(1:nrow(outdf), function(pt) {
+    # get the i,j indexes of the two closest poly points
+    dists = cdist(outdf[pt,c("x","y")], poly[,c("x","y")])[1,]
+    ij = order(dists)[1:2]
+    stopifnot(poly[ij,"i"] %in% c(0,1)) # all outside points must be closer to top or bottom
+    stopifnot(poly[ij[[1]],"i"] == poly[ij[[2]],"i"]) # shouldn't happen, try increasing num.r
+    
+    # get i
+    i_base = unique(poly[ij,"i"]) # 0 or 1
+    i_diff = dists[ij][[1]] / avg
+    if (i_base == 0) {i = i_base - i_diff} else if (i_base == 1) {i = i_base + i_diff}
+    
+    # get r
+    if (dists[ij][[1]] == dists[ij][[2]]) { # same distance
+      r = mean(poly[ij,"r"])
+    } else {
+      p = proj(poly[ij[[1]],c("x","y")], poly[ij[[2]],c("x","y")], outdf[pt,c("x","y")]) %>% min(1) %>% max(0)
+      r = poly[ij[[1]],"r"]*(1-p) + poly[ij[[2]],"r"]*(p)
+    }
+    return(c(i=i,r=r))
+  }) %>% dplyr::mutate(row = outdf$row)
+  
   # assign <in> points
-  cgrid %<>% dplyr::mutate(ii=match(i,sort(unique(i))),ri=match(r,sort(unique(r))))
+  cgrid %<>% dplyr::mutate(ii=match(i,sort(unique(i))), ri=match(r,sort(unique(r))))
   row_polys <- map(2:max(cgrid$ii), ~rbind(cgrid[cgrid$ii==.-1,] %>% dplyr::arrange(r) %>% dplyr::select(c("x","y")),
-                                          cgrid[cgrid$ii==.,]%>% dplyr::arrange(dplyr::desc(r)) %>% dplyr::select(c("x","y"))))
+                                           cgrid[cgrid$ii==.,] %>% dplyr::arrange(dplyr::desc(r)) %>% dplyr::select(c("x","y"))))
   col_polys <- map(2:max(cgrid$ri), ~rbind(cgrid[cgrid$ri==.-1,] %>% dplyr::arrange(i) %>% dplyr::select(c("x","y")),
-                                           cgrid[cgrid$ri==.,]%>% dplyr::arrange(dplyr::desc(i)) %>% dplyr::select(c("x","y"))))
-  row_i <- do.call(cbind,map(row_polys,~in.bounds(indf,.))) %>% apply(1, which) ; stopifnot(class(row_i)=="integer") # point is in exactly one polygon
-  col_i <- do.call(cbind,map(col_polys,~in.bounds(indf,.))) %>% apply(1, which) ; stopifnot(class(col_i)=="integer") # point is in exactly one polygon
-  res <- pmap(list(row_i,col_i),~cgrid[(cgrid$ii==.x|cgrid$ii==.x+1)&(cgrid$ri==.y|cgrid$ri==.y+1),c("x","y","i","r")] %>% dplyr::arrange(r,i))
-  stopifnot(len(res)==nrow(indf), names(indf)[1:2]==c("x","y")) ; invisible(map(res,~stopifnot(nrow(.)==4,names(.)[1:2]==c("x","y"))))
+                                           cgrid[cgrid$ri==.,] %>% dplyr::arrange(dplyr::desc(i)) %>% dplyr::select(c("x","y"))))
+  row_i <- row_polys %>% map(~in.bounds(indf,.)) %>% {do.call(cbind, .)} %>% apply(1, which) ; stopifnot(class(row_i)=="integer") # point is in exactly one polygon
+  col_i <- col_polys %>% map(~in.bounds(indf,.)) %>% {do.call(cbind, .)} %>% apply(1, which) ; stopifnot(class(col_i)=="integer") # point is in exactly one polygon
+  res <- list(row_i, col_i) %>% pmap(~cgrid[(cgrid$ii==.x|cgrid$ii==.x+1)&(cgrid$ri==.y|cgrid$ri==.y+1),c("x","y","i","r")] %>% dplyr::arrange(r,i))
+  stopifnot(len(res)==nrow(indf), names(indf)[1:2]==c("x","y")) ; invisible(map(res,~stopifnot(nrow(.)==4, names(.)[1:2]==c("x","y"))))
   rs <- map(1:nrow(indf), ~c(res[[.]][1,"r"], point_line_distance(indf[.,], res[[.]][1,], res[[.]][2,]),
                              res[[.]][3,"r"], point_line_distance(indf[.,], res[[.]][3,], res[[.]][4,])
                              )) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("r1","d1","r2","d2"))
@@ -351,14 +379,14 @@ xy2ir <- function(xy, cgrid) {
                              )) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("i1","d1","i2","d2"))
   indf$r <- (rs$r1*rs$d2+rs$r2*rs$d1)/(rs$d1+rs$d2)
   indf$i <- (is$i1*is$d2+is$i2*is$d1)/(is$d1+is$d2)
-  indf %<>% dplyr::select(row,i,r)
+  indf %<>% dplyr::select(i, r, row)
   
   # Return
   res <- rbind(indf,outdf) %>% dplyr::arrange(row) %>% dplyr::select(i,r) ; row.names(res) <- NULL
   return(res)
 }
 
-# given an 
+# given a seurat object, add (i,r) and a flat spatial reduction
 obj2ir <- function(obj, cgrid) {
   df <- obj@meta.data %>% dplyr::mutate(row=dplyr::row_number())
   if (all(c("x","y") %in% names(df))) {xy = df[,c("x","y","row")]
@@ -512,46 +540,36 @@ anno_splines <- function(df) {
 
 ### Workflow ###################################################################
 
-obj = qread("~/analyses/9positioning/seurat15.qs")
-obj %<>% cluster_selector
-df <- data.frame(x=obj$x_um,y=obj$y_um,col=obj$seurat_clusters) %>% dplyr::filter(is.finite(x),is.finite(y))
-df %<>% layer_selector
-splines <- anno_splines(df)
-DimPlot(obj,reduction="spatial") %>% plot.splines(splines)
+# Load + select data
+# obj = qread("~/analyses/9positioning/seurat15.qs")
+# obj %<>% cluster_selector
+# df <- data.frame(x=obj$x_um, y=obj$y_um, col=obj$seurat_clusters) %>% dplyr::filter(is.finite(x), is.finite(y))
+# df %<>% layer_selector
 
-# Spline drawing tips:
+# Draw splines
+# splines <- anno_splines(df)
+# DimPlot(obj,reduction="spatial") %>% plot.splines(splines) + coord_fixed()
+
+# Spline drawing tips
 # - all splines must be drawn in order and with the same orientation
 # - all interior points must be included between the spline edges
+# - all points must lay between the spline endpoints
+# - first spline is i=0, last spline is i=1
+# - first points are r=0, last points are r=1
 
 # Method 1 (simple)
-cgrid <- makegrid1(splines, 10, 100)
-ggplot(cgrid,aes(x=x,y=y,col=i)) + geom_point()
-ggplot(cgrid,aes(x=x,y=y,col=r)) + geom_point()
-DimPlot(obj,reduction="spatial") %>% plot.splines(cgrid2splines(cgrid))
+# cgrid <- makegrid1(splines, 10, 100)
+# ggplot(cgrid,aes(x=x,y=y,col=i)) + geom_point()
+# ggplot(cgrid,aes(x=x,y=y,col=r)) + geom_point()
+# DimPlot(obj,reduction="spatial") %>% plot.splines(cgrid2splines(cgrid))
 
 # Method 2 (advanced)
-cgrids <- map(2:len(splines), ~makegrid2(splines[[.-1]], splines[[.]], 20, 200))
-cgrid <- Reduce(cgridmerge,cgrids)
-#ggplot(cgrid, aes(x=x,y=y,col=i)) + geom_point()
-#ggplot(cgrid, aes(x=x,y=y,col=r)) + geom_point()
-DimPlot(obj,reduction="spatial") %>% plot.splines(cgrid2splines(cgrid))
+# cgrids <- map(2:len(splines), ~makegrid2(splines[[.-1]], splines[[.]], 20, 200))
+# cgrid <- Reduce(function(x,y) cgridmerge(x, y, flip=F), cgrids)
+# ggplot(cgrid, aes(x=x,y=y,col=i)) + geom_point()
+# ggplot(cgrid, aes(x=x,y=y,col=r)) + geom_point()
+# DimPlot(obj,reduction="spatial") %>% plot.splines(cgrid2splines(cgrid))
 
 # Add coords to object
-obj %<>% obj2ir(cgrid)
-DimPlot(obj,reduction="flat")
-
-
-
-# todo: outpoint r
-
-# First spline is always at 0
-# Last spline is always at 1
-a <- map(sort(unique(cgrid$r)),function(rr){cgrid %>% dplyr::filter(abs(r-rr)<1E-10) %>% dplyr::arrange(i) %>% path.dists %>% {abs(dplyr::lead(.)-.)>1e-10}})
-a <- map(a,function(vec){vec %>% head(-1) %>% tail(-1) %>% which %>% add(1)})
-sort(unique(cgrid$i))[Reduce(intersect,a)]
-
-# store the boundaries in the object
-
-# unused
-# select_points
-# 0.75 and flip
+# obj %<>% obj2ir(cgrid)
+# DimPlot(obj, reduction="flat")
