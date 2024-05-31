@@ -573,3 +573,10 @@ anno_splines <- function(df) {
 # Add coords to object
 # obj %<>% obj2ir(cgrid)
 # DimPlot(obj, reduction="flat")
+# Misc(obj,"spline_boundaries") <- map_dbl(splines, function(spline) {
+#   i_list = sort(unique(cgrid$i))
+#   index = map_dbl(i_list, function(ii) {
+#     apply(cdist(spline[,c("x","y")], dplyr::filter(cgrid,i==ii)[,c("x","y")]), MARGIN=1, min) %>% sum
+#   }) %>% which.min
+#   return(i_list[[index]])
+# })
