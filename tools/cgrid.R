@@ -414,10 +414,10 @@ cluster_selector <- function(seurat_obj, col="seurat_clusters") {
   clusters = gtools::mixedsort(unique(obj$col)) ; stopifnot(len(clusters) <= 100)
   stopifnot(typeof(clusters) %in% c("integer","double","character"))
   if (is.character(obj$col) || !all(obj$col %% 1 == 0)) {
-    wholenums=F
+    wholenums = F
     obj$col2 = g("[{match(obj$col,clusters)}] {obj$col}")
   } else {
-    wholenums=T
+    wholenums = T
     obj$col2 = obj$col
   }
   obj$col2 %<>% factor(gtools::mixedsort(unique(obj$col2)))
@@ -439,7 +439,7 @@ cluster_selector <- function(seurat_obj, col="seurat_clusters") {
 # Return a (x,y,col) dataframe with only the selected cols
 layer_selector <- function(df) {
   # Pre-process
-  stopifnot(ncol(df) == 3) ; names(df) = c("x","y","col")
+  stopifnot(ncol(df) == 3) ; names(df) = c("x", "y", "col")
   validate.xydf(df) ; df$col %<>% unfactor
   clusters <- gtools::mixedsort(unique(df$col)) ; stopifnot(len(clusters) <= 100)
   ret.df <- NULL
@@ -448,7 +448,7 @@ layer_selector <- function(df) {
   ui <- fluidPage(
     titlePanel("Layer Selector"),
     sidebarLayout(
-      sidebarPanel(uiOutput("checkboxes"),actionButton("select","Select")),
+      sidebarPanel(uiOutput("checkboxes"),actionButton("select", "Select")),
       mainPanel(plotOutput("plot"))
     )
   )
@@ -462,7 +462,7 @@ layer_selector <- function(df) {
         theme(legend.text=element_text(size=11),legend.title=element_text(size=12))+
         guides(color = guide_legend(override.aes=list(size=5)))
       print(plot)
-      ret.df <<- dplyr::select(dplyr::filter(df,active), x,y,col)
+      ret.df <<- dplyr::select(dplyr::filter(df,active), x, y, col)
     })
     observeEvent(input$select, {stopApp(0)})
   }
@@ -474,7 +474,7 @@ layer_selector <- function(df) {
 # Returns an x,y dataframe of clicked points
 anno_points <- function(df, lines=F, splines=F, previous_lines=list(), previous_splines=list()) {
   # Pre-process
-  if(ncol(df)==2){df%<>%cbind(1)} # add cluster if missing
+  if (ncol(df)==2) { df %<>% cbind(1) } # add cluster if missing
   stopifnot(ncol(df)==3) ; df %<>% setNames(c("x","y","col"))
   validate.xydf(df)
   df = df[sample(1:nrow(df), size=nrow(df), replace=F),] # shuffle the rows
@@ -512,28 +512,28 @@ anno_points <- function(df, lines=F, splines=F, previous_lines=list(), previous_
 # Returns a mask of points inside the polygon
 select_points <- function(df) {
   poly <- anno_points(df, lines=T, splines=F)
-  print(paste0("Area: ",st_area(rbind(poly, poly[1,]) %>% as.matrix %>% list %>% st_polygon)))
+  print(paste0("Area: ", st_area(rbind(poly, poly[1,]) %>% as.matrix %>% list %>% st_polygon)))
   m <- in.bounds(df, poly)
-  print(plot(df[[1]], df[[2]], col=c("blue","red")[m+1], pch=20, asp=1))
+  print(plot(df[[1]], df[[2]], col=c("blue", "red")[m+1], pch=20, asp=1))
   print(g("{sum(m)}/{len(m)} selected"))
   return(m)
 }
 
 # Returns spline x,y dataframe
 anno_spline <- function(df) {
-  spl <- anno_points(df, lines=F, splines=T)
-  if (is.null(spl)) {return(data.frame(matrix(ncol=2, nrow=0)) %>% setNames(c("x","y")))}
-  if (nrow(spl)<2) {return(spl)}
-  return(make.spline(spl))
+  pts <- anno_points(df, lines=F, splines=T)
+  if (is.null(pts)) {return(data.frame(matrix(ncol=2, nrow=0)) %>% setNames(c("x","y")))}
+  if (nrow(pts)<2) {return(pts)}
+  return(make.spline(pts))
 }
 
 # Returns list of spline x,y dataframes
 anno_splines <- function(df) {
   dfs <- list()
   repeat {
-    spl <- anno_points(df, lines=F, splines=T, previous_splines=dfs)
-    if (is.null(spl) || nrow(spl)<2) {break}
-    dfs %<>% list.append(make.spline(spl))
+    pts <- anno_points(df, lines=F, splines=T, previous_splines=dfs)
+    if (is.null(pts) || nrow(pts)<2) {break}
+    dfs %<>% list.append(make.spline(pts))
   }
   return(dfs)
 }
