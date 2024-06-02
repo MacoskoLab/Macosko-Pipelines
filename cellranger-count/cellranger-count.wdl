@@ -25,10 +25,14 @@ task count {
     gcloud config set storage/thread_count  2
 
     # Download the reference
-    echo "Downloading reference:"
-    mkdir reference
     reference="~{reference}"
-    gcloud storage cp -r "${reference%/}/*" reference
+    if [[ ${reference:0:5} == "gs://" ]]; then
+        echo "Downloading reference:"
+        mkdir reference
+        gcloud storage cp -r "${reference%/}/*" reference
+    else
+        echo "ERROR: reference path does not start with gs://"
+    fi
     
     # Download the fastqs
     echo "Downloading fastqs:"
@@ -83,11 +87,9 @@ task count {
     echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
-    cp /cromwell_root/stdout count-~{id}.out
-    cp /cromwell_root/stderr count-~{id}.err
     log_output_path="~{log_output_path}"
-    gcloud storage cp count-~{id}.out "${log_output_path%/}/count-~{id}.out"
-    gcloud storage cp count-~{id}.err "${log_output_path%/}/count-~{id}.err"
+    gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/count-~{id}.out"
+    gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/count-~{id}.err"
     gcloud storage cp count-~{id}.usage "${log_output_path%/}/count-~{id}.usage"
     
     echo "<< completed count >>"
@@ -109,7 +111,6 @@ task getdisksize {
     input {
         String fastqs
         String sample
-        String reference
         Array[Int] lanes
         String count_output_path
         String log_output_path       
@@ -173,13 +174,6 @@ task getdisksize {
             rm -f SIZE
         fi
 
-        # Assert that the reference exists
-        if ! gsutil ls "~{reference}" &> /dev/null
-        then
-            echo "ERROR: gsutil ls command failed on input reference path"
-            rm -f SIZE
-        fi
-
         # Assert that the count output is blank (avoid overwiting)
         count_output_path="~{count_output_path}"
         if gsutil ls "${count_output_path%/}/$id" &> /dev/null
@@ -192,7 +186,6 @@ task getdisksize {
 
         # Assert that the paths are actually gs:// paths
         [[ ! "~{fastqs}" =~ gs:// ]] && echo "ERROR: fastq_path does not contain gs://" && rm SIZE
-        [[ ! "~{reference}"  =~ gs:// ]] && echo "ERROR: reference does not contain gs://" && rm SIZE
         [[ ! "~{count_output_path}" =~ gs:// ]] && echo "ERROR: count_output_path does not contain gs://" && rm SIZE
         [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && rm SIZE
 
