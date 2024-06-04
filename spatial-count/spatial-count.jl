@@ -383,7 +383,7 @@ h5open("SBcounts.h5", "w") do file
 
     create_group(file, "metadata/SB_matching")
     file["metadata/SB_matching/type"] = keys(p) |> collect
-    file["metadata/SB_matching/type_count"] = values(p) |> collect
+    file["metadata/SB_matching/count"] = values(p) |> collect
     file["metadata/SB_matching/position"] = l.k |> collect
     file["metadata/SB_matching/position_count"] = l.v |> collect
     
