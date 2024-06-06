@@ -13,11 +13,6 @@ library(magrittr)
 library(jsonlite)
 library(gridExtra)
 
-# sb_path = "SBcounts/SBcounts.h5"
-# cb_path = "cb_whitelist.txt"
-# out_path <- "."
-# setwd("~/spatial")
-
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 2) {
   sb_path <- args[[1]]
@@ -448,78 +443,3 @@ print("Writing results")
 write.table(df, file.path(out_path, "matrix.csv"), sep=",", col.names=T, row.names=F, quote=F)
 metadata %>% map(as.list) %>% toJSON(pretty = TRUE) %>% writeLines(file.path(out_path, "metadata.json"))
 # metadata <- fromJSON("metadata.json")
-
-# # Panel 4: Downsampling placement
-# plot.df = map(coords_list,function(df){return(df$DBSCAN_clusters %>% {c(sum(.==0),sum(.==1),sum(.>=2))/nrow(df)*100})}) %>% {do.call(rbind,.)} %>% {rbind(c(0,0,0),.)}
-# plot.df %<>% as.data.frame %>% setNames(c("0","1","2+")) %>% mutate(x=x)
-# plot.df = tidyr::gather(plot.df, key = "column", value = "value", -x)
-# 
-# mastercoord = coords %>% transmute(cb=cb_index,x1=x_um,y1=y_um)
-# rmse = coords_list %>% head(-1) %>% map_dbl(function(coord){
-#   coord %<>% transmute(cb=cb_index,x2=x_um,y2=y_um)
-#   df = merge(mastercoord,coord,by="cb")
-#   df %<>% filter(!is.na(x1),!is.na(x2))
-#   df %<>% mutate(dist=sqrt((x2-x1)^2+(y2-y1)^2))
-#   return(median(df$dist))
-# }) %>% {c(NA,.,NA)}
-# m1 = max(plot.df$value, na.rm=T)
-# m2 = max(rmse, na.rm=T)
-# plot.df %<>% rbind(data.frame(x=x,column="disp.",value=rmse/m2*m1))
-# plot.df %<>% mutate(value = replace(value, is.nan(value), 0))
-#
-# p4 <- ggplot(plot.df,aes(x=x, y=value, color=column)) + geom_line() +
-#   theme_bw() +
-#   scale_color_manual(values = c("#F8766D", "#00BA38", "#619CFF", "grey")) +
-#   labs(title = "Downsampling Placements", x = "Reads (millions)", y = "Percent placed", color = "") +
-#   theme(legend.position=c(0.85, 0.85), legend.background=element_blank(), legend.key=element_blank(), legend.key.height=unit(0.75, "lines"))
-# if (m2/m1>0) {p4 = p4 + scale_y_continuous(sec.axis = sec_axis(~ . * m2/m1, name = "median displacement (\u00B5m)"))} else {p4 = p4 + scale_y_continuous(sec.axis = sec_axis(~ . * 1, name = "median displacement (\u00B5m)"))}
-
-# # Panel 4: Downsampling placement
-# p4 <- ggplot()
-# tryCatch( {
-#   plot.df = map(coords_list,function(df){return(df$DBSCAN_clusters %>% {c(sum(.==0),sum(.==1),sum(.>=2))/nrow(df)*100})}) %>% {do.call(rbind,.)} %>% {rbind(c(0,0,0),.)}
-#   plot.df %<>% as.data.frame %>% setNames(c("0","1","2+")) %>% mutate(x=x)
-#   plot.df = tidyr::gather(plot.df, key = "column", value = "value", -x)
-# 
-#   mastercoord = coords %>% transmute(cb=cb_index,x1=x_um,y1=y_um)
-#   rmse = coords_list %>% head(-1) %>% map_dbl(function(coord){
-#     coord %<>% transmute(cb=cb_index,x2=x_um,y2=y_um)
-#     df = merge(mastercoord,coord,by="cb")
-#     df %<>% filter(!is.na(x1),!is.na(x2))
-#     df %<>% mutate(dist=sqrt((x2-x1)^2+(y2-y1)^2))
-#     return(median(df$dist))
-#   }) %>% {c(NA,.,NA)}
-#   m1 = max(plot.df$value, na.rm=T)
-#   m2 = max(rmse, na.rm=T)
-#   plot.df %<>% rbind(data.frame(x=x,column="disp.",value=rmse/m2*m1))
-#   plot.df %<>% mutate(value = replace(value, is.nan(value), 0))
-# 
-#   p <- ggplot(plot.df,aes(x=x, y=value, color=column)) + geom_line() +
-#     theme_bw() +
-#     scale_color_manual(values = c("#F8766D", "#00BA38", "#619CFF", "grey")) +
-#     labs(title = "Downsampling Placements", x = "Reads (millions)", y = "Percent placed", color = "") +
-#     theme(legend.position=c(0.85, 0.85), legend.background=element_blank(), legend.key=element_blank(), legend.key.height=unit(0.75, "lines"))
-#   if (m2/m1>0) {p = p + scale_y_continuous(sec.axis = sec_axis(~ . * m2/m1, name = "median displacement (\u00B5m)"))} else {p = p + scale_y_continuous(sec.axis = sec_axis(~ . * 1, name = "median displacement (\u00B5m)"))}
-#   p4 <<- p
-# }, error = function(e) {p4 <<- gdraw("Skipped") })
-
-# # which puck
-# df = lapply(list2, function(subdf) {
-#   subdf1 <- filter(subdf,cluster==1)
-#   subdf2 <- filter(subdf,cluster==2)
-#   a = matrixStats::weightedMedian(subdf1$x_um,w=subdf1$umi) < 6130.832
-#   b = matrixStats::weightedMedian(subdf2$x_um,w=subdf2$umi) < 6130.832
-#   return(c(a,b))
-# })
-# df = do.call(rbind,df) %>% as.data.frame
-# df %<>% setNames(c("A","B"))
-# df$A = map_chr(df$A,~if(.){"A"}else{"B"})
-# df$B = map_chr(df$B,~if(.){"A"}else{"B"})
-# round(table(df$A,df$B)/nrow(df)*100,2)
-# df_counts <- df %>% count(A, B)
-# ggplot(df_counts, aes(x = A, y = B, fill = n)) +
-#   geom_tile(color = "white", size = 0.1) + # Add borders for clarity
-#   geom_text(aes(label = n), color = "black") + # Display counts
-#   scale_fill_gradient(low = "lightblue", high = "darkblue") + # Gradient color scale
-#   theme_minimal() + 
-#   labs(title = "2D Contingency Plot by Counts", x = "DBSCAN=1", y = "DBSCAN=2", fill = "Count")
