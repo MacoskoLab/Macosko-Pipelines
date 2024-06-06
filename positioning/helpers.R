@@ -1,46 +1,13 @@
-# helpers.R
 # options(warn=1)
 
-gdraw <- function(text,s=14) {ggdraw()+draw_label(text,size=s)}
+gdraw <- function(text, s=14) {ggdraw()+draw_label(text, size=s)}
 plot.tab <- function(df) {return(plot_grid(tableGrob(df)))}
-add.commas <- function(num){prettyNum(num,big.mark=",")}
-make.pdf <- function(plots,name,w,h) {
-  if (any(class(plots)=="gg")||class(plots)=="Heatmap") {plots=list(plots)}
-  pdf(file=name,width=w,height=h)
-  lapply(plots,function(x){print(x)})
+add.commas <- function(num){prettyNum(num, big.mark=",")}
+make.pdf <- function(plots, name, w, h) {
+  if ("gg" %in% class(plots) || class(plots)=="Heatmap") {plots = list(plots)}
+  pdf(file=name, width=w ,height=h)
+  lapply(plots, function(x){print(x)})
   dev.off()
-}
-
-# df %<>% group_by(cb_index, sb_index) %>% summarize(umi=n()) 
-count_umis <- function(df) {
-  stopifnot(names(df) == c("cb_index", "umi_2bit", "sb_index", "reads"))
-  gdf = df %>% filter(reads>0) %>% select(cb_index, sb_index) %>% arrange(cb_index, sb_index) 
-  bnds = (gdf$cb_index!=lead(gdf$cb_index) | gdf$sb_index!=lead(gdf$sb_index)) %>% tidyr::replace_na(T) %>% which
-  gdf %<>% distinct()
-  gdf$umi = (bnds - lag(bnds)) %>% tidyr::replace_na(bnds[[1]])
-  gdf %<>% arrange(desc(umi))
-  return(gdf)
-}
-
-# df %<>% group_by(cb, umi, sb) %>% summarize(reads = n())
-count_reads <- function(df) {
-  stopifnot(names(df) == c("cb", "umi", "sb"))
-  gdf = df %>% select(cb,umi,sb) %>% arrange(cb,sb,umi)
-  bnds = (gdf$cb!=lead(gdf$cb) | gdf$sb!=lead(gdf$sb) | gdf$umi!=lead(gdf$umi)) %>% tidyr::replace_na(T) %>% which
-  gdf %<>% distinct()
-  gdf$reads = (bnds - lag(bnds)) %>% tidyr::replace_na(bnds[[1]])
-  gdf %<>% arrange(desc(reads))
-  return(gdf)
-}
-
-remove_chimeras <- function(df) {
-  df %<>% arrange(cb_index, umi_2bit, desc(reads))
-  before_same = tidyr::replace_na(df$cb_index==lag(df$cb_index) & df$umi_2bit==lag(df$umi_2bit), FALSE) 
-  after_same = tidyr::replace_na(df$cb_index==lead(df$cb_index) & df$umi_2bit==lead(df$umi_2bit) & df$reads==lead(df$reads), FALSE)
-  chimeric = before_same | after_same
-  df = df[!chimeric,]
-  metadata = list("SB_reads_filtered_chimeric" = sum(df[chimeric,]$reads))
-  return(list(df, metadata))
 }
 
 process <- function(obj, res=0.8, n.epochs=NULL) {
@@ -52,41 +19,6 @@ process <- function(obj, res=0.8, n.epochs=NULL) {
     Seurat::FindNeighbors(dims=1:30) %>%
     Seurat::FindClusters(resolution=res) %>%
     Seurat::RunUMAP(dims=1:30, verbose=F, n.epochs=n.epochs)
-}
-
-### Download files #############################################################
-checkgsfile <- function(path) {
-  stopifnot(str_sub(path, 1, 5) == "gs://")
-  res = system(g("gsutil ls {path}"), intern=F, ignore.stdout=T, ignore.stderr=T)
-  return(res == 0)
-}
-
-download_RNA_data <- function(RNApath) {
-  RNApath = gsub("/$", "", RNApath)
-  stopifnot(str_sub(RNApath,1,5) == "gs://")
-  if (checkgsfile(file.path(RNApath,"outs/filtered_feature_bc_matrix.h5"))) {
-    RNAtech = "cellranger count"
-    # system(g("gcloud storage cp {RNApath}/outs/raw_feature_bc_matrix.h5 RNAcounts"))
-    system(g("gcloud storage cp {RNApath}/outs/filtered_feature_bc_matrix.h5 RNAcounts"))
-    system(g("gcloud storage cp {RNApath}/outs/molecule_info.h5 RNAcounts"))
-    system(g("gcloud storage cp {RNApath}/outs/metrics_summary.csv RNAcounts"))
-  } else if (checkgsfile(file.path(RNApath,"outs/multi"))) {
-    RNAtech = "cellranger multi"
-    # system(g("gcloud storage cp {RNApath}/outs/multi/count/raw_feature_bc_matrix.h5 RNAcounts"))
-    system(g("gcloud storage cp {RNApath}/outs/per_sample_outs/{basename(RNApath)}/count/sample_filtered_feature_bc_matrix.h5 RNAcounts/filtered_feature_bc_matrix.h5"))
-    system(g("gcloud storage cp {RNApath}/outs/per_sample_outs/{basename(RNApath)}/count/sample_molecule_info.h5 RNAcounts/molecule_info.h5"))
-    system(g("gcloud storage cp {RNApath}/outs/per_sample_outs/{basename(RNApath)}/metrics_summary.csv RNAcounts"))
-  } else {
-    print("Unknown RNA directory structure, exiting...")
-    stopifnot(F)
-  }
-  return(RNAtech)
-}
-
-download_SB_data <- function(SBpath) {
-  SBpath = gsub("/$", "", SBpath)
-  stopifnot(str_sub(SBpath,1,5) == "gs://")
-  system(g("gcloud storage cp {SBpath}/SBcounts.h5 SBcounts"))
 }
 
 ### Load the seurat ############################################################
@@ -134,165 +66,9 @@ get_scaling_factor <- function(bn) {
   return(k)
 }
 
-most_character_count <- function(vec) {
-  stopifnot(typeof(vec) == "character")
-  degenA = str_count(vec, "A")
-  degenC = str_count(vec, "C")
-  degenG = str_count(vec, "G")
-  degenT = str_count(vec, "T")
-  degenN = str_count(vec, "N")
-  return(pmax.int(degenA, degenC, degenG, degenT, degenN))
-}
-
-longest_run_length <- function(vec) {
-  stopifnot(typeof(vec) == "character")
-  ret = stringr::str_extract_all(vec, "(.)\\1*")
-  return(map_int(ret, ~max(nchar(.))))
-}
-
-load_puckdf <- function(f) {
-  # load the puck information
-  puckdf = data.frame(sb=f("puck/sb"), x=f("puck/x"), y=f("puck/y"), puck_index=as.integer(f("puck/puck_index")))
-  dups = unique(puckdf$sb[duplicated(puckdf$sb)])
-  Ns = puckdf$sb[grepl("N", puckdf$sb)]
-  
-  puckdfs = map(sort(unique(puckdf$puck_index)), ~filter(puckdf, puck_index==.) %>% select(-puck_index))
-  
-  # remove duplicated or low-quality beads
-  num_dup_beads = map_int(puckdfs, ~sum(.$sb %in% dups))
-  num_N_beads = map_int(puckdfs, ~sum(.$sb %in% Ns))
-  puckdfs %<>% map(~filter(., !sb %in% dups))
-  puckdfs %<>% map(~filter(., !sb %in% Ns))
-  
-  # scale the coordinates (to um)
-  num_beads = map_int(puckdfs, nrow)
-  scaling_factors = map_dbl(num_beads, get_scaling_factor)
-  puckdfs %<>% map2(scaling_factors, ~transmute(.x, sb=sb, x_um=x*.y, y_um=y*.y))
-  
-  # center the coordinates
-  maxs = map_dbl(puckdfs, ~max(.$x_um))
-  mins = map_dbl(puckdfs, ~min(.$x_um))
-  starts = cumsum(maxs-mins) %>% lag %>% tidyr::replace_na(0)
-  puckdfs %<>% map2(starts, ~mutate(.x, x_um = x_um-min(x_um)+.y)) # line up from y-axis across
-  puckdfs %<>% map(~mutate(., y_um = y_um-min(y_um))) # line up on x-axis
-    
-  puckdf = do.call(rbind, puckdfs)
-  stopifnot(!any(duplicated(puckdf$sb)))
-  
-  # add sb_index
-  sb_list = f("lists/sb_list")
-  stopifnot(!any(duplicated(sb_list)))
-  puckdf$sb_index = match(puckdf$sb, sb_list)
-  puckdf %<>% arrange(sb_index)
-  
-  puckdf$mc = most_character_count(puckdf$sb)
-  puckdf$lr = longest_run_length(puckdf$sb)
-  puckdf %<>% select(sb_index, x_um, y_um, mc, lr)
-  
-  metadata <- list(puck_name = as.character(f("puck/puck_list")),
-                   num_beads = num_beads,
-                   dup_beads_removed = num_dup_beads,
-                   N_beads_removed = num_N_beads,
-                   scaling_factors = scaling_factors,
-                   puck_boundaries = c(starts, max(puckdf$x_um)),
-                   R1s = f("metadata/R1s") %>% map_chr(basename),
-                   R2s = f("metadata/R2s") %>% map_chr(basename),
-                   switchR1R2 = f("metadata/switch") %>% as.logical,
-                   UP_matching = setNames(f("metadata/UP_matching/count"),f("metadata/UP_matching/type")),
-                   SB_matching = setNames(f("metadata/SB_matching/count"),f("metadata/SB_matching/type")),
-                   SB_reads = f("metadata/num_reads"))
-  return(list(puckdf, metadata))
-}
-
-### Load the spatial counts ####################################################
-remap_10X_CB <- function(vec) {
-  stopifnot(typeof(vec) == "character")
-  basemap = setNames(c("AG","TC","CA","GT"), c("TC","AG","GT","CA"))
-  stopifnot(substr(vec,8,9) %in% names(basemap))
-  ret = paste0(substr(vec,1,7), basemap[substr(vec,8,9)], substr(vec,10,16))
-  stopifnot(len(vec) == len(ret))
-  stopifnot(nchar(vec) == nchar(ret))
-  return(ret)
-}
-
-determine_remap <- function(df, cb_list, cb_whitelist) {
-  cbs = cb_list[df$cb_index]
-  reads_noremap = df$reads[cbs %in% cb_whitelist] %>% sum
-  reads_remap = df$reads[cbs %in% remap_10X_CB(cb_whitelist)] %>% sum
-  remap = reads_remap > reads_noremap
-  return(remap)
-}
-
-listHD1neighbors <- function(input_string) {
-  nucleotides <- c('A','C','G','T','N')
-  result <- c()
-  for (i in 1:nchar(input_string)) {
-    for (nuc in nucleotides[nucleotides != substr(input_string, i, i)]) {
-      new_string <- paste0(substr(input_string, 1, i-1), nuc, substr(input_string, i+1, nchar(input_string)))
-      result <- c(result, new_string)
-    }
-  }
-  return(result)
-}
-
-fuzzy_matching <- function(df, cb_list, cb_whitelist) {
-  # Check the lists
-  stopifnot(!any(duplicated(cb_list)))
-  stopifnot(!any(duplicated(cb_whitelist)))
-  stopifnot(names(df) == c("cb_index","umi_2bit","sb_index","reads"))
-  
-  # Remap cb_whitelist
-  remap <- determine_remap(df, cb_list, cb_whitelist)
-  if (remap) {
-    print("Remapping CB whitelist")
-    cb_whitelist %<>% remap_10X_CB
-  }
-  stopifnot(!duplicated(cb_whitelist))
-  
-  # Exact matching dictionary
-  exact_dict = match(cb_list, cb_whitelist)
-  
-  # HD1 fuzzy matching dictionary
-  dict = imap(cb_whitelist, ~data.frame(original=.y, neighbor=listHD1neighbors(.x))) %>% {do.call(rbind,.)}
-  dict %<>% filter(neighbor %in% cb_list) # remove barcodes that don't exist
-  dict %<>% filter(!neighbor %in% cb_whitelist) # remove exact matches
-  HD1ambig = unique(dict$neighbor[duplicated(dict$neighbor)])
-  dict %<>% filter(!neighbor %in% HD1ambig) # remove ambiguous matches
-  stopifnot(!any(duplicated(dict$neighbor)))
-  fuzzy_dict = dict$original[match(cb_list, dict$neighbor)]
-  HD1ambig_dict = !is.na(match(cb_list, HD1ambig))
-  
-  # Perform matching
-  df %<>% mutate(exact = exact_dict[cb_index], HD1 = fuzzy_dict[cb_index], HD1ambig = HD1ambig_dict[cb_index])
-  stopifnot((!is.na(df$exact)) + (!is.na(df$HD1)) + df$HD1ambig <= 1)
-  rm(dict, exact_dict, fuzzy_dict, HD1ambig_dict) ; invisible(gc())
-  
-  # Record metadata
-  CB_matching_type = c("exact", "HD1", "HD1ambig","none")
-  CB_matching_count = c(df$reads[!is.na(df$exact)] %>% sum,
-                        df$reads[!is.na(df$HD1)] %>% sum,
-                        df$reads[df$HD1ambig] %>% sum,
-                        df$reads[is.na(df$exact) & is.na(df$HD1) & !df$HD1ambig] %>% sum)
-  stopifnot(sum(df$reads) == sum(CB_matching_count))
-  
-  # Perform the cb_index conversion
-  df1 = df %>% filter(!is.na(exact)) %>% mutate(cb_index = exact) %>% select(1:4)
-  df2 = df %>% filter(!is.na(HD1)) %>% mutate(cb_index = HD1) %>% select(1:4)
-  df3 = df %>% filter(is.na(exact) & is.na(HD1)) %>% mutate(cb_index = -cb_index) %>% select(1:4)
-  df2 %<>% group_by(cb_index, umi_2bit, sb_index) %>% summarize(reads=sum(reads)) %>% ungroup
-  df12 <- full_join(df1, df2, by = c("cb_index","umi_2bit","sb_index"))
-  df12$reads.x %<>% tidyr::replace_na(0) ; df12$reads.y %<>% tidyr::replace_na(0)
-  df12 %<>% mutate(reads = reads.x + reads.y) %>% select(-reads.x, -reads.y)
-  df = rbind(df12, df3)
-  stopifnot(df$cb_index != 0)
-  stopifnot(sum(df$reads) == sum(CB_matching_count))
-  
-  metadata = list(remap_10X_CB = remap,
-                  CB_matching=setNames(CB_matching_count, CB_matching_type)
-                  )
-  res = list(df, metadata)
-  return(res)
-}
+# scale the coordinates (to um)
+# scaling_factors = map_dbl(num_beads, get_scaling_factor)
+# puckdfs %<>% map2(scaling_factors, ~transmute(.x, sb=sb, x_um=x*.y, y_um=y*.y))
 
 ### Plots ######################################################################
 
@@ -410,72 +186,9 @@ plot2 <- function(obj) {
 }
 
 
-# Plot 3: Raw spatial data
-plot3 <- function(obj, df, puckdf, f) {
-  gdf = count_umis(df)
-  
-  # p1
-  cb.data = gdf %>% group_by(cb_index) %>% summarize(umi=sum(umi)) %>% arrange(desc(umi)) %>% {mutate(.,index=1:nrow(.), filter="all cell barcodes")}
-  cb.data2 = cb.data %>% filter(cb_index>0) %>% {mutate(.,index=1:nrow(.), filter="called cell barcodes only")}
-  sb_pct_in_called_cells = round(sum(filter(cb.data,cb_index>0)$umi)/sum(cb.data$umi)*100,2)
-  p1 = ggplot(mapping=aes(x=index, y=umi,col=filter))+geom_line(data=cb.data)+geom_line(data=cb.data2) +
-    scale_x_log10()+scale_y_log10()+theme_bw()+ggtitle("SB UMI per cell")+ylab("SB UMI counts")+xlab("Cell barcodes") +
-    theme(legend.position = c(0.05, 0.05), legend.justification = c("left", "bottom"), legend.background = element_blank(), legend.spacing.y = unit(0.1,"lines"), legend.title=element_blank()) +
-    annotate("text", x = Inf, y = Inf, label = g("SB UMI in called cells: {sb_pct_in_called_cells}%"), hjust = 1, vjust = 1.3)
-  rm(cb.data, cb.data2) ; invisible(gc())
-  
-  # p2
-  sb.data = gdf %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>% arrange(desc(umi)) %>% {mutate(.,index=1:nrow(.),filter="all cell barcodes")}
-  sb.data2 = gdf %>% filter(cb_index > 0) %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>% arrange(desc(umi)) %>% {mutate(.,index=1:nrow(.),filter="called cell barcodes only")}
-  p2 = ggplot(mapping=aes(x=index,y=umi,col=filter))+geom_line(data=sb.data)+geom_line(data=sb.data2)+
-    scale_x_log10()+scale_y_log10()+theme_bw()+ggtitle("SB UMI per bead")+ylab("SB UMI counts")+xlab("Beads")+
-    theme(legend.position = c(0.05, 0.05), legend.justification = c("left", "bottom"), legend.background = element_blank(), legend.spacing.y = unit(0.1,"lines"), legend.title=element_blank())
-  rm(sb.data, sb.data2) ; invisible(gc())
-  
-  # p3
-  x = seq(0, 1, 0.05) * f("metadata/num_reads")/1000000
-  plot.df = data.frame(x=x, y=f("metadata/downsampling")/1000000)
-  p3 = ggplot(plot.df, aes(x=x,y=y)) + geom_point() + theme_bw() + 
-    xlab("Millions of reads") + ylab("Millions of filtered SB UMIs") + ggtitle("SB downsampling curve")
-  
-  # p4
-  degenmap = setNames(puckdf$mc, puckdf$sb_index)
-  gdf.called = filter(gdf, cb_index > 0) %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>% ungroup %>% mutate(degen = degenmap[as.character(sb_index)]) %>% filter(!is.na(degen)) %>% group_by(degen) %>% summarize(umi=sum(umi)) %>% ungroup %>% arrange(degen) %>% mutate(type="called")
-  gdf.uncalled = filter(gdf, cb_index < 0) %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>% ungroup %>% mutate(degen = degenmap[as.character(sb_index)]) %>% filter(!is.na(degen)) %>% group_by(degen) %>% summarize(umi=sum(umi)) %>% ungroup %>% arrange(degen) %>% mutate(type="uncalled")
-  plot.df = rbind(gdf.uncalled, gdf.called) %>% mutate(type=factor(type,levels=c("uncalled","called")))
-  p4 = ggplot(plot.df, aes(x=degen, y=umi, fill=type)) + geom_col() + theme_bw() +
-    scale_x_continuous(breaks = min(plot.df$degen):max(plot.df$degen)) +
-    xlab("Spatial barcode degeneracy") + ylab("Number of UMI") + ggtitle("SB degeneracy distribution") +
-    theme(legend.position = c(1, 1), legend.justification = c("right", "top"), legend.background = element_blank(), legend.title=element_blank())
-  
-  plot = plot_grid(p1, p2, p3, p4, ncol=2)
-  make.pdf(plot, "plots/3rawspatial.pdf", 7, 8)
-  
-  Misc(obj, "SB_umi_pct_in_called_cells") = sb_pct_in_called_cells
-  return(obj)
-}
 
 
-beadplot <- function(sb.data){
-  ggplot(sb.data, aes(x=x_um, y=y_um, col=umi)) +
-    rasterize(geom_point(size=0.1), dpi=200) +
-    coord_fixed(ratio=1) +
-    theme_classic() +
-    labs(x="x (\u00B5m)", y="y (\u00B5m)") +
-    scale_color_viridis(trans="log", option="B", name="UMI") + 
-    ggtitle(g("SB UMI per bead"))
-}
-plot4 <- function(obj, df, puckdf) {
-  sb.data = df %>% count_umis %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>%
-    ungroup %>% merge(y=puckdf, all.x=T, by="sb_index") %>% filter(!is.na(x_um),!is.na(y_um)) %>% arrange(umi)
-  p1 = beadplot(sb.data)
-  sb.data = df %>% filter(cb_index>0) %>% count_umis %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>%
-    ungroup %>% merge(y=puckdf, all.x=T, by="sb_index") %>% filter(!is.na(x_um),!is.na(y_um)) %>% arrange(umi)
-  p2 = beadplot(sb.data)
-  make.pdf(plot_grid(p1,p2,ncol=2), "plots/4beadplot.pdf", 7, 8)
-  return(obj)
-}
-# called vs uncalled?
+
 
 
 # Run alignment
@@ -485,6 +198,17 @@ plot4 <- function(obj, df, puckdf) {
 # cargo run /home/nsachdev/pipseeker/fluent_RNA_fastqs/T20/T20_S1_R1_001.fastq.gz /home/nsachdev/pipseeker/fluent_RNA_fastqs/T20/barcoded_fastqs/barcoded_R1.fastq.gz
 
 library(ShortRead) # sread, quality, id
+
+# df %<>% group_by(cb, umi, sb) %>% summarize(reads = n())
+count_reads <- function(df) {
+  stopifnot(names(df) == c("cb", "umi", "sb"))
+  gdf = df %>% select(cb,umi,sb) %>% arrange(cb,sb,umi)
+  bnds = (gdf$cb!=lead(gdf$cb) | gdf$sb!=lead(gdf$sb) | gdf$umi!=lead(gdf$umi)) %>% tidyr::replace_na(T) %>% which
+  gdf %<>% distinct()
+  gdf$reads = (bnds - lag(bnds)) %>% tidyr::replace_na(bnds[[1]])
+  gdf %<>% arrange(desc(reads))
+  return(gdf)
+}
 
 pipseq_process <- function(R1path, R2path, mappingpath, RNApath, puckpath, metricssummarypath) {
   obj = load_seurat(RNApath)
