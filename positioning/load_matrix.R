@@ -1,4 +1,3 @@
-# Load the spatial barcode count matrix and filter to a cell-barcode whitelist
 library(glue) ; g=glue ; len=length
 library(dplyr)
 library(purrr)
@@ -25,6 +24,7 @@ if (length(args) == 2) {
 } else {
   stop("Usage: Rscript load_matrix.R SBcounts_path cb_whitelist_path [output_path]", call. = FALSE)
 }
+if (!dir.exists(out_path)) { dir.create(out_path, recursive = T) }
 stopifnot(system(g("h5ls {sb_path}/matrix"), intern=T) %>% strsplit(split = "\\s+") %>% map_chr(pluck(1)) == c("cb_index", "reads", "sb_index", "umi"))
 f <- function(p){return(h5read(sb_path, p))}
 
@@ -224,7 +224,7 @@ plot_rankplots <- function(df, f, out_path) {
     theme_bw() + xlab("Reads per UMI") + ylab("Millions of filtered SB UMIs") + ggtitle("SB read depth") + 
     annotate("text", x = Inf, y = Inf, label = g("sequencing saturation = {sequencing_saturation}\ntotal reads = {total_reads}"), hjust = 1.02, vjust = 1.33) +
     scale_x_continuous(breaks=min(d$reads):max(d$reads), labels=(min(d$reads):max(d$reads)) %>% {ifelse(.==10, "10+", .)})
-
+  
   plot = plot_grid(p1, p2, p3, p4, ncol=2)
   
   make.pdf(plot, file.path(out_path, "spatial_rankplots.pdf"), 7, 8)
@@ -354,7 +354,7 @@ stopifnot(df$sb_index %in% puckdf$sb_index)
 df %<>% left_join(puckdf, by="sb_index") %>% select(cb_index, x, y, umi) %>% arrange(cb_index, desc(umi))
 
 metadata$puck_info$umi_final = map_int(1:len(metadata$puck_info$puck_name), ~filter(df, x >= metadata$puck_info$puck_boundaries[[.]],
-                                                                                        x <= metadata$puck_info$puck_boundaries[[.+1]])$umi %>% sum)
+                                                                                    x <= metadata$puck_info$puck_boundaries[[.+1]])$umi %>% sum)
 
 # plot metadata
 print("Plotting metadata")
@@ -387,8 +387,8 @@ plot_metrics <- function(metadata, out_path) {
                            sum(UP_matching[c("1D-","1D-1X","-1X","-1D","-2X")]),
                            UP_matching[["none"]],
                            UP_matching[["GG"]]
-                          ) %>% {./sum(.)*100} %>% round(2) %>% paste0("%")
-                      ) %>% arrange(desc(b)) %>% unname
+                       ) %>% {./sum(.)*100} %>% round(2) %>% paste0("%")
+  ) %>% arrange(desc(b)) %>% unname
   p_up = plot_grid(gdraw("UP matching"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.4))
   
   plot.df = data.frame(a=c("exact","fuzzy","none","ambig"),b=metadata$SB_matching[c("exact","HD1","none","HD1ambig")] %>% {./sum(.)*100} %>% round(2) %>% unname %>% paste0("%")) %>% unname
@@ -419,7 +419,7 @@ plot_metrics <- function(metadata, out_path) {
     xlab("Spatial barcode base position") + ylab("Fuzzy matches") + ggtitle("Location of spatial barcode fuzzy match")
   
   p_R = list(c("R1s", metadata$SB_info$R1s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_001")),
-       c("R2s", metadata$SB_info$R2s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_001"))) %>%
+             c("R2s", metadata$SB_info$R2s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_001"))) %>%
     {do.call(rbind,.)} %>% as.data.frame %>% setNames(NULL) %>% plot.tab
   
   plot = plot_grid(
@@ -442,4 +442,3 @@ plot_metrics(metadata, out_path)
 print("Writing results")
 write.table(df, file.path(out_path, "matrix.csv"), sep=",", col.names=T, row.names=F, quote=F)
 metadata %>% map(as.list) %>% toJSON(pretty = TRUE) %>% writeLines(file.path(out_path, "metadata.json"))
-# metadata <- fromJSON("metadata.json")
