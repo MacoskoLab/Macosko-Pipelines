@@ -1,12 +1,9 @@
 library(glue) ; g=glue ; len=length
 library(matrixStats)
-library(stringdist)
 library(gridExtra)
 library(magrittr)
 library(ggplot2)
 library(cowplot)
-library(viridis)
-library(ggrastr)
 library(stringr)
 library(Seurat)
 library(dbscan)
@@ -18,6 +15,8 @@ library(furrr)
 library(rhdf5)
 library(qpdf)
 library(qs)
+
+# setwd("~/spatial")
 
 ### Download files #############################################################
 
@@ -62,50 +61,10 @@ stopifnot(!duplicated(cb_whitelist))
 stopifnot(len(unique(nchar(cb_whitelist))) == 1)
 stopifnot(map_lgl(strsplit(cb_whitelist, ""), ~all(. %in% c("A","C","G","T"))))
 Misc(obj, "called_cells") <- len(cb_whitelist)
+writeLines(cb_whitelist, "cb_whitelist.txt")
+system("Rscript load_matrix.R SBcounts/SBcounts.h5 cb_whitelist.txt")
 
-### Load the puck ##############################################################
-res <- load_puckdf(f)
-puckdf <- res[[1]]
-obj@misc %<>% append(res[[2]])
-rm(res) ; invisible(gc())
-
-### Load the spatial counts ####################################################
-
-# Load the SB count matrix
-df = data.frame(cb_index=f("matrix/cb_index"),
-                umi_2bit=f("matrix/umi"),
-                sb_index=f("matrix/sb_index"),
-                reads=f("matrix/reads"))
-Misc(obj, "SB_reads_filtered") <- sum(df$reads)
-
-# Fuzzy match and convert cb_index from a cb_list index to a cb_whitelist index
-res <- fuzzy_matching(df, f("lists/cb_list"), cb_whitelist)
-df <- res[[1]]
-obj@misc %<>% append(res[[2]])
-rm(res) ; invisible(gc())
-
-# Remove chimeric reads
-print("Removing chimeras")
-res <- remove_chimeras(df)
-df <- res[[1]]
-obj@misc %<>% append(res[[2]])
-rm(res)
-
-# Make some plots
-obj %<>% plot0("RNAcounts/metrics_summary.csv")             # cell ranger output
-obj %<>% plot1("RNAcounts/molecule_info.h5", cb_whitelist)  # cell calling
-obj %<>% plot2()                                            # UMAP + metrics
-obj %<>% plot3(df, puckdf, f)                               # raw spatial data
-obj %<>% plot4(df, puckdf)                                  # beadplot
-
-# remove reads that didn't match a called cell
-df %<>% filter(cb_index > 0)
-
-# Compute metrics
-Misc(obj, "SB_reads_final") <- sum(df$reads)
-Misc(obj, "SB_umi_final") <- df %>% count_umis %>% pull(umi) %>% sum
-qsave(df, "df.qs")
-invisible(gc())
+df = read.table("matrix.csv", header=T, sep=",")
 
 ### Positioning methods ########################################################
 
@@ -214,43 +173,16 @@ binned_positioning <- function(df) {
   return(list(coords,data.list))
 }
 
-
-
-
-
-
-
-
-
-
-
-
 ### Positioning ################################################################
 
-# Perform positioning at various levels of downsampling
-#original_df <- df
-coords_list = list()
+# add spatial positions from puck
+df = merge(x=df, y=puckdf, all.x=T, by="sb_index")
+df %<>% filter(!is.na(x_um),!is.na(y_um))
 
-for (i in seq(1,1,0.05)) {
-  # Downsample the reads
-  print(g("Downsampling: {round(i*100)}%"))
-  df = original_df
-  if (i != 1) {
-    df %<>% mutate(reads=rmultinom(n=1, size=round(sum(original_df$reads)*i), prob=original_df$reads) %>% as.vector)
-  }
-  df %<>% count_umis
-  
-  # add spatial positions from puck
-  df = merge(x=df, y=puckdf, all.x=T, by="sb_index")
-  df %<>% filter(!is.na(x_um),!is.na(y_um))
-  
-  # run binned positioning (see method above)
-  res = normal_positioning(df)
-  coords = res[[1]] ; data.list = res[[2]] ; rm(res)
-  
-  coords_list %<>% list.append(coords)
-  gc()
-}
+# run binned positioning (see method above)
+res = normal_positioning(df)
+coords = res[[1]] ; data.list = res[[2]]
+rm(res) ; invisible(gc())
 
 # merge with seurat object
 coords %<>% mutate(cb = cb_whitelist[cb_index])
@@ -262,19 +194,6 @@ obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_"
 
 coords %>% select(cb,everything()) %>% write.csv("coords.csv",quote=F,row.names=F)
 qsave(obj, "seurat.qs")
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -328,90 +247,21 @@ p2 = DimPlot(obj[,!is.na(obj$x_um)], reduction="spatial",split.by="seurat_cluste
 plot = plot_grid(p1, p2, ncol=1, rel_heights=c(1,1))
 make.pdf(plot,"plots/6spatial.pdf",7,8)
 
-### Page 7: Create metrics plot ################################################
-
-metrics_plots <- function(obj) {
-  plot.df = list(
-    c("Reads",Misc(obj,"SB_reads") %>% add.commas),
-    c("Puck file",paste0(Misc(obj,"puck_name") %>% str_replace("Puck_","")%>% str_replace(".csv",""),collapse=", ")),
-    c("Number of beads",Misc(obj,"num_beads") %>% add.commas %>% paste0(collapse=", ")),
-    c("Scaling factor",Misc(obj,"scaling_factor")),
-    c("R1<->R2",Misc(obj,"switchR1R2")),
-    c("Remap CB",Misc(obj,"remapCB"))
-  ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("metric","value"))
-  p1 = plot_grid(ggdraw()+draw_label("SB metrics"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.9))
-  
-  UP_matching <- Misc(obj,"UP_matching")
-  SB_matching <- Misc(obj,"SB_matching")
-  CB_matching <- Misc(obj,"CB_matching")
-  
-  plot.df = data.frame(a=c("exact","fuzzy", "none", "GG"),b=c(UP_matching[["-"]],
-                                                         sum(UP_matching[c("1D-","1D-1X","-1X","-1D","-2X")]),
-                                                         UP_matching[["none"]],
-                                                         UP_matching[["GG"]]) %>% {./sum(.)*100} %>% round(2) %>% paste0("%")) %>% arrange(desc(b)) %>% unname
-  p2 = plot_grid(ggdraw()+draw_label("UP matching"), plot.tab(plot.df),ncol=1,rel_heights=c(0.1,0.9))
-  
-  plot.df = data.frame(a=c("exact","fuzzy","none","ambig"),b=SB_matching[c("exact","HD1","none","HD1ambig")] %>% {./sum(.)*100} %>% round(2) %>% unname %>% paste0("%")) %>% unname
-  p3 = plot_grid(ggdraw()+draw_label("SB matching"),plot.tab(plot.df),ncol=1,rel_heights=c(0.1,0.9))
-  
-  plot.df = data.frame(a=c("exact","fuzzy","none","ambig"),b=CB_matching[c("exact","HD1","none","HD1ambig")] %>% {./sum(.)*100} %>% round(2) %>% unname %>% paste0("%")) %>% unname
-  p4 = plot_grid(ggdraw()+draw_label("CB matching"),plot.tab(plot.df),ncol=1,rel_heights=c(0.1,0.9))
-  
-  plot.df = list(
-    c("Valid UMI",UP_matching[["R1lowQ"]]),
-    c("Valid UP",UP_matching[c("none","GG")] %>% sum),
-    c("Valid SB",SB_matching[c("none","HD1ambig")] %>% sum),
-    c("Valid CB",sum(CB_matching[c("none","HD1ambig")])),
-    c("Chimeric",Misc(obj,"SB_reads_filtered_chimeric"))
-  ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("filter","percent"))
-  plot.df$percent = as.numeric(plot.df$percent) / (Misc(obj,"SB_reads") - c(0,head(cumsum(plot.df$percent),-1)))
-  plot.df[1:4,2] = 1-plot.df[1:4,2] # convert from fraction removed to fraction retained
-  plot.df$percent = round(plot.df$percent * 100,2) %>% paste0("%")
-  p5 = plot_grid(ggdraw()+draw_label("SB filtering"),plot.tab(plot.df),ncol=1,rel_heights=c(0.1,0.9))
-  
-  SB_filtering = setNames(df$percent, df$filter)
-  
-  # Script input parameters (with common prefix removed)
-  p6 = ggplot()
-  tryCatch( {
-    a=Misc(obj,"RNA_path") ; b=Misc(obj,"SB_path")
-    m=min(which(!map_lgl(1:min(nchar(a),nchar(b)), ~str_sub(a,1,.)==str_sub(b,1,.))))
-    a%<>%str_sub(m-1,999) ; b%<>%str_sub(m-1,999)
-    plot.df=data.frame(a=c("RNA_path","SB_path"),b=c(a,b)) %>% unname
-    p6 <<- plot_grid(ggdraw()+draw_label("Run parameters"),plot.tab(plot.df),ncol=1,rel_heights=c(0.1,0.9))
-  }, error = function(e) {p6 <<- ggdraw()+draw_label("Error") })
-  
-  plot = plot_grid(
-    gdraw("Additional metadata",18),
-    plot_grid(p1,p5,ncol=2),
-    plot_grid(p2,p3,p4,ncol=3),
-    p6,
-    ggdraw()+draw_label(""), #spacer
-    ncol=1,
-    rel_heights = c(0.27,0.5,0.35,0.25,0.27)
-  )
-  
-  return(list(plot,SB_filtering))
-}
-res = metrics_plots(obj)
-plot <- res[[1]]
-Misc(obj,"SB_filtering") <- res[[2]]
-make.pdf(plot,"plots/7metrics.pdf",7,8)
-
 ### Sample bead plots ##########################################################
 
-sample_bead_plots <- function(data.list, xlim, ylim) {
+sample_bead_plots <- function(data.list, xlim=range(df$x_um),ylim=range(df$y_um)) {
   plot.sb <- function(subdf) {
+    subdf %<>% arrange(lr)
     subdf1 <- filter(subdf,cluster==1)
     subdf2 <- filter(subdf,cluster==2)
     ggplot()+coord_fixed(ratio=1,xlim=xlim,ylim=ylim)+theme_void()+
-      geom_point(data=subdf, mapping=aes(x=x_um,y=y_um,col=umi),size=2,shape=16)+
+      geom_point(data=subdf, mapping=aes(x=x_um,y=y_um,col=lr),size=2,shape=16)+
       geom_point(aes(x=matrixStats::weightedMedian(subdf1$x_um,w=subdf1$umi),
                      y=matrixStats::weightedMedian(subdf1$y_um,w=subdf1$umi)),
                  color="red",shape=0,size=3) + 
       geom_point(aes(x=matrixStats::weightedMedian(subdf2$x_um,w=subdf2$umi),
                      y=matrixStats::weightedMedian(subdf2$y_um,w=subdf2$umi)),
-                 color="green",shape=0,size=3) + 
+                 color="green",shape=0,size=3) + ggtitle(g("{unique(subdf$cb_index)}")) +
       theme(legend.key.width=unit(0.5,"lines"), legend.position="right", legend.key.height=unit(1,"lines"), legend.title=element_blank(), legend.spacing.y=unit(0.2,"lines"), legend.margin=margin(0,0,0,0,"lines"), legend.box.margin=margin(0,0,0,0,"pt"), legend.box.background=element_blank(), legend.background=element_blank(), legend.direction="vertical", legend.justification="left",legend.box.just="left",legend.box.spacing=unit(0,"cm"))
     
   }
@@ -448,3 +298,10 @@ qpdf::pdf_combine(input = pdfs, output = "summary.pdf")
 qsave(obj, "seurat.qs") # we added some more metadata while plotting
 
 print("Done!")
+
+# Make some plots
+obj %<>% plot0("RNAcounts/metrics_summary.csv")             # cell ranger output
+obj %<>% plot1("RNAcounts/molecule_info.h5", cb_whitelist)  # cell calling
+obj %<>% plot2()                                            # UMAP + metrics
+obj %<>% plot3(df, puckdf, f)                               # raw spatial data
+obj %<>% plot4(df, puckdf)                                  # beadplot
