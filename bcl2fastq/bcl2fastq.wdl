@@ -5,6 +5,7 @@ task mkfastq {
     String bcl
     String samplesheet
     String technique
+    String parameters
     String fastq_output_path
     String log_output_path
     Int disksize
@@ -45,21 +46,24 @@ task mkfastq {
           --run=BCL                                         \
           --id=mkfastq                                      \
           --csv=Indexes.csv                                 \
-          --disable-ui |& ts
+          --disable-ui                                      \
+          ~{parameters} |& ts
     elif [[ ~{technique} == "cellranger-arc" ]]; then
         echo; echo "Running cellranger-arc mkfastq"
         time stdbuf -oL -eL cellranger-arc mkfastq          \
           --run=BCL                                         \
           --id=mkfastq                                      \
           --csv=Indexes.csv                                 \
-          --disable-ui |& ts
+          --disable-ui                                      \
+          ~{parameters} |& ts
     elif [[ ~{technique} == "cellranger-atac" ]]; then
         echo; echo "Running cellranger-atac mkfastq"
         time stdbuf -oL -eL cellranger-atac mkfastq         \
           --run=BCL                                         \
           --id=mkfastq                                      \
           --csv=Indexes.csv                                 \
-          --disable-ui |& ts
+          --disable-ui                                      \
+          ~{parameters} |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
@@ -189,6 +193,7 @@ workflow bcl2fastq {
         String bcl
         String samplesheet
         String technique
+        String parameters = ""
         String fastq_output_path = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(bcl,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
@@ -207,6 +212,7 @@ workflow bcl2fastq {
             bcl = bcl,
             samplesheet = samplesheet,
             technique = technique,
+            parameters = parameters,
             fastq_output_path = fastq_output_path,
             log_output_path = log_output_path,
             disksize = getdisksize.disksize,
