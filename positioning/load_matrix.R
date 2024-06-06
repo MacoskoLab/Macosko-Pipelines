@@ -448,7 +448,7 @@ plot_metrics <- function(metadata, out_path) {
     rel_heights = c(0.04,0.15,0.11,0.17,0.1)
   )
   
-  make.pdf(plot, file.path(out_path, "metrics.pdf"), 7, 8)
+  make.pdf(plot, file.path(out_path, "metrics_sb.pdf"), 7, 8)
   return(T)
 }
 plot_metrics(metadata, out_path)
