@@ -283,6 +283,20 @@ load_puckdf <- function(f) {
   puckdfs %<>% map(~filter(., !sb %in% Ns))
   puckdfs %<>% map(~filter(., mc <= 10, lr <= 7))
   
+  # scale the coordinates (to um)
+  get_scaling_factor <- function(bn) {
+    if (bn < 150000) {
+      k = 0.73
+    } else if (bn < 600000) {
+      k = 0.73 * 2
+    } else {
+      k = 0.645
+    }
+    return(k)
+  }
+  meta$puck_info$scaling_factors = map_dbl(meta$puck_info$num_beads, get_scaling_factor)
+  puckdfs %<>% map2(meta$puck_info$scaling_factors, ~transmute(.x, sb=sb, x=x*.y, y=y*.y))
+  
   # center the coordinates
   maxs = map_dbl(puckdfs, ~max(.$x))
   mins = map_dbl(puckdfs, ~min(.$x))
@@ -311,7 +325,7 @@ beadplot <- function(sb.data) {
     rasterize(geom_point(size=0.1, shape=16), dpi=200) +
     coord_fixed(ratio=1) +
     theme_classic() +
-    labs(x="x (raw)", y="y (raw)") +
+    labs(x="x (\u00B5m)", y="y (\u00B5m)") +
     scale_color_viridis(trans="log", option="B", name="UMI") + 
     ggtitle(g("SB UMI per bead"))
 }
@@ -372,12 +386,13 @@ plot_metrics <- function(metadata, out_path) {
   header = c("Metric", metadata$puck_info$puck_name %>% str_remove("^Puck_") %>% str_remove("\\.csv$"))
   plot.df = list(c("Beads", metadata$puck_info$num_beads %>% add.commas),
                  c("Filtered beads", Reduce(`+`,metadata$bead_info[c("num_dup","num_N","num_degen")]) %>% add.commas),
+                 c("Scaling factor", metadata$puck_info$scaling_factors),
                  c("Final UMIs", metadata$puck_info$umi_final %>% add.commas)
   ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(header)
   p_puck = plot_grid(gdraw("Puck information"),
                      plot.tab(plot.df),
                      gdraw(""), #spacer
-                     ncol=1, rel_heights=c(0.1,0.4,0.2))
+                     ncol=1, rel_heights=c(0.1,0.5,0.1))
   
   UP_matching = metadata$UP_matching
   SB_filtering = metadata$SB_filtering
@@ -440,5 +455,5 @@ plot_metrics(metadata, out_path)
 
 # write output
 print("Writing results")
-write.table(df, file.path(out_path, "matrix.csv"), sep=",", col.names=T, row.names=F, quote=F)
+df %>% setNames(c("cb_index","x_um","y_um","umi")) %>% write.table(file.path(out_path, "matrix.csv"), sep=",", col.names=T, row.names=F, quote=F)
 metadata %>% map(as.list) %>% toJSON(pretty = TRUE) %>% writeLines(file.path(out_path, "metadata.json"))
