@@ -73,7 +73,4 @@ RUN R -e "install.packages(c('qs',          \
                              'magrittr',    \
                              'parallel',    \
                              'gridExtra',   \
-                             'stringdist',  \
-                             'matrixStats', \
-                             'scattermore', \
                              'SeuratObject'), repos='http://cran.rstudio.com/')"
