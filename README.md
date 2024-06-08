@@ -7,14 +7,15 @@ bcl2fastq
 **Inputs**  
 * bcl: gs:// path to BCL  
 * samplesheet: gs:// path to samplesheet  
-* technique: "cellranger" or "cellranger-arc" or "cellranger-atac" (TODO bcl2fastq)  
+* technique: "cellranger" or "cellranger-arc" or "cellranger-atac" or "bcl2fastq"
 * fastq_output_path (optional): gs:// path to write fastqs (default fastqs/{basename(bcl)})  
 * log_output_path (optional): gs:// path to write logs (default logs/{basename(bcl)})
 
 **Commands**  
 * cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 * cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
-* cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
+* cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui
+* bcl2fastq --runfolder-dir BCL --input-dir BCL/Data/Intensities/BaseCalls --output-dir mkfastq --sample-sheet Indexes.csv --create-fastq-for-index-reads  
 * rm -rf mkfastq/MAKE_FASTQS_CS  
 
 **Outputs**  
