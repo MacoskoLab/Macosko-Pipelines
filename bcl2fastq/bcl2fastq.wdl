@@ -5,6 +5,7 @@ task mkfastq {
     String bcl
     String samplesheet
     String technique
+    String params
     String fastq_output_path
     String log_output_path
     Int disksize
@@ -67,7 +68,7 @@ task mkfastq {
           --input-dir ./BCL/Data/Intensities/BaseCalls      \
           --output-dir ./mkfastq                            \
           --sample-sheet ./Indexes.csv                      \
-          --create-fastq-for-index-reads |& ts
+          ~{params} |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
@@ -104,11 +105,9 @@ task mkfastq {
     echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
-    cp /cromwell_root/stdout mkfastq.out
-    cp /cromwell_root/stderr mkfastq.err
     log_output_path="~{log_output_path}"
-    gcloud storage cp mkfastq.out "${log_output_path%/}/mkfastq.out"
-    gcloud storage cp mkfastq.err "${log_output_path%/}/mkfastq.err"
+    gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/mkfastq.out"
+    gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/mkfastq.err"
     gcloud storage cp mkfastq.usage "${log_output_path%/}/mkfastq.usage"
     
     echo "<< completed mkfastq >>"
@@ -202,6 +201,7 @@ workflow bcl2fastq {
         String bcl
         String samplesheet
         String technique
+        String params = "--create-fastq-for-index-reads"
         String fastq_output_path = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(bcl,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
@@ -220,6 +220,7 @@ workflow bcl2fastq {
             bcl = bcl,
             samplesheet = samplesheet,
             technique = technique,
+            params = params,
             fastq_output_path = fastq_output_path,
             log_output_path = log_output_path,
             disksize = getdisksize.disksize,
