@@ -140,7 +140,7 @@ task getdisksize {
         fi
 
         # Assert that the disksize is not too large
-        if [[ $(cat SIZE) -gt 256 ]]
+        if [[ $(cat SIZE) -gt 512 ]]
         then
             echo "ERROR: reconstruction disk size limit reached, increase cap"
             rm -f SIZE
