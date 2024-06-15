@@ -72,7 +72,7 @@ def get_args():
         "-N", "--n_epochs",
         help="the number of training epochs to be used in optimizing the low dimensional embedding",
         type=int,
-        default=50000,
+        default=20000,
     )
     parser.add_argument(
         "-d", "--min_dist",
