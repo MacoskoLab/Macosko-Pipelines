@@ -71,7 +71,7 @@ task recon {
   }
   runtime {
     docker: docker
-    memory: "64 GB"
+    memory: "128 GB"
     disks: "local-disk ~{disksize} SSD"
     cpu: 80
     preemptible: 0
