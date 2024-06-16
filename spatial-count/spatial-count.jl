@@ -16,7 +16,7 @@ using Combinatorics: combinations
 
 # Read the command-line arguments
 if length(ARGS) != 2
-    error("Usage: julia readfastq.jl fastqpath puckpath")
+    error("Usage: julia spatial-count.jl fastqpath puckpath")
 end
 fastqpath = ARGS[1]
 println("FASTQ path: "*fastqpath)
