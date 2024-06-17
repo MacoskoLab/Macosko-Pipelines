@@ -210,7 +210,7 @@ tab2 = countmap([key[3] for key in keys(mat)])
 p4, bc2 = elbow_plot(values(tab2), uc2, "R2")
 
 p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
-savefig(p, joinpath(out_path, "QC.pdf"))
+savefig(p, joinpath(out_path, "elbows.pdf"))
 
 metadata["R1_umicutoff"] = uc1
 metadata["R2_umicutoff"] = uc2
