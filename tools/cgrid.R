@@ -538,6 +538,17 @@ anno_splines <- function(df) {
   return(dfs)
 }
 
+# First annotate the boundary, then annotate the center point
+# Returns a 2-list of splines to pass into "makegrid1"
+anno_blob <- function(df) {
+  boundary <- anno_spline(df)
+  boundary %<>% rbind(boundary[1,])
+  center <- anno_points(df, previous_lines = list(boundary))
+  stopifnot(nrow(center) == 1)
+  center <- data.frame(x=rep(center$x, nrow(boundary)), y=rep(center$y, nrow(boundary)))
+  return(list(center, boundary))
+}
+
 ### Workflow ###################################################################
 
 # Load + select data
