@@ -1,18 +1,26 @@
 # Run positioning for each cell in input dataframe (matrix.csv -> coords.csv)
 library(glue) ; g=glue ; len=length
+library(gridExtra)
 library(magrittr)
+library(ggplot2)
+library(cowplot)
 library(dbscan)
 library(dplyr)
 library(purrr)
+library(rdist)
 
-matrix_path = "output/matrix.csv"
-out_path = "output"
-setwd("~/spatial")
+# DBSCAN hyperparameters
+eps.vec = c(50, 100)
+minPts.vec = c(3:42) # auto-searches up to 40x26
+# KDE hyperparameters
+bw = 800 # bandwith of kernel
+radius = 200 # inclusion radius around density peak
 
+# parse arguments
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 2) {
-  matrix_path <- args[[1]]
-  out_path <- args[[2]]
+  matrix_path <- args[[1]] # (cell, x, y, umi) dataframe
+  out_path <- args[[2]]    # path to write coords and plots
 } else {
   stop("Usage: Rscript positioning.R matrix_path output_path", call. = FALSE)
 }
@@ -22,9 +30,11 @@ if (!dir.exists(out_path)) { dir.create(out_path, recursive = T) }
 # load data.list
 df = read.table(matrix_path, header=T, sep=",")
 stopifnot(names(df) == c("cb_index", "x_um", "y_um", "umi"))
-xlims = range(df$x_um)
-ylims = range(df$y_um)
+xlims = range(df$x_um) ; xrange = max(df$x_um) - min(df$x_um)
+ylims = range(df$y_um) ; yrange = max(df$y_um) - min(df$y_um)
+num_pucks = round(xrange/yrange) # for plot layout
 data.list = split(df, df$cb_index)
+data.list %<>% map(~arrange(.,desc(umi),cb_index))
 rm(df) ; invisible(gc())
 print(g("Running positioning on {len(data.list)} cells"))
 
@@ -34,13 +44,27 @@ library(future)
 library(parallel)
 ncores = parallel::detectCores()
 plan(multisession, workers=ncores)
+
+# helper methods
 chunk_vector <- function(v, chunk_size) {return(split(v, ceiling(seq_along(v) / chunk_size)))}
+gdraw <- function(text, s=14) {ggdraw()+draw_label(text, size=s)}
+plot.tab <- function(df) {return(plot_grid(tableGrob(df)))}
+add.commas <- function(num){prettyNum(num, big.mark=",")}
+make.pdf <- function(plots, name, w, h) {
+  if ("gg" %in% class(plots) || class(plots)=="Heatmap") {plots = list(plots)}
+  pdf(file=name, width=w ,height=h)
+  lapply(plots, function(x){print(x)})
+  dev.off()
+}
+h_index <- function(vec) {
+  hdf = data.frame(x=vec) %>% group_by(x) %>% summarize(n=n()) %>% arrange(desc(x)) %>% mutate(n = cumsum(n))
+  return(max(pmin(hdf$x,hdf$n)))
+}
 
 ### Run DBSCAN #################################################################
 
 # Do a grid search to find the ideal DBSCAN parameters
 opt_dbscan <- function(data.list) {
-  eps.vec = c(50, 100) ; minPts.vec = c(3:42)
   res = data.frame()
   for (k in 0:26) {
     params = expand.grid(eps.vec, minPts.vec) %>% setNames(c("eps","minPts"))
@@ -59,24 +83,37 @@ opt_dbscan <- function(data.list) {
     if (p < 0.9) {
       break
     }
-    minPts.vec %<>% add(40)
+    minPts.vec %<>% add(len(minPts.vec))
   }
-  
   res$is.max = res$pct==max(res$pct)
-  eps = res$eps[res$is.max][[1]] ; minPts = res$minPts[res$is.max][[1]]
-  pct.placed = round(max(res$pct)*100, 2)
-  print(g("Optimal eps: {eps} \t Optimal minPts: {minPts} \t %placed: {pct.placed}"))
-  
-  return(c(eps, minPts, pct.placed))
+  return(res)
 }
+params = opt_dbscan(data.list)
+eps = params$eps[params$is.max][[1]]
+minPts = params$minPts[params$is.max][[1]]
+pct.placed = round(max(params$pct)*100, 2)
+print(g("Optimal eps: {eps} \t Optimal minPts: {minPts} \t %placed: {pct.placed}"))
+optim_plot = ggplot(params, aes(x=minPts, y=pct*100, col=as.factor(eps))) + geom_line() +
+  theme_bw() + ylab("% Placed") + labs(col="eps") + ggtitle("Parameter optimization") +
+  geom_vline(xintercept = minPts, color = "red", linetype = "dashed") +
+  annotate(geom = 'text', label = g("eps: {eps}\nminPts: {minPts}\nplaced: {pct.placed}%"), x = minPts+1, y = 0, hjust = 0, vjust = 0, col="red") + 
+  theme(legend.position = c(0.95, 0.50), legend.justification = c("right", "center"), legend.background = element_blank(), legend.spacing.y = unit(0.1,"lines"))
+data.list %<>% lapply(function(df){
+  mutate(df,
+         cluster = dbscan::dbscan(df[c("x_um","y_um")], eps=eps, minPts=minPts, weights=df$umi, borderPoints=F)$cluster,
+         eps = eps,
+         minPts = minPts,
+         pct.placed = pct.placed)
+})
 
-# assign centroid and record metadata
+# Assign centroid and record metadata
 create_dbscan_coords <- function(data.list) {
   coords = lapply(data.list, function(df) {
     p = c(x_um = NA,
           y_um = NA,
-          DBSCAN_clusters = max(df$cluster),
-          SB_umi = sum(df$umi),
+          clusters = max(df$cluster),
+          umi = sum(df$umi),
+          beads = nrow(df),
           SNR = NA,
           minPts = unique(df$minPts) %>% {ifelse(is.null(.), NA, .)} %T>% {stopifnot(len(.)==1)},
           eps = unique(df$eps) %>% {ifelse(is.null(.), NA, .)} %T>% {stopifnot(len(.)==1)},
@@ -92,278 +129,275 @@ create_dbscan_coords <- function(data.list) {
   }) %>% bind_rows %>% as.data.frame %>% mutate(cb_index=as.numeric(names(data.list))) %>% select(cb_index, everything())
   return(coords)
 }
-
-params = opt_dbscan(data.list)
-data.list %<>% lapply(function(df){
-  mutate(df,
-         cluster = dbscan::dbscan(df[c("x_um","y_um")], eps=params[[1]], minPts=params[[2]], weights=df$umi, borderPoints=F)$cluster,
-         eps = params[[1]],
-         minPts = params[[2]],
-         pct.placed = params[[3]])
-})
 dbscan_coords <- create_dbscan_coords(data.list)
 invisible(gc())
 
-### Plot DBSCAN ################################################################
-
-# make a ggplot in there
-
-plot_dbscan <- function(obj, coords) {
+# Plot the results
+plot_dbscan <- function(coords, optim_plot) {
   # Panel 1: DBSCAN cluster distribution
-  d = data.frame(x=coords$DBSCAN_clusters) %>% rowwise %>% mutate(x=min(x,10)) %>% ungroup
-  p1 = ggplot(d,aes(x=x)) + geom_histogram(aes(y = after_stat(count)/sum(after_stat(count))*100), binwidth=.5) +
+  d = data.frame(x=coords$clusters) %>% rowwise %>% mutate(x=min(x,5)) %>% ungroup
+  p1 = ggplot(d, aes(x=x)) + geom_histogram(aes(y = after_stat(count)/sum(after_stat(count))*100), binwidth=.5) +
     geom_text(aes(label = sprintf("%1.0f%%", after_stat(count)/sum(after_stat(count))*100), y=after_stat(count)/sum(after_stat(count))*100), stat="bin", binwidth=1, vjust=-0.5)+
-    theme_classic() + xlab("Num DBSCAN clusters") + ylab("Percent") +
+    theme_classic() + xlab("DBSCAN clusters") + ylab("Percent") +
     scale_y_continuous(limits=c(0,100)) +
-    scale_x_continuous(breaks=min(d$x):max(d$x), labels=(min(d$x):max(d$x)) %>% {ifelse(.==10, "10+", .)}) +
-    ggtitle("DBSCAN cluster distribution")
+    scale_x_continuous(breaks=min(d$x):max(d$x), labels=(min(d$x):max(d$x)) %>% {ifelse(.==5, "5+", .)}) +
+    ggtitle("Cluster distribution")
   
-  # Panel 2: SNR density
-  max_density_x = density(obj$SNR %>% na.omit) %>% {.$x[which.max(.$y)]}
-  max_density_x = median(obj$SNR, na.rm = T)
-  p2 = obj@meta.data %>% filter(!is.na(x_um)) %>% ggplot(aes(x = SNR)) +
-    geom_density() + 
+  # Panel 3: SB UMI distribution
+  d = coords %>% rowwise %>% mutate(x=min(clusters,5)) %>% ungroup
+  p3 = ggplot(d, aes(x=as.factor(x), y=log10(umi))) + geom_violin(scale="count") + 
+    scale_x_discrete(breaks=min(d$x):max(d$x), labels=(min(d$x):max(d$x)) %>% {ifelse(.==5, "5+", .)}) +
+    xlab("DBSCAN clusters") + ylab("log10 SB UMI") + ggtitle("SB UMI distribution") + theme_classic()
+  
+  # Panel 4: SNR density
+  max_density_x = mean(coords$SNR, na.rm=T)
+  p4 = coords %>% filter(!is.na(x_um)) %>% ggplot(aes(x = SNR)) + geom_density() + 
     theme_minimal() +
     labs(title = "SNR per cell (density)", x = "SNR", y = "Density") + 
     geom_vline(xintercept = max_density_x, color = "red", linetype = "dashed") +
     annotate(geom = 'text', label = round(max_density_x, 2), x = max_density_x+0.01, y = Inf, hjust = 0, vjust = 1, col="red")
   
-  # Panel 3: RNA umi vs SB umi
-  p3 = data.frame(x=obj$nCount_RNA,y=obj$SB_umi,placed=!is.na(obj$x_um)) %>% {ggplot(.,aes(x=log10(x),y=log10(y),col=placed))+geom_point(size=0.2)+theme_bw()+xlab("RNA UMI")+ylab("SB UMI")+ggtitle("SB UMI vs. RNA UMI")+theme(legend.position = c(0.95, 0.05), legend.justification = c("right", "bottom"), legend.background = element_blank(), legend.title=element_text(size=10), legend.text=element_text(size=8), legend.margin=margin(0,0,0,0,"pt"), legend.box.margin=margin(0,0,0,0,"pt"), legend.spacing.y = unit(0.1,"lines"), legend.key.size = unit(0.5, "lines"))}
-  
-  # Panel 4: DBSCAN parameters
-  df = coords %>% select(SB_bin,minPts,eps,pct.placed) %>% distinct %>% arrange(SB_bin) %>% mutate(SB_bin=round(SB_bin,2),pct.placed=round(pct.placed,2) %>% paste0("%"))
-  rownames(df) <- NULL
-  p4 = plot_grid(gdraw("DBSCAN parameters"),plot.tab(df),ncol=1,rel_heights=c(1,17))
-  
-  plot = plot_grid(p1,p2,p3,p4,ncol=2)
+
+  plot = plot_grid(gdraw("DBSCAN Results"),
+                   plot_grid(p1, optim_plot, p3, p4, ncol=2),
+                   ncol=1, rel_heights=c(0.05,0.95))
   return(plot)
 }
-plot <- plot_dbscan(obj, coords)
-make.pdf(plot,"plots/5DBSCAN.pdf",7,8)
+plot <- plot_dbscan(dbscan_coords, optim_plot)
+make.pdf(plot, file.path(out_path, "DBSCAN.pdf"), 7, 8)
 
+### Run KDE ####################################################################
 
+# note: density of lone point is num umi, then add umis from surroundings weighted by umi
+# note: filter out singletons when max umi > 2
+kde <- function(df, bw, radius) {
+  cb_i = unique(df$cb_index) ; stopifnot(len(cb_i)==1)
+  df %<>% select(x_um, y_um, umi)
+  res = c(cb_index=cb_i,
+          x_um=NA, y_um=NA, x2_um=NA, y2_um=NA,
+          d1=NA, d2=NA,
+          sumi=NA, sbeads=NA, max=max(df$umi), r=NA, h=NA)
+  if(nrow(df) == 1) {
+    res[c("x_um", "y_um", "d1", "d2", "umi", "beads", "r", "h")] = c(df$x_um, df$y_um, df$umi, 0, df$umi, 1, 1, 1)
+    return(res)
+  }
+  if (max(df$umi) >= 3) {df %<>% filter(umi > 1)}
+  xmu = pdist(df[,c("x_um","y_um")])
+  df$density = exp(-xmu^2/bw) %>% sweep(MARGIN=1, STATS=df$umi, FUN="*") %>% colSums # broadcast the umi vector across the columns
+  
+  rowmax = df %>% {.[which.max(.$density),]}
+  df$near = (df$x_um-rowmax$x_um)^2 + (df$y_um-rowmax$y_um)^2 < radius^2
+  rowmax2 = df %>% filter(!near) %>% {.[which.max(.$density),]}
+  if (nrow(rowmax2)==0) {df$near2=F} else {df$near2 = (df$x_um-rowmax2$x_um)^2 + (df$y_um-rowmax2$y_um)^2 < radius^2}
+  
+  # if (any(df$near & df$near2)) {print("check debug, might increase radius")}
+  
+  sdf <- df %>% filter(near)
+  sdf2 <- df %>% filter(near2)
+  
+  res[c("x_um","y_um","x2_um","y2_um")] = c(weighted.mean(sdf$x_um, w=sdf$umi),
+                                            weighted.mean(sdf$y_um, w=sdf$umi),
+                                            weighted.mean(sdf2$x_um, w=sdf2$umi) %>% {ifelse(is.nan(.), NA, .)},
+                                            weighted.mean(sdf2$y_um, w=sdf2$umi) %>% {ifelse(is.nan(.), NA, .)}
+  )
+  res[c("d1","d2","sumi","sbeads","r","h")] = c(rowmax$density,
+                                                rowmax2$density %>% {ifelse(len(.)==0, 0, max(.))},
+                                                sum(sdf$umi),
+                                                nrow(sdf),
+                                                r=sum(sdf$umi)/max(sdf$umi),
+                                                h=h_index(sdf$umi)
+  )
+  return(res)
+}
+kde_coords <- map(data.list, ~kde(., bw, radius)) %>% bind_rows
+stopifnot(!is.na(kde_coords$d1), !is.na(kde_coords$d2))
+kde_coords %<>% mutate(ratio = d2/d1) %>% select(1:7, ratio, everything())
 
-sample_bead_plots <- function(data.list, xlim=range(df$x_um),ylim=range(df$y_um)) {
-  plot.sb <- function(subdf) {
-    subdf %<>% arrange(lr)
-    subdf1 <- filter(subdf,cluster==1)
-    subdf2 <- filter(subdf,cluster==2)
-    ggplot()+coord_fixed(ratio=1,xlim=xlim,ylim=ylim)+theme_void()+
-      geom_point(data=subdf, mapping=aes(x=x_um,y=y_um,col=lr),size=2,shape=16)+
-      geom_point(aes(x=matrixStats::weightedMedian(subdf1$x_um,w=subdf1$umi),
-                     y=matrixStats::weightedMedian(subdf1$y_um,w=subdf1$umi)),
-                 color="red",shape=0,size=3) + 
-      geom_point(aes(x=matrixStats::weightedMedian(subdf2$x_um,w=subdf2$umi),
-                     y=matrixStats::weightedMedian(subdf2$y_um,w=subdf2$umi)),
-                 color="green",shape=0,size=3) + ggtitle(g("{unique(subdf$cb_index)}")) +
-      theme(legend.key.width=unit(0.5,"lines"), legend.position="right", legend.key.height=unit(1,"lines"), legend.title=element_blank(), legend.spacing.y=unit(0.2,"lines"), legend.margin=margin(0,0,0,0,"lines"), legend.box.margin=margin(0,0,0,0,"pt"), legend.box.background=element_blank(), legend.background=element_blank(), legend.direction="vertical", legend.justification="left",legend.box.just="left",legend.box.spacing=unit(0,"cm"))
+plot_kde <- function(kde_coords) {
+  p1 <- kde_coords %>% ggplot(aes(x=x_um,y=y_um))+geom_point(size=0.1,shape=16)+coord_fixed()+theme_classic()+ggtitle("Location of highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
+  p3 <- kde_coords %>% ggplot(aes(x=x2_um,y=y2_um))+geom_point(size=0.1,shape=16)+coord_fixed()+theme_classic()+ggtitle("Location of second-highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
+  #p1 <- kde_coords %>% ggplot(aes(x=x_um,y=y_um))+geom_bin2d(bins=c(round(xrange/50),round(yrange/50)))+coord_fixed()+theme_classic()+ggtitle("Distribution of highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
+  #p3 <- kde_coords %>% ggplot(aes(x=x2_um,y=y2_um))+geom_bin2d(bins=c(round(xrange/50),round(yrange/50)))+coord_fixed()+theme_classic()+ggtitle("Distribution of second-highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
+  
+  label = g("3:1\ncells: {sum(kde_coords$ratio<1/3)}/{nrow(kde_coords)} ({round(sum(kde_coords$ratio<1/3)/nrow(kde_coords)*100,2) %>% paste0('%')})")
+  p2 <- kde_coords %>% ggplot(aes(x = ratio)) + geom_density() + 
+    theme_minimal() + theme(plot.title=element_text(size=12)) + 
+    labs(title = "Distribution of top-2 density ratio", x = "Ratio", y = "Density") + 
+    geom_vline(xintercept = 1/3, color = "red", linetype = "dashed") +
+    annotate(geom = 'text', label = label, x = 1/3+0.01, y = Inf, hjust = 0, vjust = 1, col="red")
+  
+  p4 <- kde_coords %>% mutate(dist=sqrt((x_um-x2_um)^2+(y_um-y2_um)^2)) %>% ggplot(aes(x=dist))+geom_histogram()+theme_bw()+
+    xlab("Distance (\u00B5m)")+ylab("Frequency")+ggtitle("Distance between top-2 densities")+theme(plot.title=element_text(size=12))
+  
+  plot = plot_grid(gdraw("KDE Results"),
+                   plot_grid(p1, p2, p3, p4, ncol=2),
+                   ncol=1, rel_heights=c(0.05,0.95))
+  return(plot)
+}
+plot <- plot_kde(kde_coords)
+make.pdf(plot, file.path(out_path, "KDE.pdf"), 7, 8)
+
+### More plots + save output ###################################################
+stopifnot(dbscan_coords$cb_index == kde_coords$cb_index)
+coords <- merge(dbscan_coords, kde_coords, by="cb_index", suffix=c("_dbscan","_kde"))
+
+dbscan_vs_kde <- function(coords) {
+  # Panel 1: Distance between DBSCAN and KDE assignments
+  coords %<>% mutate(dist=sqrt((x_um_dbscan-x_um_kde)^2+(y_um_dbscan-y_um_kde)^2))
+  max_density_x = median(coords$dist, na.rm=T) %>% log10
+  p1 <- ggplot(coords, aes(x=log10(dist)))+geom_histogram()+theme_bw()+
+    labs(title = "DBSCAN vs KDE distance", x = "log10 Distance (\u00B5m)", y = "Frequency") + 
+    geom_vline(xintercept = max_density_x, color = "red", linetype = "dashed") +
+    annotate(geom = 'text', label = round(max_density_x, 2) %>% paste0("\u00B5m"), x = max_density_x+0.1, y = Inf, hjust = 0, vjust = 1.3, col="red")
+  
+  # Panel 2: Distribution of KDE ratio for each DBSCAN cluster
+  d = coords %>% rowwise %>% mutate(clusters=min(clusters,5)) %>% ungroup
+  p2 <- ggplot(d, aes(x=clusters %>% as.factor, y=ratio)) + geom_violin() +
+    theme_classic() + xlab("DBSCAN clusters") + ylab("KDE ratio") +
+    scale_x_discrete(breaks=min(d$clusters):max(d$clusters), labels=(min(d$clusters):max(d$clusters)) %>% {ifelse(.==5, "5+", .)}) +
+    ggtitle("KDE ratio per DBSCAN cluster") + 
+    geom_hline(yintercept = 1/3, color = "red", linetype = "dashed")
+  
+  # Panel 3: KDE ratio for disagreeing placements
+  p3 <- coords %>% filter(clusters==1) %>% ggplot(aes(x=dist, y=ratio))+geom_point(size=0.5)+theme_bw()+
+    xlab("Distance between assignments")+ylab("KDE ratio")+ggtitle("Density ratio of disagreements")+
+    geom_hline(yintercept = 1/3, color = "red", linetype = "dashed")
+  
+  # Panel 4: Contingency table of placements
+  d = coords %>% mutate(dbscan_pass=clusters==1, kde_pass=ratio<1/3) %>% group_by(dbscan_pass, kde_pass) %>% summarize(n=n()) %>% ungroup %>% mutate(pct=g("{round(n/sum(n)*100,2)}%\n{n}"))
+  p4 <- ggplot(d, aes(x=dbscan_pass,y=kde_pass,fill=n))+geom_tile()+geom_text(label=d$pct)+theme_bw()+
+    xlab("DBSCAN=1")+ylab("KDE < 1/3")+theme(legend.position="none")+coord_fixed()+ggtitle("Placement table")
     
+  plot = plot_grid(gdraw("DBSCAN vs. KDE Comparison"),
+                   plot_grid(p1, p2, p3, p4, ncol=2),
+                   ncol=1, rel_heights=c(0.05,0.95))
+  return(plot)
+}
+plot <- dbscan_vs_kde(coords)
+make.pdf(plot, file.path(out_path, "DBSCANvsKDE.pdf"), 7, 8)
+
+sample_bead_plots <- function(data.list, coords) {
+  plot.sb <- function(cb_i) {
+    row = coords %>% filter(cb_index==cb_i) %T>% {stopifnot(nrow(.)==1)}
+    subdf = data.list[[as.character(cb_i)]] ; stopifnot(subdf$cb_index == cb_i)
+    subdf %<>% arrange(umi) %>% filter(!is.na(x_um), !is.na(y_um))
+    subdf1 <- filter(subdf, cluster==1)
+    subdf2 <- filter(subdf, cluster==2)
+    
+    ggplot() + coord_fixed(ratio=1 ,xlim=xlims, ylim=ylims) + theme_void() +
+      geom_point(data=subdf, mapping=aes(x=x_um, y=y_um, col=umi), size=2, shape=16)+
+      geom_point(aes(x=row$x_um_kde, y=row$y_um_kde), color="red", shape=5, size=3) + 
+      geom_point(aes(x=weighted.mean(subdf1$x_um, w=subdf1$umi),
+                     y=weighted.mean(subdf1$y_um, w=subdf1$umi)),
+                     color="red", shape=0, size=3) + 
+      geom_point(aes(x=weighted.mean(subdf2$x_um, w=subdf2$umi),
+                     y=weighted.mean(subdf2$y_um, w=subdf2$umi)),
+                     color="green", shape=0, size=3) +
+      ggtitle(g("[{unique(subdf$cb_index)}] ({round(row$ratio,2)})")) +
+      theme(legend.key.width=unit(0.5,"lines"),
+            legend.position="right",
+            legend.key.height=unit(1,"lines"),
+            legend.title=element_blank(),
+            legend.spacing.y=unit(0.2,"lines"),
+            legend.margin=margin(0,0,0,0,"lines"),
+            legend.box.margin=margin(0,0,0,0,"pt"),
+            legend.box.background=element_blank(),
+            legend.background=element_blank(),
+            legend.direction="vertical",
+            legend.justification="left",
+            legend.box.just="left",
+            legend.box.spacing=unit(0,"cm"),
+            plot.title = element_text(hjust = 0.5))
   }
   
-  list0 = data.list %>% keep(~max(.$cluster)==0) %>% map(~arrange(.,umi) %>% filter(!is.na(x_um), !is.na(y_um)))
-  list1 = data.list %>% keep(~max(.$cluster)==1) %>% map(~arrange(.,umi) %>% filter(!is.na(x_um), !is.na(y_um)))
-  list2 = data.list %>% keep(~max(.$cluster)==2) %>% map(~arrange(.,umi) %>% filter(!is.na(x_um), !is.na(y_um)))
-  
-  list0 = list0[as.integer(map(list0,nrow))!=0]
-  list1 = list1[as.integer(map(list1,nrow))!=0]
-  list2 = list2[as.integer(map(list2,nrow))!=0]
-  
+  list0 = data.list %>% keep(~max(.$cluster)==0 & nrow(.)>0) %>% names %>% as.numeric
+  list1 = data.list %>% keep(~max(.$cluster)==1 & nrow(.)>0) %>% names %>% as.numeric
+  list2 = data.list %>% keep(~max(.$cluster)==2 & nrow(.)>0) %>% names %>% as.numeric
+
   if(len(list0) > 0) {
-    p1 = plot_grid(ggdraw()+draw_label("DBSCAN=0"), map(sample(list0,min(12,len(list0)),replace=F),plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1,rel_heights=c(0.1,2))
+    p1 = plot_grid(ggdraw()+draw_label("DBSCAN=0"),
+                   list0 %>% sample(min(12,len(list0)), replace=F) %>% map(plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1, rel_heights=c(0.1,2))
   } else {p1 = gdraw("No DBSCAN = 0")}
   if(len(list1) > 0) {
-    p2 = plot_grid(ggdraw()+draw_label("DBSCAN=1"), map(sample(list1,min(12,len(list1)),replace=F),plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1,rel_heights=c(0.1,2))
+    p2 = plot_grid(ggdraw()+draw_label("DBSCAN=1"),
+                   list1 %>% sample(min(12,len(list1)), replace=F) %>% map(plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1, rel_heights=c(0.1,2))
   } else {p2 = gdraw("No DBSCAN = 1")}
   if(len(list2) > 0) {
-    p3 = plot_grid(ggdraw()+draw_label("DBSCAN=2"), map(sample(list2,min(12,len(list2)),replace=F),plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1,rel_heights=c(0.1,2))
+    p3 = plot_grid(ggdraw()+draw_label("DBSCAN=2"),
+                   list2 %>% sample(min(12,len(list2)), replace=F) %>% map(plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1, rel_heights=c(0.1,2))
   } else {p3 = gdraw("No DBSCAN = 2")}
   
-  plots = list(p1,p2,p3)
+  plots = list(p1, p2, p3)
   
   return(plots)
 }
-plots <- sample_bead_plots(data.list)
-make.pdf(plots,"plots/SB.pdf",7,7)
+plots <- sample_bead_plots(data.list, coords)
+make.pdf(plots, file.path(out_path, "samples.pdf"), 7, 8)
 
+# set x_um, y_um to be the filtered DBSCAN placements where ratio<1/3
+coords %<>% mutate(x_um = ifelse(ratio<1/3, x_um_dbscan, NA),
+                  y_um = ifelse(ratio<1/3, y_um_dbscan, NA)) %>% select(cb_index, x_um, y_um, everything())
 
+write.table(coords, file.path(out_path, "coords.csv"), sep=",", row.names=F, col.names=T, quote=F)
 
+### Position debugging (optional) ##############################################
 
-
-
-
-
-
-### Positioning ################################################################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-head(data.list)
-
-plan(multisession, workers=20L) # plan(sequential, workers=20L)
-NULLto0 <- function(val) {return(ifelse(is.null(val)||is.na(val)||len(val)==0, 0, val))}
-chunk_vector <- function(v, chunk_size) {return(split(v, ceiling(seq_along(v) / chunk_size)))}
-identify <- function(obj,clusts = NA) {
-  if (!is.na(clusts)) {obj = obj[,obj$seurat_clusters %in% clusts]}
-  obj = obj[,!is.na(obj$x_um)]
-  which(anno.polygon(obj$x_um,obj$y_um,obj$seurat_clusters))
-}
-
-puckdf = data[[15]][[2]]
-df = data[[15]][[1]] %>% count_umis %>% merge(y=puckdf,all.x=T,by="sb_index")
-cb.data = df %>% group_by(cb_index) %>% dplyr::summarize(umi=sum(umi),n=n()) %>% ungroup
-
-obj=qread("seurat15.qs")
-obj=obj[,!obj$seurat_clusters %in% c(0,6,13,26,18)] %>% process
-
-DimPlot(obj,label=T)
-
-################################################################################
-
-# remove df dependence
-plot.sb <- function(subdf) {
-  stopifnot(c("x_um","y_um","umi") %in%names(df)) ; stopifnot(cb_i %in% df$cb_index)
-  subdf %<>% arrange(umi)
-  ggplot() + coord_fixed(ratio=1, xlim=range(df$x_um), ylim=range(df$y_um)) + theme_void() +
-    geom_point(data=subdf, mapping=aes(x=x_um,y=y_um,col=umi), size=2, shape=16) +
-    theme(legend.key.width=unit(0.5,"lines"), legend.position="right", legend.key.height=unit(1,"lines"), legend.title=element_blank(), legend.spacing.y=unit(0.2,"lines"), legend.margin=margin(0,0,0,0,"lines"), legend.box.margin=margin(0,0,0,0,"pt"), legend.box.background=element_blank(), legend.background=element_blank(), legend.direction="vertical", legend.justification="left",legend.box.just="left",legend.box.spacing=unit(0,"cm"))
-}
-
-# remove df dependence
-# note: density of lone point is num umi, then add umis from surroundings weighted by umi
-generate_kde <- function(subdf, r=200, bw=20, plot=F) {
-  cb_i = unique(subdf$cb_index) ; stopifnot(len(cb_i)==1)
-  subdf %<>% select(x_um,y_um,umi)
-  res = c(cb_index=cb_i,
-          x=NA, y=NA,
-          d1=NA, d2=NA,
-          totumi=sum(subdf$umi),totbeads=nrow(subdf),
-          umi=NA,beads=NA)
-  if(nrow(subdf)==1) {res[c("x","y","d1","d2","umi","beads")]=c(subdf$x_um,subdf$y_um,subdf$umi,0,subdf$umi,1) ; return(res)}
-  subdf %<>% filter(umi>0.1*max(subdf$umi))
-  
-  xmu = pdist(subdf[,c("x_um","y_um")])
-  subdf$val = exp(-xmu^2/(2*bw^2)) %>% sweep(MARGIN=1, STATS=subdf$umi, FUN="*") %>% colSums
-  rowmax = subdf[which.max(subdf$val),]
-  subdf$near = (subdf$x_um-rowmax$x_um)^2 + (subdf$y_um-rowmax$y_um)^2 < r^2
-  rowmax2 = subdf %>% filter(!near) %>% {.[which.max(.$val),]}
-  #if (nrow(rowmax2)==0) {rowmax2 = data.frame(x_um=NA,y_um=NA,umi=NA,val=NA)}
-  
-  sdf <- subdf %>% filter(near)
-  x = matrixStats::weightedMedian(sdf$x_um,w=sdf$umi)
-  y = matrixStats::weightedMedian(sdf$y_um,w=sdf$umi)
-  beads = sum(sdf$umi)/max(sdf$umi)
-  res[c("x","y","d1","d2","umi","beads")]=c(x,y,rowmax$val,NULLto0(rowmax2$val),sum(sdf$umi),beads)
-  
-  if (plot) {
-    subdf %<>% arrange(val)
-    p <- ggplot(subdf, aes(x=x_um,y=y_um,col=val))+geom_point()+
-      annotate("path",x=rowmax$x_um+r*cos(seq(0,2*pi,length.out=100)),y=rowmax$y_um+r*sin(seq(0,2*pi,length.out=100))) +
-      geom_point(aes(x=!!x,y=!!y), colour="red", shape=0, size=4) +
-      coord_fixed(ratio=1) + theme_void() + ggtitle(g("{cb_i} {round(res[['d2']],2)}/{round(res[['d1']],2)} ({round(res[['d2']]/res[['d1']],2)}) umi={round(res[['umi']],2)} beads={round(res[['beads']],2)} bw={bw}"))
-    if (nrow(rowmax2)>0){p <- p + geom_point(aes(x=rowmax2$x_um,y=rowmax2$y_um), colour="blue", shape=1, size=4)}
-    return(p)
-  }
-  
-  return(res)
-}
-
-debug_position <- function(df, cb_i) {
-  print(cb_i)
-  stopifnot(c("x_um","y_um","umi") %in% names(df))
-  stopifnot(cb_i %in% df$cb_index)
-  subdf <- df %>% filter(cb_index==cb_i)
-  
-  range = 1:30*2
-  search = data.frame(a=range, b=map_dbl(range, function(bw) {generate_kde(subdf, bw=bw, plot=F) %>% {.[["d2"]]/.[["d1"]]} }))
-  if (max(search$b)==0) {newbw=20} else {newbw = range[[which.min(search$b)[[1]]]]}
-  
-  p1 = plot.sb(subdf)
-  p2 = generate_kde(subdf,plot=T)
-  p4 = generate_kde(subdf,bw=newbw,plot=T)
-  p3 = search %>% ggplot(aes(x=a,y=b))+geom_point()+ylim(0,1)
-  plot_grid(p1,p2,p3,p4,ncol=2)
-}
-
-debug_position(df=df,cb_i=sample(1:ncol(obj),1))
-debug_position(df=df,cb_i=2070)
-debug_position(df=df,cb_i=7089)
-
-
-data.list = split(df, df$cb_index) %>% map(~arrange(.,umi))
-cb_is = map_int(data.list,~unique(.$cb_index))
-
-
-v=chunk_vector(data.list,ceiling(len(data.list)/20))
-res = furrr::future_map(v,function(b){map(b,~generate_kde(.))}, .options=furrr_options(seed=T)) %>% unlist(recursive=F)
-coords <- res %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("x_um","y_um","val1","val2","snr","n"))
-coords %<>% mutate(cb_index=cb_is, p=val2/val1)
-stopifnot(res2$cb_index == sort(res2$cb_index))
-
-
-coords$placed = !is.na(obj$x_um)
-ggplot(coords,aes(x=val1 %>% log10,y=val2 %>% log10,col=placed))+geom_point(size=0.2)+theme_bw()
-
-obj$x = coords$x_um
-obj$y = coords$y_um
-emb = obj@meta.data[,c("x","y")] ; colnames(emb) = c("s_1","s_2")
-obj[["spatial2"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_")
-
-DimPlot(obj[,coords$p<0.5],reduction="spatial",split.by="seurat_clusters",ncol=6)
-
-sum(tidyr::replace_na(coords$p,0)<0.5)/nrow(coords)
-sum(!is.na(obj$x_um))/ncol(obj)
-
-
-
-
-which((obj@reductions$umap@cell.embeddings[,1]< -5)&(obj$seurat_clusters==14)&(obj$outlier==T))
-
-# try knn?
-coord_fixed(ratio=1)
-
-# compute the KDE
-
-kde$m = map2_lgl(kde$x,kde$y,function(x,y){(irow$x-x)**2+(irow$y-y)**2<r**2})
-orow = filter(kde,!m) %>% {.[which.max(.$val),]}
-pd.emp = orow$val/irow$val
-
-df$m = map2_lgl(df$x_um,df$y_um,function(x,y){(x-irow$x)**2+(y-irow$y)**2<r**2})
-pr.emp = sum(filter(df,m)$umi)/sum(df$umi)
-
-res = c(irow[c("x","y")], orow[c("x","y")], pd.emp, pr.emp) %>% setNames(c("x1","y1","x2","y2","pd.emp","pr.emp")) %>% unlist
-return(res)
-
-
-
-head(df)
-head(data.list)
-data.list %<>% map(~mutate(.,cluster=0))
-
-plot.sb(data.list[[1]])
-plot.kde <- function(subdf) {
-  subdf %<>% arrange(umi)
-  if(nrow(subdf)==1) {return()}
-  p = Nebulosa:::wkde2d(x=subdf$x_um, y=subdf$y_um, w=subdf$umi, adjust=c(1,xrange/yrange)/exp(1), h=1, n=200, lims=c(range(df$x_um), range(df$y_um))) %>% {transmute(reshape2::melt(as.matrix(.[[3]])), x_um=.[[1]][Var1], y_um=.[[2]][Var2], value=value)}
-  p[which.max(p$value),]
-  
-  p1 = ggplot(p, aes(x=x_um,y=y_um,fill=value))+geom_tile()+coord_fixed(ratio=1)
-  p2 = plot.sb(subdf)
-  plot_grid(p1,p2,ncol=1)
-}
-plot.kde(data.list[[6]])
+# plot.sb <- function(subdf) {
+#   subdf %<>% arrange(umi)
+#   ggplot() + coord_fixed(ratio=1, xlim=xlims, ylim=ylims) + theme_void() +
+#     geom_point(data=subdf, mapping=aes(x=x_um, y=y_um, col=umi), size=2, shape=20)
+# }
+# plot.kde <- function(subdf) {
+#   if(nrow(subdf)==0) {return(gdraw("No points"))}
+#   p = Nebulosa:::wkde2d(x=subdf$x_um, y=subdf$y_um, w=subdf$umi, n=200, lims=c(xlims, ylims)) %>% {transmute(reshape2::melt(as.matrix(.[[3]])), x_um=.[[1]][Var1], y_um=.[[2]][Var2], value=value)}
+#   rowmax = p[which.max(p$value),]
+#   ggplot(p, aes(x=x_um, y=y_um, fill=value))+geom_tile()+coord_fixed(ratio=1) +
+#     annotate("path", x=rowmax$x_um+radius*cos(seq(0,2*pi,length.out=100)), y=rowmax$y_um+radius*sin(seq(0,2*pi,length.out=100)))
+# }
+# plot.metadata <- function(row) {
+#   row %<>% select(-x_um, -y_um)
+#   row1 <- select(row, 2:10)
+#   d1 <- data.frame(names(row1), round(as.numeric(row1[1,]),2)) %>% setNames(c("Data","Value"))
+#   row2 <- select(row, 11:22)
+#   d2 <- data.frame(names(row2), round(as.numeric(row2[1,]),2)) %>% setNames(c("Data","Value"))
+#   
+#   plot_grid(gdraw(g("[{row$cb_index}]")),
+#             plot_grid(plot.tab(d1), plot.tab(d2), ncol=2),
+#             ncol=1, rel_heights=c(0.05,0.95))
+# }
+# debug_coords <- function(data.list, coords) {
+#   library(shiny)
+#   ui <- fluidPage(
+#     fluidRow(
+#       column(6, plotOutput("plot1", click = "plot1_click")),
+#       column(6, plotOutput("plot2"))
+#     ),
+#     fluidRow(
+#       column(6, plotOutput("plot3")),
+#       column(6, plotOutput("plot4"))
+#     )
+#   )
+#   
+#   server <- function(input, output) {
+#     output$plot1 <- renderPlot({ ggplot(coords, aes(x=x_um, y=y_um)) + geom_point() + coord_fixed() + theme_void() })
+#     output$plot2 <- renderPlot({ plot.new() })
+#     output$plot3 <- renderPlot({ plot.new() })
+#     output$plot4 <- renderPlot({ plot.new() })
+#     
+#     observeEvent(input$plot1_click, {
+#       click <- input$plot1_click
+#       if(!is.null(click)) {
+#         dists <- sqrt((coords$x_um - click$x)^2 + (coords$y_um - click$y)^2)
+#         row <- coords[which.min(dists),]
+#         cb_index <- row$cb_index %>% as.character
+#         df <- data.list[[cb_index]]
+#         output$plot2 <- renderPlot({ plot.sb(df) })
+#         output$plot3 <- renderPlot({ plot.kde(df) })
+#         output$plot4 <- renderPlot({ plot.metadata(row) })
+#       }
+#     })
+#   }
+#   print(shinyApp(ui = ui, server = server))
+#   return(T)
+# }
+# debug_coords(data.list, coords)
