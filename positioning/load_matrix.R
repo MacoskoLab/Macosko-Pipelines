@@ -455,5 +455,5 @@ plot_metrics(metadata, out_path)
 
 # write output
 print("Writing results")
-df %>% setNames(c("cb_index","x_um","y_um","umi")) %>% write.table(file.path(out_path, "matrix.csv"), sep=",", col.names=T, row.names=F, quote=F)
+df %>% setNames(c("cb_index","x_um","y_um","umi")) %>% write.table(file.path(out_path, "matrix.csv.gz") %>% gzfile, sep=",", col.names=T, row.names=F, quote=F)
 metadata %>% map(as.list) %>% toJSON(pretty = TRUE) %>% writeLines(file.path(out_path, "metadata.json"))
