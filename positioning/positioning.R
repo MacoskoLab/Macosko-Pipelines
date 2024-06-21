@@ -342,7 +342,7 @@ sample_bead_plots <- function(data.list, coords) {
   return(plots)
 }
 plots <- sample_bead_plots(data.list, coords)
-make.pdf(plots, file.path(out_path, "samples.pdf"), 7, 8)
+make.pdf(plots, file.path(out_path, "beadplots.pdf"), 7, 8)
 
 # set x_um, y_um to be the filtered DBSCAN placements where ratio<1/3
 coords %<>% mutate(x_um = ifelse(ratio<1/3, x_um_dbscan, NA),
