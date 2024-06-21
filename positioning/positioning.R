@@ -215,7 +215,7 @@ kde_coords %<>% mutate(ratio = d2/d1) %>% select(1:7, ratio, everything())
 
 plot_kde <- function(kde_coords) {
   p1 <- kde_coords %>% ggplot(aes(x=x_um,y=y_um))+geom_point(size=0.1,shape=16)+coord_fixed()+theme_classic()+ggtitle("Location of highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
-  p3 <- kde_coords %>% ggplot(aes(x=x2_um,y=y2_um))+geom_point(size=0.1,shape=16)+coord_fixed()+theme_classic()+ggtitle("Location of second-highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
+  p3 <- kde_coords %>% filter(!is.na(x2_um),!is.na(y2_um)) %>% ggplot(aes(x=x2_um,y=y2_um))+geom_point(size=0.1,shape=16)+coord_fixed()+theme_classic()+ggtitle("Location of second-highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
   #p1 <- kde_coords %>% ggplot(aes(x=x_um,y=y_um))+geom_bin2d(bins=c(round(xrange/50),round(yrange/50)))+coord_fixed()+theme_classic()+ggtitle("Distribution of highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
   #p3 <- kde_coords %>% ggplot(aes(x=x2_um,y=y2_um))+geom_bin2d(bins=c(round(xrange/50),round(yrange/50)))+coord_fixed()+theme_classic()+ggtitle("Distribution of second-highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
   
@@ -226,7 +226,8 @@ plot_kde <- function(kde_coords) {
     geom_vline(xintercept = 1/3, color = "red", linetype = "dashed") +
     annotate(geom = 'text', label = label, x = 1/3+0.01, y = Inf, hjust = 0, vjust = 1, col="red")
   
-  p4 <- kde_coords %>% mutate(dist=sqrt((x_um-x2_um)^2+(y_um-y2_um)^2)) %>% ggplot(aes(x=dist))+geom_histogram()+theme_bw()+
+  d <- kde_coords %>% filter(!is.na(x2_um),!is.na(y2_um)) %>% mutate(dist=sqrt((x_um-x2_um)^2+(y_um-y2_um)^2))
+  p4 <- ggplot(d, aes(x=dist)) + geom_histogram(bins = 30) + theme_bw() +
     xlab("Distance (\u00B5m)")+ylab("Frequency")+ggtitle("Distance between top-2 densities")+theme(plot.title=element_text(size=12))
   
   plot = plot_grid(gdraw("KDE Results"),
@@ -243,12 +244,12 @@ coords <- merge(dbscan_coords, kde_coords, by="cb_index", suffix=c("_dbscan","_k
 
 dbscan_vs_kde <- function(coords) {
   # Panel 1: Distance between DBSCAN and KDE assignments
-  coords %<>% mutate(dist=sqrt((x_um_dbscan-x_um_kde)^2+(y_um_dbscan-y_um_kde)^2))
-  max_density_x = median(coords$dist, na.rm=T) %>% log10
-  p1 <- ggplot(coords, aes(x=log10(dist)))+geom_histogram()+theme_bw()+
-    labs(title = "DBSCAN vs KDE distance", x = "log10 Distance (\u00B5m)", y = "Frequency") + 
+  d = coords %>% mutate(dist=sqrt((x_um_dbscan-x_um_kde)^2+(y_um_dbscan-y_um_kde)^2)) %>% filter(!is.na(dist))
+  max_density_x = median(d$dist+1, na.rm=T) %>% log10
+  p1 <- ggplot(d, aes(x=log10(dist+1)))+geom_histogram(bins=30)+theme_bw()+
+    labs(title = "DBSCAN vs KDE distance", x = "log1p Distance (\u00B5m)", y = "Frequency") + 
     geom_vline(xintercept = max_density_x, color = "red", linetype = "dashed") +
-    annotate(geom = 'text', label = round(max_density_x, 2) %>% paste0("\u00B5m"), x = max_density_x+0.1, y = Inf, hjust = 0, vjust = 1.3, col="red")
+    annotate(geom = 'text', label = round(10^max_density_x-1, 2) %>% paste0("\u00B5m"), x = max_density_x+0.1, y = Inf, hjust = 0, vjust = 1.3, col="red")
   
   # Panel 2: Distribution of KDE ratio for each DBSCAN cluster
   d = coords %>% rowwise %>% mutate(clusters=min(clusters,5)) %>% ungroup
@@ -264,7 +265,7 @@ dbscan_vs_kde <- function(coords) {
     geom_hline(yintercept = 1/3, color = "red", linetype = "dashed")
   
   # Panel 4: Contingency table of placements
-  d = coords %>% mutate(dbscan_pass=clusters==1, kde_pass=ratio<1/3) %>% group_by(dbscan_pass, kde_pass) %>% summarize(n=n()) %>% ungroup %>% mutate(pct=g("{round(n/sum(n)*100,2)}%\n{n}"))
+  d = coords %>% mutate(dbscan_pass=clusters==1, kde_pass=ratio<1/3) %>% group_by(dbscan_pass, kde_pass) %>% summarize(n=n(), .groups="drop") %>% mutate(pct=g("{round(n/sum(n)*100,2)}%\n{n}"))
   p4 <- ggplot(d, aes(x=dbscan_pass,y=kde_pass,fill=n))+geom_tile()+geom_text(label=d$pct)+theme_bw()+
     xlab("DBSCAN=1")+ylab("KDE < 1/3")+theme(legend.position="none")+coord_fixed()+ggtitle("Placement table")
     
@@ -284,15 +285,9 @@ sample_bead_plots <- function(data.list, coords) {
     subdf1 <- filter(subdf, cluster==1)
     subdf2 <- filter(subdf, cluster==2)
     
-    ggplot() + coord_fixed(ratio=1 ,xlim=xlims, ylim=ylims) + theme_void() +
+    plot <- ggplot() + coord_fixed(ratio=1 ,xlim=xlims, ylim=ylims) + theme_void() +
       geom_point(data=subdf, mapping=aes(x=x_um, y=y_um, col=umi), size=2, shape=16)+
       geom_point(aes(x=row$x_um_kde, y=row$y_um_kde), color="red", shape=5, size=3) + 
-      geom_point(aes(x=weighted.mean(subdf1$x_um, w=subdf1$umi),
-                     y=weighted.mean(subdf1$y_um, w=subdf1$umi)),
-                     color="red", shape=0, size=3) + 
-      geom_point(aes(x=weighted.mean(subdf2$x_um, w=subdf2$umi),
-                     y=weighted.mean(subdf2$y_um, w=subdf2$umi)),
-                     color="green", shape=0, size=3) +
       ggtitle(g("[{unique(subdf$cb_index)}] ({round(row$ratio,2)})")) +
       theme(legend.key.width=unit(0.5,"lines"),
             legend.position="right",
@@ -308,6 +303,19 @@ sample_bead_plots <- function(data.list, coords) {
             legend.box.just="left",
             legend.box.spacing=unit(0,"cm"),
             plot.title = element_text(hjust = 0.5))
+    # Add the DBSCAN=1 point
+    if(nrow(subdf1) > 0) {
+      plot <- plot + geom_point(aes(x=weighted.mean(subdf1$x_um, w=subdf1$umi),
+                                    y=weighted.mean(subdf1$y_um, w=subdf1$umi)),
+                                    color="red", shape=0, size=3)
+    }
+    # Add the DBSCAN=2 point
+    if(nrow(subdf2) > 0) {
+      plot <- plot + geom_point(aes(x=weighted.mean(subdf2$x_um, w=subdf2$umi),
+                                    y=weighted.mean(subdf2$y_um, w=subdf2$umi)),
+                                    color="green", shape=0, size=3)
+    }
+    return(plot)
   }
   
   list0 = data.list %>% keep(~max(.$cluster)==0 & nrow(.)>0) %>% names %>% as.numeric
