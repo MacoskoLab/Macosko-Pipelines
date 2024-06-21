@@ -227,7 +227,7 @@ plot_rankplots <- function(df, f, out_path) {
   
   plot = plot_grid(p1, p2, p3, p4, ncol=2)
   
-  make.pdf(plot, file.path(out_path, "spatial_rankplots.pdf"), 7, 8)
+  make.pdf(plot, file.path(out_path, "SB.pdf"), 7, 8)
   
   meta <- metadata
   meta$SB_info$UMI_pct_in_called_cells = sb_pct_in_called_cells
@@ -448,7 +448,7 @@ plot_metrics <- function(metadata, out_path) {
     rel_heights = c(0.04,0.15,0.11,0.17,0.1)
   )
   
-  make.pdf(plot, file.path(out_path, "metrics_sb.pdf"), 7, 8)
+  make.pdf(plot, file.path(out_path, "SBmetrics.pdf"), 7, 8)
   return(T)
 }
 plot_metrics(metadata, out_path)
