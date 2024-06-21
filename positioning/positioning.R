@@ -79,7 +79,7 @@ opt_dbscan <- function(data.list) {
     
     res = rbind(res, params)
     
-    p = res %>% group_by(minPts) %>% summarize(pct=max(pct)) %>% ungroup %>% arrange(minPts) %>% pull(pct) %>% {which.max(.)/len(.)}
+    p = res %>% group_by(minPts) %>% summarize(pct=max(pct), .groups="drop") %>% arrange(minPts) %>% pull(pct) %>% {which.max(.)/len(.)}
     if (p < 0.9) {
       break
     }
@@ -243,8 +243,10 @@ stopifnot(dbscan_coords$cb_index == kde_coords$cb_index)
 coords <- merge(dbscan_coords, kde_coords, by="cb_index", suffix=c("_dbscan","_kde"))
 
 dbscan_vs_kde <- function(coords) {
+  coords %<>% mutate(dist=sqrt((x_um_dbscan-x_um_kde)^2+(y_um_dbscan-y_um_kde)^2))
+  
   # Panel 1: Distance between DBSCAN and KDE assignments
-  d = coords %>% mutate(dist=sqrt((x_um_dbscan-x_um_kde)^2+(y_um_dbscan-y_um_kde)^2)) %>% filter(!is.na(dist))
+  d = filter(coords, !is.na(dist))
   max_density_x = median(d$dist+1, na.rm=T) %>% log10
   p1 <- ggplot(d, aes(x=log10(dist+1)))+geom_histogram(bins=30)+theme_bw()+
     labs(title = "DBSCAN vs KDE distance", x = "log1p Distance (\u00B5m)", y = "Frequency") + 
