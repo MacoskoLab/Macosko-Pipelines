@@ -154,7 +154,7 @@ fuzzy_matching <- function(df, cb_list, cb_whitelist) {
   df1 = df %>% filter(!is.na(exact)) %>% mutate(cb_index = exact) %>% select(1:4)
   df2 = df %>% filter(!is.na(HD1)) %>% mutate(cb_index = HD1) %>% select(1:4)
   df3 = df %>% filter(is.na(exact) & is.na(HD1)) %>% mutate(cb_index = -cb_index) %>% select(1:4)
-  df2 %<>% group_by(cb_index, umi_2bit, sb_index) %>% summarize(reads=sum(reads)) %>% ungroup
+  df2 %<>% group_by(cb_index, umi_2bit, sb_index) %>% summarize(reads=sum(reads), .groups="drop")
   df12 <- full_join(df1, df2, by = c("cb_index","umi_2bit","sb_index"))
   df12$reads.x %<>% tidyr::replace_na(0) ; df12$reads.y %<>% tidyr::replace_na(0)
   df12 %<>% mutate(reads = reads.x + reads.y) %>% select(-reads.x, -reads.y)
@@ -330,11 +330,11 @@ beadplot <- function(sb.data) {
     ggtitle(g("SB UMI per bead"))
 }
 plot_beadplot <- function(df, puckdf, out_path) {
-  sb.data = df %>% count_umis %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>%
-    ungroup %>% inner_join(y=puckdf, by="sb_index") %>% arrange(umi)
+  sb.data = df %>% count_umis %>% group_by(sb_index) %>% summarize(umi=sum(umi), .groups="drop") %>%
+    inner_join(y=puckdf, by="sb_index") %>% arrange(umi)
   p1 = beadplot(sb.data) + ggtitle(g("SB UMI per bead (total)"))
-  sb.data = df %>% filter(cb_index>0) %>% count_umis %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>%
-    ungroup %>% inner_join(y=puckdf, by="sb_index") %>% arrange(umi)
+  sb.data = df %>% filter(cb_index>0) %>% count_umis %>% group_by(sb_index) %>% summarize(umi=sum(umi), .groups="drop") %>%
+    inner_join(y=puckdf, by="sb_index") %>% arrange(umi)
   p2 = beadplot(sb.data) + ggtitle(g("SB UMI per bead (called cells only)"))
   plot = plot_grid(p1, p2, ncol=1)
   make.pdf(plot, file.path(out_path, "beadplot.pdf"), 7, 8)
