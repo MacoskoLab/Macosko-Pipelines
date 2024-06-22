@@ -25,6 +25,20 @@ task count {
     mkdir fastqs
     gcloud storage cp ~{sep=' ' fastq_paths} fastqs
 
+    # Assert that the pucks exist
+    pucks=(~{sep=' ' pucks})
+    for puck in "${pucks[@]}"
+    do
+        if [[ ! "$puck"  =~ gs:// ]] ; then
+            echo "ERROR: puck $puck does not contain gs://"
+            exit 1
+        fi
+        if ! gsutil ls "$puck" &> /dev/null ; then
+            echo "ERROR: gsutil ls command failed on puck $puck"
+            exit 1
+        fi
+    done
+
     # Download the pucks
     echo "Downloading pucks:"
     mkdir pucks
@@ -77,7 +91,6 @@ task getdisksize {
     input {
         String fastqs
         String sample
-        Array[String] pucks
         Array[Int] lanes
         String count_output_path
         String log_output_path       
@@ -143,20 +156,6 @@ task getdisksize {
             rm -f SIZE
         fi
 
-        # Assert that the pucks exist
-        pucks=(~{sep=' ' pucks})
-        for puck in "${pucks[@]}"
-        do
-            if [[ ! "$puck"  =~ gs:// ]] ; then
-                echo "ERROR: puck $puck does not contain gs://"
-                rm -f SIZE
-            fi
-            if ! gsutil ls "$puck" &> /dev/null ; then
-                echo "ERROR: gsutil ls command failed on puck $puck"
-                rm -f SIZE
-            fi
-        done
-
         # Assert that the paths are actually gs:// paths
         [[ ! "~{fastqs}" =~ gs:// ]] && echo "ERROR: fastq_path does not contain gs://" && rm -f SIZE
         [[ ! "~{count_output_path}" =~ gs:// ]] && echo "ERROR: count_output_path does not contain gs://" && rm -f SIZE
@@ -194,7 +193,6 @@ workflow spatial_count {
         input:
             fastqs = fastq_path,
             sample = sample,
-            pucks = pucks,
             lanes = lanes,
             count_output_path = count_output_path,
             log_output_path = log_output_path,
