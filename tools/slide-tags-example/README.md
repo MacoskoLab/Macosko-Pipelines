@@ -1,4 +1,4 @@
-In this directory is sample data and outputs for running slide-tags
+### In this directory is sample data and outputs for running slide-tags
 
 **RNA_data**:
 * filtered_feature_bc_matrix.h5 or filtered_feature_bc_matrix/ (required)
