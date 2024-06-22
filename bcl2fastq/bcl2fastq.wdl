@@ -138,7 +138,7 @@ task getdisksize {
 
         # Get the size of the bcl * 3
         gsutil du -sc "~{bcl}" | grep total | 
-        awk '{size=$1/1024/1024/1024 ; size=size*3 ; if (size<128) size=128 ; printf "%d\n", size}' > SIZE
+        awk '{size=$1/1024/1024/1024 ; size=size*2.5 ; if (size<96) size=96 ; printf "%d\n", size}' > SIZE
 
         # Assert that the disksize file exists
         if [[ ! -s SIZE ]]
@@ -150,7 +150,7 @@ task getdisksize {
         # Assert that the disksize is not too large
         if [[ $(cat SIZE) -gt 6000 ]]
         then
-            echo "ERROR: BCL size limit reached, increase cap"
+            echo "ERROR: BCL size limit reached, increase cap (6000 GiB)"
             rm -f SIZE
         fi
 
@@ -176,10 +176,10 @@ task getdisksize {
         fi
 
         # Assert that the paths are actually gs:// paths
-        [[ ! "~{bcl}"         =~ gs:// ]] && echo "Error: bcl does not contain gs://" && rm SIZE
-        [[ ! "~{samplesheet}" =~ gs:// ]] && echo "Error: samplesheet does not contain gs://" && rm SIZE
-        [[ ! "~{fastq_output_path}" =~ gs:// ]] && echo "Error: fastq_output_path does not contain gs://" && rm SIZE
-        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "Error: log_output_path does not contain gs://" && rm SIZE
+        [[ ! "~{bcl}"               =~ gs:// ]] && echo "ERROR: bcl does not contain gs://" && rm -f SIZE
+        [[ ! "~{samplesheet}"       =~ gs:// ]] && echo "ERROR: samplesheet does not contain gs://" && rm -f SIZE
+        [[ ! "~{fastq_output_path}" =~ gs:// ]] && echo "ERROR: fastq_output_path does not contain gs://" && rm -f SIZE
+        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && rm -f SIZE
 
         echo "<< completed getdisksize >>"
     >>>
