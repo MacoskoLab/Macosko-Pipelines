@@ -13,11 +13,6 @@ library(purrr)
 library(qpdf)
 library(qs)
 
-setwd("~/spatial")
-RNApath = "RNAcounts"
-SBpath = "SBcounts/SBcounts.h5"
-out_path <- "output"
-
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 2) {
   RNApath <- args[[1]]
@@ -324,4 +319,4 @@ qpdf::pdf_combine(input=pdfs, output=file.path(out_path,"summary.pdf"))
 file.remove(pdfs)
 
 # Save the seurat object
-qsave(obj, "seurat.qs")
+qsave(obj, file.path(out_path,"seurat.qs"))
