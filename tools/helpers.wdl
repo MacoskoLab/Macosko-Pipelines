@@ -63,20 +63,10 @@ task getfastqsize {
         fi
 
         # Assert that the disksize is not too large
-        if [[ $(cat SIZE) -gt 6000 ]]
+        if [[ $(cat SIZE) -gt 512 ]]
         then
-            echo "ERROR: cellranger-count disk size limit reached, increase cap"
+            echo "ERROR: size limit reached, increase cap (512 GiB)"
             rm -f SIZE
-        fi
-
-        # Assert that the count output is blank (avoid overwiting)
-        output_path="~{output_path}"
-        if gsutil ls "${output_path%/}/$id" &> /dev/null
-        then
-            echo "ERROR: cellranger-count output already exists"
-            rm -f SIZE
-        else
-            echo "Output path: ${output_path%/}/$id"
         fi
 
         # Assert that the paths are actually gs:// paths
