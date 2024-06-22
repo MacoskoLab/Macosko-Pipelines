@@ -125,22 +125,21 @@ workflow cellranger_count {
         input:
             fastqs = fastq_path,
             sample = sample,
-            reference = reference,
             lanes = lanes,
-            count_output_path = count_output_path,
+            output_path = count_output_path,
             log_output_path = log_output_path,
             docker = docker
     }
     call count {
         input:
-            id = getdisksize.id,
+            id = getfastqsize.id,
             reference = reference,
-            fastq_paths = getdisksize.fastq_paths,
+            fastq_paths = getfastqsize.fastq_paths,
             sample = sample,
             technique = technique,
             count_output_path = count_output_path,
             log_output_path = log_output_path,
-            disksize = getdisksize.disksize,
+            disksize = getfastqsize.disksize,
             docker = docker
     }
     output {
