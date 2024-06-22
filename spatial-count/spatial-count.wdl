@@ -1,5 +1,7 @@
 version 1.0
 
+import "https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/tools/helpers.wdl" as helpers
+
 task count {
   input {
     String id
@@ -86,97 +88,6 @@ task count {
   }
 }
 
-# Compute disk size needed for cellranger count and run checks
-task getdisksize {
-    input {
-        String fastqs
-        String sample
-        Array[Int] lanes
-        String count_output_path
-        String log_output_path       
-        String docker                
-    }
-    command <<<
-        echo "<< starting getdisksize >>"
-
-        # Combine the sample name and lanes into a unique id
-        if [ ~{length(lanes)} -eq 0 ]; then
-            id="~{sample}"
-        else
-            id="~{sample}_L~{sep='-' lanes}"
-        fi
-        echo "FASTQ path: ~{fastqs}"
-        echo "sample: ~{sample}"
-        echo "lanes: ~{sep=',' lanes}"
-        echo "id: $id"; echo
-        count_output_path="~{count_output_path}"        
-        echo "Output path: ${count_output_path%/}/$id"
-        echo $id > ID ; echo
-
-        # Get the fastq files and their total size
-        gsutil ls -r ~{fastqs} | fgrep ".fastq.gz" | fgrep "~{sample}_S" | fgrep -v "_I1_" | fgrep -v "_I2_" > PATHS
-        if [ ~{length(lanes)} -gt 0 ]; then
-            lanes=(~{sep=' ' lanes})
-            regex=$(printf "_L0*%s_ " "${lanes[@]}" | sed 's/ $//' | sed 's/ /|/g')
-            grep -P $regex PATHS > temp_file && mv temp_file PATHS
-        fi
-        cat PATHS | xargs gsutil du -sc | grep total | awk '{size=$1/1024/1024/1024 ; size=size*2.5 ; if (size<64) size=64 ; printf "%d\n", size}' > SIZE
-        if [ ~{length(lanes)} -gt 0 ]; then
-            lanes=(~{sep=' ' lanes})
-            for lane in "${lanes[@]}"; do
-                if ! grep -q "_L0*${lane}_" PATHS; then
-                    echo "ERROR: No fastqs found for lane ${lane}"
-                    rm -f SIZE
-                fi
-            done
-        fi
-
-        echo "FASTQ files:"
-        cat PATHS; echo
-
-        echo "Total size (GiB):"
-        cat SIZE; echo
-
-        # Assert that the fastqs exist
-        if [[ ! -s PATHS ]]
-        then
-            echo "ERROR: gsutil ls command returned a blank file"
-            rm -f SIZE
-        fi
-        if [[ ! -s SIZE ]]
-        then
-            echo "ERROR: gsutil du command failed on input fastqs"
-            rm -f SIZE
-        fi
-
-        # Assert that the disksize is not too large
-        if [[ $(cat SIZE) -gt 256 ]]
-        then
-            echo "ERROR: spatial-count memory and disk size limit reached, increase cap"
-            rm -f SIZE
-        fi
-
-        # Assert that the paths are actually gs:// paths
-        [[ ! "~{fastqs}" =~ gs:// ]] && echo "ERROR: fastq_path does not contain gs://" && rm -f SIZE
-        [[ ! "~{count_output_path}" =~ gs:// ]] && echo "ERROR: count_output_path does not contain gs://" && rm -f SIZE
-        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && rm -f SIZE
-
-        echo "<< completed getdisksize >>"
-    >>>
-    output {
-        String id = read_string("ID")
-        Int disksize = read_int("SIZE")
-        Array[String] fastq_paths = read_lines("PATHS")
-    }
-    runtime {
-        docker: docker
-        memory: "4 GB"
-        disks: "local-disk 8 HDD"
-        cpu: 1
-        preemptible: 0
-  }
-}
-
 workflow spatial_count {
     String pipeline_version = "1.0.0"
     input {
@@ -184,28 +95,30 @@ workflow spatial_count {
         String sample
         Array[String] pucks
         Array[Int] lanes = []
+        String memory_multiplier = "2"
         String count_output_path = "gs://"+bucket+"/spatial-count/"+basename(fastq_path,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(fastq_path,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest"
     }
-    call getdisksize {
+    call helpers.getfastqsize {
         input:
             fastqs = fastq_path,
             sample = sample,
             lanes = lanes,
-            count_output_path = count_output_path,
+            memory_multiplier = memory_multiplier,
+            output_path = count_output_path,
             log_output_path = log_output_path,
             docker = docker
     }
     call count {
         input:
-            id = getdisksize.id,
-            fastq_paths = getdisksize.fastq_paths,
+            id = getfastqsize.id,
+            fastq_paths = getfastqsize.fastq_paths,
             pucks = pucks,
             count_output_path = count_output_path,
             log_output_path = log_output_path,
-            disksize = getdisksize.disksize,
+            disksize = getfastqsize.disksize,
             docker = docker
     }
     output {
