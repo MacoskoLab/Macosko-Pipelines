@@ -26,6 +26,19 @@ task count {
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
+    # Assert that the count output is blank (avoid overwiting)
+    output_path="~{count_output_path}"
+    if gsutil ls "${count_output_path%/}/$id" &> /dev/null
+    then
+        echo "ERROR: cellranger-count output already exists"
+    else
+        # Download the fastqs
+        echo "Downloading fastqs:"
+        mkdir fastqs
+        gcloud storage cp ~{sep=' ' fastq_paths} fastqs
+        echo "Output path: ${output_path%/}/$id"
+    fi
+
     # Download the reference
     reference="~{reference}"
     if [[ ${reference:0:5} == "gs://" ]]; then
@@ -35,11 +48,6 @@ task count {
     else
         echo "ERROR: reference path does not start with gs://"
     fi
-    
-    # Download the fastqs
-    echo "Downloading fastqs:"
-    mkdir fastqs
-    gcloud storage cp ~{sep=' ' fastq_paths} fastqs
 
     # Run the cellranger command
     if [[ ~{technique} == "cellranger" ]]; then
