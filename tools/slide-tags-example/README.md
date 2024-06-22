@@ -1,4 +1,4 @@
-## Sample data and outputs for running slide-tags
+## Sample data for running slide-tags
 
 **RNA_data**:
 * filtered_feature_bc_matrix.h5 or filtered_feature_bc_matrix/ (required)
@@ -9,6 +9,8 @@
 * FASTQs with spatial barcode data (required)
 * Puck.csv file with coordinates for each spatial barcode (required)
 
+## Sample pipeline outputs
+
 **example_output**:  
 * SBcounts.h5: spatial barcode count matrix produced from the spatial FASTQs
 * cb_whitelist.txt: list of cell barcodes extracted from the RNA matrix
@@ -17,6 +19,8 @@
 * coords.csv: spatial coordinates for each cell in cb_whitelist.txt
 * seurat.qs: Seurat object with both RNA data and spatial coordinates
 * summary.pdf: a visual summary of the RNA and spatial data
+
+## Pipeline commands
 
 **commands**:
 1. julia spatial-count.jl spatial_data spaial_data/Puck.csv
