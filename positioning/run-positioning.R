@@ -231,8 +231,8 @@ print("Generating the matrix...")
 cb_whitelist = unname(obj$cb)
 writeLines(cb_whitelist, file.path(out_path, "cb_whitelist.txt"))
 system(g("Rscript load_matrix.R {SBpath} {file.path(out_path, 'cb_whitelist.txt')} {out_path}"))
-stopifnot(file.exists(file.path(out_path,"metadata.json"), file.path(out_path,"metadata.json")))
-Misc(obj, "SB_metadata") <- fromJSON(file.path(out_path, "metadata.json"))
+stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"), file.path(out_path, "spatial_metadata.json")))
+Misc(obj, "spatial_metadata") <- fromJSON(file.path(out_path, "spatial_metadata.json"))
 
 # Assign a position to each whitelist cell
 print("Positioning cells...")
