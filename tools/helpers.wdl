@@ -1,3 +1,5 @@
+version 1.0
+
 # Compute disk size needed for cellranger count and run checks
 task getfastqsize {
     input {
