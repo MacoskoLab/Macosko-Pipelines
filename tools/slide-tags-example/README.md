@@ -1,4 +1,4 @@
-## Sample data for running slide-tags
+## Sample data
 
 **RNA_data**:
 * filtered_feature_bc_matrix.h5 or filtered_feature_bc_matrix/ (required)
@@ -9,7 +9,7 @@
 * FASTQs with spatial barcode data (required)
 * Puck.csv file with coordinates for each spatial barcode (required)
 
-## Sample pipeline outputs
+## Sample outputs
 
 **example_output**:  
 * SBcounts.h5: spatial barcode count matrix produced from the spatial FASTQs
