@@ -9,7 +9,7 @@ In this directory is sample data and outputs for running slide-tags
 * FASTQs with spatial barcode data (required)
 * Puck.csv file with coordinates for each spatial barcode (required)
 
-**example_output**:
+**example_output**:  
 these are the outputs you should get upon successful running of the pipeline
 * SBcounts.h5: spatial barcode count matrix produced from the spatial FASTQs
 * cb_whitelist.txt: list of cell barcodes extracted from the RNA matrix
