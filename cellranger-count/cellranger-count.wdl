@@ -116,6 +116,7 @@ workflow cellranger_count {
         String reference
         String technique
         Array[Int] lanes = []
+        String memory_multiplier = "6+20"
         String count_output_path = "gs://"+bucket+"/cellranger-count/"+basename(fastq_path,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(fastq_path,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
@@ -126,6 +127,7 @@ workflow cellranger_count {
             fastqs = fastq_path,
             sample = sample,
             lanes = lanes,
+            memory_multiplier = memory_multiplier,
             output_path = count_output_path,
             log_output_path = log_output_path,
             docker = docker
