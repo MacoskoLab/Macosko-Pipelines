@@ -1,6 +1,6 @@
 version 1.0
 
-# Compute disk size needed for cellranger count and run checks
+# Compute disk size and run checks
 task getfastqsize {
     input {
         String fastqs
