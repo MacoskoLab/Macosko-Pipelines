@@ -70,9 +70,9 @@ task getfastqsize {
         fi
 
         # Assert that the paths are actually gs:// paths
-        [[ ! "~{fastqs}" =~ gs:// ]] && echo "ERROR: fastq_path does not contain gs://" && rm SIZE
-        [[ ! "~{output_path}" =~ gs:// ]] && echo "ERROR: output_path does not contain gs://" && rm SIZE
-        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && rm SIZE
+        [[ ! "~{fastqs}" =~ gs:// ]] && echo "ERROR: fastq_path does not contain gs://" && rm -f SIZE
+        [[ ! "~{output_path}" =~ gs:// ]] && echo "ERROR: output_path does not contain gs://" && rm -f SIZE
+        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && rm -f SIZE
 
         echo "<< completed getdisksize >>"
     >>>
