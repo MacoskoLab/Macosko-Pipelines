@@ -1,10 +1,10 @@
 library(glue) ; g=glue ; len=length
-library(matrixStats)
 library(gridExtra)
 library(magrittr)
 library(jsonlite)
 library(ggplot2)
 library(cowplot)
+library(viridis)
 library(stringr)
 library(Seurat)
 library(rlist)
@@ -15,7 +15,7 @@ library(qs)
 
 setwd("~/spatial")
 RNApath = "RNAcounts"
-SBpath = "SBcounts"
+SBpath = "SBcounts/SBcounts.h5"
 out_path <- "output"
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -39,14 +39,13 @@ print(g("RNA files: {list.files(RNApath) %>% paste0(collapse=', ')}"))
 print(g("SB file: {normalizePath(SBpath)}"))
 
 # Determine the RNA method
-if (file.exists(file.path(RNApath,"filtered_feature_bc_matrix.h5"))) {
+if (file.exists(file.path(RNApath, "filtered_feature_bc_matrix.h5"))) {
   method = "10X"
 } else {
   stop("ERROR: unknown RNA technique", call. = FALSE)
 }
 
-### Helper methods #############################################################
-
+# Helper methods
 gdraw <- function(text, s=14) {ggdraw()+draw_label(text, size=s)}
 plot.tab <- function(df) {return(plot_grid(tableGrob(df)))}
 add.commas <- function(num){prettyNum(num, big.mark=",")}
@@ -57,7 +56,7 @@ make.pdf <- function(plots, name, w, h) {
   dev.off()
 }
 
-### Load the seurat ############################################################
+### Load the RNA ###############################################################
 
 load_seurat <- function(matrix_path) {
   # Load the RNA count matrix
@@ -68,7 +67,8 @@ load_seurat <- function(matrix_path) {
   }
   
   # Add metadata
-  obj[["cb"]] <- map_chr(colnames(obj), ~sub("-[0-9]*$", "", .))
+  obj[["cb"]] <- map_chr(colnames(obj), ~sub("-[0-9]*$", "", .)) %T>% {stopifnot(!duplicated(.))}
+  obj[["cb_index"]] <- 1:ncol(obj)
   obj[["logumi"]] <- log10(obj$nCount_RNA+1)
   obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^(MT-|mt-)")
   
@@ -103,62 +103,54 @@ load_intronic <- function(obj, molecule_info_path) {
   return(obj)
 }
 
-plot_metrics_summary <- function(summary_path, title, out_dir) {
+plot_metrics_summary <- function(summary_path) {
+  if (nchar(summary_path)==0 || !file.exists(summary_path)) {
+    make.pdf(gdraw("No metrics_summary.csv found"), file.path(out_path,"RNAmetrics.pdf"), 7, 8)
+    return(c())
+  }
   plotdf = read.table(summary_path, header=F, sep=",", comment.char="")
   plotdf %<>% t
   rownames(plotdf) = NULL
   
   plot = plot_grid(ggdraw()+draw_label(""),
-                   ggdraw()+draw_label(title),
+                   ggdraw()+draw_label(g("{method} Metrics Summary")),
                    plot.tab(plotdf),
                    ggdraw()+draw_label(""),
                    ncol=1, rel_heights=c(0.1,0.1,0.7,0.2))
-  make.pdf(plot, file.path(out_dir,"metrics_rna.pdf"), 7, 8)
+  make.pdf(plot, file.path(out_path, "RNAmetrics.pdf"), 7, 8)
   
   return(setNames(plotdf[,2], plotdf[,1]))
 }
 
+# get the data paths
 if (method == "10X") {
   matrix_path = file.path(RNApath, "filtered_feature_bc_matrix.h5")
-  obj <- load_seurat(matrix_path)
-  Misc(obj, "method") <- method
-  
   molecule_info_path = file.path(RNApath, "molecule_info.h5")
-  if (file.exists(molecule_info_path)) { obj %<>% load_intronic(molecule_info_path) }
-  
   summary_path = file.path(RNApath, "metrics_summary.csv")
-  if (file.exists(summary_path)) {
-    Misc(obj, "RNA_metadata") = plot_metrics_summary(summary_path, "Cell Ranger Metrics Summary", out_path)
-  } else {
-    make.pdf(gdraw("No metrics_summary.csv found"), file.path(out_path,"metrics_rna.pdf"), 7, 8)
-    rna_meta = list()
-  }
 } else {
   stop(g("ERROR: unknown RNA technique ({method})"), call. = FALSE)
 }
 
+# Load the RNA data
+obj <- load_seurat(matrix_path)
+Misc(obj, "method") <- method
+if (file.exists(molecule_info_path)) { obj %<>% load_intronic(molecule_info_path) }
+Misc(obj, "RNA_metadata") = plot_metrics_summary(summary_path)
+
 print(g("Loaded {ncol(obj)} cells"))
 
-### Generate the matrix ########################################################
 
-print("Generating the matrix...")
-
-cb_whitelist = unname(obj$cb)
-writeLines(cb_whitelist, file.path(out_path, "cb_whitelist.txt"))
-system(g("Rscript load_matrix.R {SBpath} {file.path(out_path, 'cb_whitelist.txt')} {out_path}"))
-# df = read.table(file.path(out_path, "matrix.csv"), header=T, sep=",")
-Misc(obj, "SB_metadata") <- fromJSON(file.path(out_path, "metadata.json"))
-
-print("Matrix loading complete")
-
-stopifnot(F)
-
-### Positioning methods 2 ######################################################
-
-
-
-# Plot 1: cell calling and %intronic
-UvsI <- function(obj, molecule_info_path, cb_whitelist) {
+# Plot RNA curves
+UvsI <- function(obj, molecule_info_path) {
+  if (!file.exists(molecule_info_path) || nchar(molecule_info_path) == 0) {
+    plot <- gdraw("No molecule_info.h5 found")
+    return(plot)
+  }
+  if (!"barcode_idx" %in% h5ls(molecule_info_path)$name) {
+    plot <- gdraw("Unrecognized molecule_info.h5")
+    return(plot)
+  }
+  
   fetch <- function(x){return(h5read(molecule_info_path,x))}
   barcodes = fetch("barcodes")
   molecule_info = data.frame(barcode=fetch("barcode_idx"),
@@ -191,7 +183,7 @@ UvsI <- function(obj, molecule_info_path, cb_whitelist) {
         theme_minimal() +
         labs(title = g("Intronic vs. UMI droplets (>{ct} umi)"), x = "logumi", y = "%intronic") + NoLegend()
       
-      max_density_x = density(filter(df,umi>=ct,pct.intronic>0.35)$pct.intronic) %>% {.$x[which.max(.$y)]}
+      max_density_x = density(filter(df,umi>=ct,pct.intronic>1/3)$pct.intronic) %>% {.$x[which.max(.$y)]}
       p2 = df %>% filter(umi>=ct) %>% ggplot(aes(x = pct.intronic)) + geom_density() + 
         theme_minimal() + labs(title = g("Intronic density (>{ct} umi)"), x = "%intronic", y = "Density") + 
         geom_vline(xintercept = max_density_x, color = "red", linetype = "dashed") +
@@ -206,71 +198,130 @@ UvsI <- function(obj, molecule_info_path, cb_whitelist) {
   }
   
   # Panel 1: cell barcode knee plot
-  df %<>% mutate(index=1:nrow(df), called=barcodes[barcode+1]%in%cb_whitelist)
+  df %<>% mutate(index=1:nrow(df), called=barcodes[barcode+1] %in% obj$cb)
   p3 = ggplot(df,aes(x=index,y=umi,col=called))+geom_line()+theme_bw()+scale_x_log10()+scale_y_log10()+
     ggtitle("Barcode rank plot")+xlab("Cell barcodes")+ylab("UMI counts") +
     theme(legend.position = c(0.05, 0.05), legend.justification = c("left", "bottom"), legend.background = element_blank(), legend.spacing.y = unit(0.1,"lines"))
   
-  plot = plot_grid(p3,p1,p0,p2,ncol=2)
-  make.pdf(plot, "plots/1cellcalling.pdf", 7, 8)
-  return(obj)
+  plot = plot_grid(p3, p1, p0, p2, ncol=2)
+  return(plot)
 }
-plot1 <- function(obj, molecule_info_path, cb_whitelist) {
-  if (file.exists(molecule_info_path)) {
-    obj %<>% UvsI(molecule_info_path, cb_whitelist)
+plot <- UvsI(obj, molecule_info_path)
+make.pdf(plot, file.path(out_path,"RNA.pdf"), 7, 8)
+
+# Plot UMAP + metrics
+plot_umaps <- function(obj) {
+  mytheme <- function(){theme(plot.title=element_text(hjust=0.5), axis.title.x=element_blank(), axis.title.y=element_blank(), legend.position="top", legend.justification="center", legend.key.width=unit(2, "lines"))}
+  umap <- DimPlot(obj,label=T) + ggtitle(g("UMAP")) + mytheme() + NoLegend()  + coord_fixed(ratio=1)
+  logumi <- VlnPlot(obj,"logumi",alpha=0) + mytheme() + NoLegend() 
+  mt <- FeaturePlot(obj,"percent.mt") + ggtitle("%MT") + mytheme() + coord_fixed(ratio=1) + 
+    annotate("text", x = Inf, y = Inf, label = g("Median: {round(median(obj$percent.mt), 2)}%\nMean: {round(mean(obj$percent.mt), 2)}%"), hjust=1, vjust=1, size=2.5, color="black")
+  if ("pct.intronic" %in% names(obj@meta.data)) {
+    intronic <- FeaturePlot(obj,"pct.intronic") + ggtitle("%Intronic") + mytheme() + coord_fixed(ratio=1) +
+      annotate("text", x = Inf, y = Inf, label = g("Median: {round(median(obj$pct.intronic), 2)}%\nMean: {round(mean(obj$pct.intronic), 2)}%"), hjust=1, vjust=1, size=2.5, color="black")
   } else {
-    make.pdf(gdraw("No molecule_info.h5 found"), "plots/1cellcalling.pdf", 7, 8)
+    intronic <- gdraw("No intronic information")
   }
-  return(obj)
+  
+  plot <- plot_grid(umap, logumi, mt, intronic, ncol=2)
+  return(plot)
 }
+plot <- plot_umaps(obj)
+make.pdf(plot, file.path(out_path,"UMAP.pdf"), 7, 8)
 
-# Plot 2: UMAP + metrics
-plot2 <- function(obj) {
-  mytheme <- function(){theme(plot.title=element_text(hjust=0.5), axis.title.x=element_blank(), axis.title.y=element_blank())}
-  plot = plot_grid(DimPlot(obj,label=T)+ggtitle(g("UMAP"))+NoLegend()  +mytheme()+coord_fixed(ratio=1),
-                   VlnPlot(obj,"logumi",alpha=0)+NoLegend()            +mytheme(),
-                   FeaturePlot(obj,"percent.mt")+ggtitle("%MT")        +mytheme()+coord_fixed(ratio=1)+theme(legend.position="top",legend.justification="center",legend.key.width=unit(2, "lines")),
-                   if ("pct.intronic" %in% names(obj@meta.data)) {
-                     FeaturePlot(obj,"pct.intronic")+ggtitle("%Intronic")+mytheme()+coord_fixed(ratio=1)+theme(legend.position="top",legend.justification="center",legend.key.width=unit(2,"lines"))
-                   } else {
-                     gdraw("No intronic information")
-                   },
-                   ncol=2)
-  make.pdf(plot,"plots/2umap.pdf",7,8)
-  return(obj)
-}
+### Load the Spatial ###########################################################
 
-# merge with seurat object
-coords %<>% mutate(cb = cb_whitelist[cb_index])
-rownames(coords) = paste0(coords$cb,"-1")
-obj = AddMetaData(obj,coords)
-Misc(obj,"pct.placed") = round(sum(!is.na(obj$x_um))/ncol(obj)*100,2)
+# Load the spatial barcode counts matrix and fuzzy match to our called-cells whitelist
+print("Generating the matrix...")
+cb_whitelist = unname(obj$cb)
+writeLines(cb_whitelist, file.path(out_path, "cb_whitelist.txt"))
+system(g("Rscript load_matrix.R {SBpath} {file.path(out_path, 'cb_whitelist.txt')} {out_path}"))
+stopifnot(file.exists(file.path(out_path,"metadata.json"), file.path(out_path,"metadata.json")))
+Misc(obj, "SB_metadata") <- fromJSON(file.path(out_path, "metadata.json"))
+
+# Assign a position to each whitelist cell
+print("Positioning cells...")
+system(g("Rscript positioning.R {file.path(out_path, 'matrix.csv.gz')} {out_path}"))
+stopifnot(file.exists(file.path(out_path,"coords.csv")))
+coords <- read.table(file.path(out_path,"coords.csv"), header=T, sep=",")
+Misc(obj, "coords") <- coords
+
+# Create spatial reduction
+stopifnot(nrow(coords) == ncol(obj), coords$cb_index == obj$cb_index)
+obj$x_um <- coords$x_um
+obj$y_um <- coords$y_um
+# Add KDE-filtered DBSCAN coords
 emb = obj@meta.data[,c("x_um","y_um")] ; colnames(emb) = c("s_1","s_2")
 obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_", assay = "RNA")
+# Add KDE coords
+emb = mutate(coords, across(everything(), ~ifelse(ratio > 1/3, NA, .))) %>% select(x_um_kde, y_um_kde)
+colnames(emb) = c("k_1","k_2") ; rownames(emb) = rownames(obj@meta.data)
+obj[["kde"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "k_", assay = "RNA")
 
-coords %>% select(cb,everything()) %>% write.csv("coords.csv",quote=F,row.names=F)
+# Create DimPlot
+plot_clusters <- function(obj, reduction="spatial") {
+  npucks = (max(obj$x_um,na.rm=T)-min(obj$x_um,na.rm=T))/(max(obj$y_um,na.rm=T)-min(obj$y_um,na.rm=T))
+  nclusters = len(unique(obj$seurat_clusters))
+  ncols = round(sqrt(npucks*nclusters/2)/npucks*2) 
+  
+  m = obj@reductions[[reduction]]@cell.embeddings %>% {!is.na(.[,1]) & !is.na(.[,2])}
+  title = g("%placed: {round(sum(m)/len(m)*100,2)} ({sum(m)}/{len(m)}) [{reduction}]")
+  p1 = DimPlot(obj, reduction=reduction) + coord_fixed(ratio=1) +
+    ggtitle(title) + NoLegend() + xlab("x-position (\u00B5m)") + ylab("y-position (\u00B5m)") + 
+    theme(axis.title.x=element_text(size=12), axis.text.x=element_text(size=10)) +
+    theme(axis.title.y=element_text(size=12), axis.text.y=element_text(size=10))
+  p2 = DimPlot(obj, reduction=reduction, split.by="seurat_clusters", ncol=ncols) + theme_void() + coord_fixed(ratio=1) + NoLegend()
+  plot = plot_grid(p1, p2, ncol=1, rel_heights=c(0.4,0.6))
+  return(plot)
+}
+plot <- plot_clusters(obj)
+make.pdf(plot, file.path(out_path,"DimPlot.pdf"), 7, 8)
+plot <- plot_clusters(obj, reduction="kde")
+make.pdf(plot, file.path(out_path,"DimPlotKDE.pdf"), 7, 8)
+
+# RNA vs SB metrics
+plot_RNAvsSB <- function(obj) {
+  obj$sb_umi <- Misc(obj,"coords")$umi
+  obj$clusters <- Misc(obj,"coords")$clusters
+  obj$placed <- !is.na(obj$x_um) & !is.na(obj$y_um)
+  
+  p1 <- ggplot(obj@meta.data, aes(x=log10(nCount_RNA), y=log10(sb_umi), col=placed)) + 
+    geom_point(size=0.2) + theme_bw() + xlab("log10 RNA UMI") + ylab("log10 SB UMI") + ggtitle("SB UMI vs. RNA UMI") + 
+    labs(color = "placed") +
+    theme(legend.position = c(0.95, 0.05),
+          legend.justification = c("right", "bottom"),
+          legend.background = element_blank(),
+          legend.title=element_text(size=10),
+          legend.text=element_text(size=8),
+          legend.margin=margin(0,0,0,0,"pt"),
+          legend.box.margin=margin(0,0,0,0,"pt"),
+          legend.spacing.y = unit(0.1,"lines"),
+          legend.key.size = unit(0.5, "lines"))
+  
+  d = obj@meta.data %>% rowwise %>% mutate(x=min(clusters,5)) %>% ungroup
+  p2 <- ggplot(d, aes(x=as.factor(x), y=log10(nCount_RNA))) + geom_violin(scale="count") + 
+    scale_x_discrete(breaks=min(d$x):max(d$x), labels=(min(d$x):max(d$x)) %>% {ifelse(.==5, "5+", .)}) +
+    xlab("DBSCAN clusters") + ylab("log10 RNA UMI") + ggtitle("RNA UMI vs. DBSCAN cluster") + theme_classic()
+  
+  p3 <- obj@meta.data %>% group_by(seurat_clusters) %>% summarize(pct.placed=paste0(round(sum(placed)/n()*100,2),"%")) %>% setNames(c("cluster","placed")) %>% plot.tab
+  
+  plot = plot_grid(gdraw("RNA vs. SB metrics"),
+                   plot_grid(plot_grid(p1,p2,ncol=1), p3, ncol=2, rel_widths=c(0.6,0.4)),
+                   ncol=1, rel_heights=c(0.05,0.95))
+  return(plot)
+}
+plot <- plot_RNAvsSB(obj)
+make.pdf(plot, file.path(out_path, "RNAvsSB.pdf"), 7, 8)
+
+# Merge the PDF files
+plotlist <- c(c("SB.pdf","beadplot.pdf","SBmetrics.pdf"),
+              c("DBSCAN.pdf","KDE.pdf","DBSCANvsKDE.pdf","beadplots.pdf"),
+              c("RNAmetrics.pdf","RNA.pdf","UMAP.pdf","DimPlot.pdf","DimPlotKDE.pdf","RNAvsSB.pdf"))
+plotorder <- c(8, 9, 10, 1, 2, 4, 5, 6, 11, 12, 13, 3, 7)
+pdfs <- file.path(out_path, plotlist[plotorder])
+pdfs %<>% keep(file.exists)
+qpdf::pdf_combine(input=pdfs, output=file.path(out_path,"summary.pdf"))
+file.remove(pdfs)
+
+# Save the seurat object
 qsave(obj, "seurat.qs")
-
-### Page 6: Spatial ############################################################
-
-p1 = DimPlot(obj[,!is.na(obj$x_um)],reduction="spatial")+coord_fixed(ratio=1)+
-  ggtitle(g("%placed: {round(sum(!is.na(coords$x_um))/nrow(coords)*100,2)} ({sum(!is.na(obj$x_um))}/{ncol(obj)})")) + 
-  NoLegend() + xlab("x-position (\u00B5m)") + ylab("y-position (\u00B5m)")
-p2 = DimPlot(obj[,!is.na(obj$x_um)], reduction="spatial",split.by="seurat_clusters",ncol=5) + theme_void() + coord_fixed(ratio=1) + NoLegend()
-plot = plot_grid(p1, p2, ncol=1, rel_heights=c(1,1))
-make.pdf(plot,"plots/6spatial.pdf",7,8)
-
-### Save output ################################################################
-
-pdfs = c("0cellranger.pdf","1cellcalling.pdf", "2umap.pdf", "3rawspatial.pdf", "4beadplot.pdf", "5DBSCAN.pdf","6spatial.pdf","7metrics.pdf", "SB.pdf") %>% paste0("plots/",.)
-qpdf::pdf_combine(input = pdfs, output = "summary.pdf")
-qsave(obj, "seurat.qs") # we added some more metadata while plotting
-
-print("Done!")
-
-# Make some plots
-obj %<>% plot0("RNAcounts/metrics_summary.csv")             # cell ranger output
-obj %<>% plot1("RNAcounts/molecule_info.h5", cb_whitelist)  # cell calling
-obj %<>% plot2()                                            # UMAP + metrics
-obj %<>% plot3(df, puckdf, f)                               # raw spatial data
-obj %<>% plot4(df, puckdf)                                  # beadplot
