@@ -13,7 +13,7 @@ library(rdist)
 eps.vec = c(50, 100)
 minPts.vec = c(3:42) # auto-searches up to 40x26
 # KDE hyperparameters
-bw = 800 # bandwith of kernel
+bw = 800     # bandwith of kernel
 radius = 200 # inclusion radius around density peak
 
 # parse arguments
@@ -48,7 +48,7 @@ plan(multisession, workers=ncores)
 # helper methods
 chunk_vector <- function(v, chunk_size) {return(split(v, ceiling(seq_along(v) / chunk_size)))}
 gdraw <- function(text, s=14) {ggdraw()+draw_label(text, size=s)}
-plot.tab <- function(df) {return(plot_grid(tableGrob(df)))}
+plot.tab <- function(df) {return(plot_grid(tableGrob(df,rows=NULL)))}
 add.commas <- function(num){prettyNum(num, big.mark=",")}
 make.pdf <- function(plots, name, w, h) {
   if ("gg" %in% class(plots) || class(plots)=="Heatmap") {plots = list(plots)}
@@ -155,8 +155,7 @@ plot_dbscan <- function(coords, optim_plot) {
     theme_minimal() +
     labs(title = "SNR per cell (density)", x = "SNR", y = "Density") + 
     geom_vline(xintercept = max_density_x, color = "red", linetype = "dashed") +
-    annotate(geom = 'text', label = round(max_density_x, 2), x = max_density_x+0.01, y = Inf, hjust = 0, vjust = 1, col="red")
-  
+    annotate(geom = 'text', label = g("Mean: {round(max_density_x*100, 1)}%"), x = max_density_x+0.01, y = Inf, hjust = 0, vjust = 1, col="red")
 
   plot = plot_grid(gdraw("DBSCAN Results"),
                    plot_grid(p1, optim_plot, p3, p4, ncol=2),
@@ -241,6 +240,7 @@ make.pdf(plot, file.path(out_path, "KDE.pdf"), 7, 8)
 ### More plots + save output ###################################################
 stopifnot(dbscan_coords$cb_index == kde_coords$cb_index)
 coords <- merge(dbscan_coords, kde_coords, by="cb_index", suffix=c("_dbscan","_kde"))
+coords %<>% rename(x2_um_kde=x2_um, y2_um_kde=y2_um)
 
 dbscan_vs_kde <- function(coords) {
   coords %<>% mutate(dist=sqrt((x_um_dbscan-x_um_kde)^2+(y_um_dbscan-y_um_kde)^2))
