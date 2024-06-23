@@ -65,7 +65,7 @@ task getfastqsize {
         # Assert that the disksize is not too large
         if [[ $(cat SIZE) -gt 1024 ]]
         then
-            echo "ERROR: size limit reached, increase cap (1024 GiB)"
+            echo "ERROR: size limit reached, increase cap ($(cat SIZE) of 1024 GiB)"
             rm -f SIZE
         fi
 
