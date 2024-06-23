@@ -247,10 +247,10 @@ stopifnot(nrow(coords) == ncol(obj), coords$cb_index == obj$cb_index)
 obj$x_um <- coords$x_um
 obj$y_um <- coords$y_um
 # Add DBSCAN coords
-emb = obj@meta.data[,c("x_um_dbscan","y_um_dbscan")] ; colnames(emb) = c("d_1","d_2")
+emb = coords %>% select(x_um_dbscan, y_um_dbscan) ; colnames(emb) = c("d_1","d_2")
 obj[["dbscan"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "d_", assay = "RNA")
 # Add KDE coords
-emb = mutate(coords, across(everything(), ~ifelse(ratio > 1/3, NA, .))) %>% select(x_um_kde, y_um_kde)
+emb = coords %>% mutate(across(everything(), ~ifelse(ratio > 1/3, NA, .))) %>% select(x_um_kde, y_um_kde)
 colnames(emb) = c("k_1","k_2") ; rownames(emb) = rownames(obj@meta.data)
 obj[["kde"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "k_", assay = "RNA")
 # Add KDE-filtered DBSCAN coords
