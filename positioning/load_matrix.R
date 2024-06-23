@@ -95,7 +95,7 @@ count_umis <- function(df) {
 
 gdraw <- function(text, s=13) {ggdraw()+draw_label(text, size=s)}
 add.commas <- function(num){prettyNum(num, big.mark=",")}
-plot.tab <- function(df) {return(plot_grid(tableGrob(df)))}
+plot.tab <- function(df) {return(plot_grid(tableGrob(df,rows=NULL)))}
 make.pdf <- function(plots, name, w, h) {
   if ("gg" %in% class(plots) || class(plots)=="Heatmap") {plots = list(plots)}
   pdf(file=name, width=w ,height=h)
