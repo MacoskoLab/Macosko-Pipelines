@@ -137,7 +137,7 @@ task getdisksize {
     command <<<
         echo "<< starting getdisksize >>"
 
-        # Get the size of the bcl * 3
+        # Get the size of the bcl * 2.5
         gsutil du -sc "~{bcl}" | grep total | 
         awk '{size=$1/1024/1024/1024 ; size=size*2.5 ; if (size<96) size=96 ; printf "%d\n", size}' > SIZE
 
