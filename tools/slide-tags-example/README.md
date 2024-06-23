@@ -11,8 +11,6 @@
 **puck**:
 * Puck.csv file with coordinates for each spatial barcode (required)
 
-## Sample outputs
-
 **example_output**:  
 * SBcounts.h5: spatial barcode count matrix produced from the spatial FASTQs
 * cb_whitelist.txt: list of cell barcodes extracted from the RNA matrix
