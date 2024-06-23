@@ -8,7 +8,7 @@
 **spatial_fastqs**:
 * FASTQs with spatial barcode data (required)
 
-**puck**:
+**pucks**:
 * Puck.csv file with coordinates for each spatial barcode (required)
 
 **example_output**:  
