@@ -13,6 +13,10 @@ library(purrr)
 library(qpdf)
 library(qs)
 
+# Helper files required for loading spatial data and positioning cells
+stopifnot(file.exists("load_matrix.R", "positioning.R"))
+
+# Load arguments
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 2) {
   RNApath <- args[[1]]
@@ -42,7 +46,7 @@ if (file.exists(file.path(RNApath, "filtered_feature_bc_matrix.h5"))) {
 
 # Helper methods
 gdraw <- function(text, s=14) {ggdraw()+draw_label(text, size=s)}
-plot.tab <- function(df) {return(plot_grid(tableGrob(df)))}
+plot.tab <- function(df) {return(plot_grid(tableGrob(df,rows=NULL)))}
 add.commas <- function(num){prettyNum(num, big.mark=",")}
 make.pdf <- function(plots, name, w, h) {
   if ("gg" %in% class(plots) || class(plots)=="Heatmap") {plots = list(plots)}
@@ -305,10 +309,12 @@ plot_RNAvsSB <- function(obj) {
     scale_x_discrete(breaks=min(d$x):max(d$x), labels=(min(d$x):max(d$x)) %>% {ifelse(.==5, "5+", .)}) +
     xlab("DBSCAN clusters") + ylab("log10 RNA UMI") + ggtitle("RNA UMI vs. DBSCAN cluster") + theme_classic()
   
-  p3 <- obj@meta.data %>% group_by(seurat_clusters) %>% summarize(pct.placed=paste0(round(sum(placed)/n()*100,2),"%")) %>% setNames(c("cluster","placed")) %>% plot.tab
+  d = obj@meta.data %>% group_by(seurat_clusters) %>% summarize(pct.placed=paste0(round(sum(placed)/n()*100,2),"%")) %>% setNames(c("cluster","placed"))
+  m = ceiling(nrow(d)/2) ; d1 = d[1:m,] ; d2 = d[(m+1):nrow(d),]
+  p3 <- plot_grid(plot.tab(d1), plot.tab(d2), ncol=2)
   
   plot = plot_grid(gdraw("RNA vs. SB metrics"),
-                   plot_grid(plot_grid(p1,p2,ncol=1), p3, ncol=2, rel_widths=c(0.6,0.4)),
+                   plot_grid(plot_grid(p1,p2,ncol=1), p3, ncol=2, rel_widths=c(0.5,0.5)),
                    ncol=1, rel_heights=c(0.05,0.95))
   return(plot)
 }
