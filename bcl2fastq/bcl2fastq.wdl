@@ -92,7 +92,7 @@ task mkfastq {
     mv "$stats_path" "mkfastq/$name"
     
     # upload the results
-    if [[ -f "$name/Reports/html/index.html" ]]; then
+    if [[ -f "mkfastq/$name/Reports/html/index.html" ]]; then
         echo "Success, uploading fastqs"
         gcloud storage cp -r mkfastq/* "${fastq_output_path%/}"
         echo "true" > DONE
