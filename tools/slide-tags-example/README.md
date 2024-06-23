@@ -25,7 +25,7 @@
 ## Pipeline commands
 
 **commands**:
-1. julia spatial-count.jl spatial_data spaial_data/Puck.csv
+1. julia spatial-count.jl spatial_fastqs/ pucks/
 2. Rscript run-positioning.R 
 
 Scripts and .wdl tasks can be found in `Macosko-Pipelines/spatial-count` and `Macosko-Pipelines/positioning` for steps 1 and 2, respectively
