@@ -26,6 +26,6 @@
 
 **commands**:
 1. julia spatial-count.jl spatial_fastqs/ pucks/
-2. Rscript run-positioning.R 
+2. Rscript run-positioning.R RNA_data/ SBcounts.h5
 
 Scripts and .wdl tasks can be found in `Macosko-Pipelines/spatial-count` and `Macosko-Pipelines/positioning` for steps 1 and 2, respectively
