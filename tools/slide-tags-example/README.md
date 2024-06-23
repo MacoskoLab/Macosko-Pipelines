@@ -17,7 +17,7 @@
 * SBcounts.h5: spatial barcode count matrix produced from the spatial FASTQs
 * cb_whitelist.txt: list of cell barcodes extracted from the RNA matrix
 * matrix.csv.gz: spatial barcode count matrix filtered+matched to cb_whitelist.txt
-* spatial_metadata.json: metadata recorded when converting spatial FASTQs into filtered matrix
+* spatial_metadata.json: metadata recorded during conversion from FASTQs into filtered matrix
 * coords.csv: spatial coordinates for each cell in cb_whitelist.txt
 * seurat.qs: Seurat object with both RNA data and spatial coordinates
 * summary.pdf: a visual summary of the RNA and spatial data
