@@ -246,16 +246,19 @@ Misc(obj, "coords") <- coords
 stopifnot(nrow(coords) == ncol(obj), coords$cb_index == obj$cb_index)
 obj$x_um <- coords$x_um
 obj$y_um <- coords$y_um
-# Add KDE-filtered DBSCAN coords
-emb = obj@meta.data[,c("x_um","y_um")] ; colnames(emb) = c("s_1","s_2")
-obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_", assay = "RNA")
+# Add DBSCAN coords
+emb = obj@meta.data[,c("x_um_dbscan","y_um_dbscan")] ; colnames(emb) = c("d_1","d_2")
+obj[["dbscan"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "d_", assay = "RNA")
 # Add KDE coords
 emb = mutate(coords, across(everything(), ~ifelse(ratio > 1/3, NA, .))) %>% select(x_um_kde, y_um_kde)
 colnames(emb) = c("k_1","k_2") ; rownames(emb) = rownames(obj@meta.data)
 obj[["kde"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "k_", assay = "RNA")
+# Add KDE-filtered DBSCAN coords
+emb = obj@meta.data[,c("x_um","y_um")] ; colnames(emb) = c("s_1","s_2")
+obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_", assay = "RNA")
 
 # Create DimPlot
-plot_clusters <- function(obj, reduction="spatial") {
+plot_clusters <- function(obj, reduction) {
   npucks = (max(obj$x_um,na.rm=T)-min(obj$x_um,na.rm=T))/(max(obj$y_um,na.rm=T)-min(obj$y_um,na.rm=T))
   nclusters = len(unique(obj$seurat_clusters))
   ncols = round(sqrt(npucks*nclusters/2)/npucks*2) 
@@ -270,10 +273,12 @@ plot_clusters <- function(obj, reduction="spatial") {
   plot = plot_grid(p1, p2, ncol=1, rel_heights=c(0.4,0.6))
   return(plot)
 }
-plot <- plot_clusters(obj)
-make.pdf(plot, file.path(out_path,"DimPlot.pdf"), 7, 8)
+plot <- plot_clusters(obj, reduction="dbscan")
+make.pdf(plot, file.path(out_path,"DimPlotDBSCAN.pdf"), 7, 8)
 plot <- plot_clusters(obj, reduction="kde")
 make.pdf(plot, file.path(out_path,"DimPlotKDE.pdf"), 7, 8)
+plot <- plot_clusters(obj, reduction="spatial")
+make.pdf(plot, file.path(out_path,"DimPlot.pdf"), 7, 8)
 
 # RNA vs SB metrics
 plot_RNAvsSB <- function(obj) {
@@ -312,8 +317,8 @@ make.pdf(plot, file.path(out_path, "RNAvsSB.pdf"), 7, 8)
 # Merge the PDF files
 plotlist <- c(c("SB.pdf","beadplot.pdf","SBmetrics.pdf"),
               c("DBSCAN.pdf","KDE.pdf","DBSCANvsKDE.pdf","beadplots.pdf"),
-              c("RNAmetrics.pdf","RNA.pdf","UMAP.pdf","DimPlot.pdf","DimPlotKDE.pdf","RNAvsSB.pdf"))
-plotorder <- c(8, 9, 10, 1, 2, 4, 5, 6, 11, 12, 13, 3, 7)
+              c("RNAmetrics.pdf","RNA.pdf","UMAP.pdf","DimPlot.pdf","DimPlotDBSCAN.pdf","DimPlotKDE.pdf","RNAvsSB.pdf"))
+plotorder <- c(8, 9, 10, 1, 2, 4, 5, 6, 11, 12, 13, 14, 3, 7)
 pdfs <- file.path(out_path, plotlist[plotorder])
 pdfs %<>% keep(file.exists)
 qpdf::pdf_combine(input=pdfs, output=file.path(out_path,"summary.pdf"))
