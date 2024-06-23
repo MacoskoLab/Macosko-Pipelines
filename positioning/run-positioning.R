@@ -239,6 +239,7 @@ print("Positioning cells...")
 system(g("Rscript positioning.R {file.path(out_path, 'matrix.csv.gz')} {out_path}"))
 stopifnot(file.exists(file.path(out_path,"coords.csv")))
 coords <- read.table(file.path(out_path,"coords.csv"), header=T, sep=",")
+coords %<>% right_join(data.frame(cb_index=1:len(cb_whitelist)), by = "cb_index") %>% arrange(cb_index) # fill in cells with no spatial data
 Misc(obj, "coords") <- coords
 
 # Create spatial reduction
@@ -276,8 +277,8 @@ make.pdf(plot, file.path(out_path,"DimPlotKDE.pdf"), 7, 8)
 
 # RNA vs SB metrics
 plot_RNAvsSB <- function(obj) {
-  obj$sb_umi <- Misc(obj,"coords")$umi
-  obj$clusters <- Misc(obj,"coords")$clusters
+  obj$sb_umi <- Misc(obj,"coords")$umi_dbscan %>% tidyr::replace_na(0)
+  obj$clusters <- Misc(obj,"coords")$clusters %>% tidyr::replace_na(0)
   obj$placed <- !is.na(obj$x_um) & !is.na(obj$y_um)
   
   p1 <- ggplot(obj@meta.data, aes(x=log10(nCount_RNA), y=log10(sb_umi), col=placed)) + 
