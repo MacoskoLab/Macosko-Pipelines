@@ -7,7 +7,7 @@ bcl2fastq
 **Inputs**  
 * bcl: gs:// path to BCL  
 * samplesheet: gs:// path to samplesheet  
-* technique: "cellranger" or "cellranger-arc" or "cellranger-atac" or "bcl2fastq"
+* technique: "bcl2fastq" or "cellranger" or "cellranger-arc" or "cellranger-atac"
 * fastq_output_path (optional): gs:// path to write fastqs (default fastqs/{basename(bcl)})  
 * log_output_path (optional): gs:// path to write logs (default logs/{basename(bcl)})
 
@@ -15,17 +15,18 @@ bcl2fastq
 * cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 * cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 * cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui
-* bcl2fastq --runfolder-dir BCL --input-dir BCL/Data/Intensities/BaseCalls --output-dir mkfastq --sample-sheet Indexes.csv --create-fastq-for-index-reads  
-* rm -rf mkfastq/MAKE_FASTQS_CS  
+* bcl2fastq --runfolder-dir BCL --input-dir BCL/Data/Intensities/BaseCalls --output-dir mkfastq --sample-sheet Indexes.csv --create-fastq-for-index-reads
+* bcl2fastq --runfolder-dir BCL --output-dir mkfastq --sample-sheet Indexes.csv  
 
 **Outputs**  
 * /fastqs: output fastqs  
-* /logs: mkfastq.log and mkfastq.usage
+* /logs: mkfastq.out/err and mkfastq.usage
 
 **Notes**
-* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*3,128)} SSD"  
+* memory: "64 GB", cpu: 8, disks: "local-disk {max(BCL*2.5, 96)} SSD"  
 * throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)  
-* throws an error if the fastq directory already exists
+* prints a warning (and proceeds) if the fastq directory already exists
+* removes MAKE_FASTQS_CS and Undetermined FASTQs
 
 cellranger-count
 ----------------
