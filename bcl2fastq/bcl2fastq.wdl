@@ -15,25 +15,28 @@ task mkfastq {
     echo "<< starting mkfastq >>"
     dstat --time --cpu --mem --disk --io --freespace --output mkfastq.usage &> /dev/null &
 
-    # export PATH="/usr/local/bcl2fastq/bin:$PATH"
+    export PATH="/usr/local/bcl2fastq/bin:$PATH"
     export PATH="/software/cellranger-8.0.0/bin:$PATH"
     export PATH="/software/cellranger-arc-2.0.2/bin:$PATH"
-    # export PATH="/software/cellranger-atac-2.1.0/bin:$PATH"
+    export PATH="/software/cellranger-atac-2.1.0/bin:$PATH"
     
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
+    bcl_path="~{bcl}"
+    samplesheet_path="~{samplesheet}"
+    fastq_output_path="~{fastq_output_path}"
+    log_output_path="~{log_output_path}"
+
     # get the samplesheet
-    gcloud storage cp "~{samplesheet}" Indexes.csv |& ts
+    gcloud storage cp "$samplesheet_path" Indexes.csv |& ts
     echo; echo "Indexes.csv:"; cat Indexes.csv; echo; echo
 
-    # assert that the samplesheet is not blank
-    if [[ -s Indexes.csv ]]
-    then
+    # get the BCL if the samplesheet exists
+    if [[ -s Indexes.csv ]]; then
         echo "Downloading BCL:"
         mkdir BCL
-        bclpath="~{bcl}"
-        gcloud storage cp -r "${bclpath%/}/*" BCL |& ts
+        gcloud storage cp -r "${bcl_path%/}/*" BCL |& ts
     else
         echo "ERROR: empty samplesheet"
         rm Indexes.csv
@@ -65,7 +68,6 @@ task mkfastq {
         echo; echo "Running bcl2fastq"
         time stdbuf -oL -eL bcl2fastq                       \
           --runfolder-dir ./BCL                             \
-          --input-dir ./BCL/Data/Intensities/BaseCalls      \
           --output-dir ./mkfastq                            \
           --sample-sheet ./Indexes.csv                      \
           ~{params} |& ts
@@ -73,28 +75,29 @@ task mkfastq {
         echo "ERROR: could not recognize technique ~{technique}"
     fi
 
+    # delete undetermined fastqs
+    find ./mkfastq -type f -name "Undetermined_S0_*.fastq.gz" -exec rm {} +
+
+    # delete MAKE_FASTQS_CS
+    rm -rf mkfastq/MAKE_FASTQS_CS
+
+    # rename the 'Reports' and 'Stats' directories to the samplesheet used
+    # (this is because we may need to run mkfastq multiple times)
+    name="mkfastq/$(basename "$samplesheet_path" | cut -d. -f1)"
+    mkdir -p "$name"
+    cp Indexes.csv "$name/$(basename "$samplesheet_path")"
+    reports_path=$(find ./mkfastq -type d -name "Reports" -print -quit)
+    mv "$reports_path" "$name"
+    stats_path=$(find ./mkfastq -type d -name "Stats" -print -quit)
+    mv "$stats_path" "$name"
+    
     # upload the results
-    if [[ ~{technique} == "bcl2fastq" ]]; then
-        fastq_output_path="~{fastq_output_path}"
-        gcloud storage cp -r mkfastq "${fastq_output_path%/}"
+    if [[ -f "$name/Reports/html/index.html" ]]; then
+        echo "Success, uploading fastqs"
+        gcloud storage cp -r mkfastq/* "${fastq_output_path%/}"
         echo "true" > DONE
     else
-        echo "Removing MAKE_FASTQS_CS"
-        rm -rf mkfastq/MAKE_FASTQS_CS
-
-        if [[ -f mkfastq/outs/fastq_path/Reports/html/index.html ]]; then
-            echo "Success, uploading fastqs"
-            if gsutil ls "~{fastq_output_path}" &> /dev/null
-            then
-                echo "ERROR: fastq output directory already exists"
-            else
-                fastq_output_path="~{fastq_output_path}"
-                gcloud storage cp -r mkfastq "${fastq_output_path%/}"
-                echo "true" > DONE
-            fi
-        else
-            echo "ERROR: CANNOT FIND: index.html"
-        fi
+        echo "ERROR: CANNOT FIND: index.html"
     fi
 
     echo; echo "Writing logs:"
@@ -102,10 +105,8 @@ task mkfastq {
     echo; echo "BCL size:"; du -sh BCL
     echo; echo "mkfastq size:"; du -sh mkfastq
     echo; echo "FREE SPACE:"; df -h
-    echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
-    log_output_path="~{log_output_path}"
     gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/mkfastq.out"
     gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/mkfastq.err"
     gcloud storage cp mkfastq.usage "${log_output_path%/}/mkfastq.usage"
@@ -168,11 +169,10 @@ task getdisksize {
             rm -f SIZE
         fi
 
-        # Assert that the fastq output is blank (avoid overwiting)
+        # Warn if the FASTQ folder already exists
         if gsutil ls "~{fastq_output_path}" &> /dev/null
         then
-            echo "ERROR: fastq output already exists"
-            rm -f SIZE
+            echo "WARNING: fastq output directory already exists"
         fi
 
         # Assert that the paths are actually gs:// paths
@@ -201,7 +201,7 @@ workflow bcl2fastq {
         String bcl
         String samplesheet
         String technique
-        String params = "--create-fastq-for-index-reads"
+        String params = ""
         String fastq_output_path = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(bcl,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
