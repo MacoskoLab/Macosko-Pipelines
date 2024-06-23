@@ -5,8 +5,10 @@
 * molecule_info.h5 (optional, used for QC plots)
 * metrics_summary.csv (optional, used for QC plots)
 
-**spatial_data**:
+**spatial_fastqs**:
 * FASTQs with spatial barcode data (required)
+
+**puck**:
 * Puck.csv file with coordinates for each spatial barcode (required)
 
 ## Sample outputs
