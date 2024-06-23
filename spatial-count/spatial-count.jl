@@ -76,7 +76,7 @@ end
 ##### Load the puck data #######################################################
 
 # Load the pucks
-pucks = readdir(puckpath, join=true) ; println("Pucks: ", basename.(pucks))
+pucks = filter(x -> endswith(x, ".csv"), readdir(puckpath, join=true)) ; println("Pucks: ", basename.(pucks))
 puckdfs = [rename(CSV.read(puck, DataFrame, header=false, types=[String15, Float64, Float64]), [:sb,:x,:y]) for puck in pucks]
 
 # Validate the pucks
