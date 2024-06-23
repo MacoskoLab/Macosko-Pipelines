@@ -83,13 +83,13 @@ task mkfastq {
 
     # rename the 'Reports' and 'Stats' directories to the samplesheet used
     # (this is because we may need to run mkfastq multiple times)
-    name="mkfastq/$(basename "$samplesheet_path" | cut -d. -f1)"
-    mkdir -p "$name"
-    cp Indexes.csv "$name/$(basename "$samplesheet_path")"
+    name="$(basename "$samplesheet_path" | cut -d. -f1)"
+    mkdir -p "mkfastq/$name"
+    cp Indexes.csv "mkfastq/$name/$(basename "$samplesheet_path")"
     reports_path=$(find ./mkfastq -type d -name "Reports" -print -quit)
-    mv "$reports_path" "$name"
+    mv "$reports_path" "mkfastq/$name"
     stats_path=$(find ./mkfastq -type d -name "Stats" -print -quit)
-    mv "$stats_path" "$name"
+    mv "$stats_path" "mkfastq/$name"
     
     # upload the results
     if [[ -f "$name/Reports/html/index.html" ]]; then
@@ -107,9 +107,9 @@ task mkfastq {
     echo; echo "FREE SPACE:"; df -h
     
     echo "uploading logs"
-    gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/mkfastq.out"
-    gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/mkfastq.err"
-    gcloud storage cp mkfastq.usage "${log_output_path%/}/mkfastq.usage"
+    gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/mkfastq_$name.out"
+    gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/mkfastq_$name.err"
+    gcloud storage cp mkfastq.usage "${log_output_path%/}/mkfastq_$name.usage"
     
     echo "<< completed mkfastq >>"
   >>>
