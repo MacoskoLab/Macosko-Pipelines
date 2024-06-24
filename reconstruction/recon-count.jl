@@ -83,13 +83,26 @@ print("Reading FASTQs... ") ; flush(stdout)
 function process_fastqs(R1s, R2s)
     sb_dictionary = Dict{String15, UInt32}() # sb -> sb_i
     mat = Dict{Tuple{UInt32, UInt32, UInt32, UInt32}, UInt32}() # (sb1_i, umi1_i, sb2_i, umi2_i) -> reads
-    metadata = Dict("reads"=>0, "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0, "R1_no_UP"=>0, "R2_no_UP"=>0, "reads_filtered"=>0)
+    metadata = Dict("reads"=>0, "R1_tooshort"=>0, "R2_tooshort"=>0, "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0, "R1_no_UP"=>0, "R2_no_UP"=>0, "reads_filtered"=>0)
 
     for fastqpair in zip(R1s, R2s)
         it1 = fastqpair[1] |> open |> GzipDecompressorStream |> FASTQ.Reader
         it2 = fastqpair[2] |> open |> GzipDecompressorStream |> FASTQ.Reader
         for record in zip(it1, it2)
             metadata["reads"] += 1
+
+            skip = false
+            if length(FASTQ.sequence(record[1])) < 42
+                metadata["R1_tooshort"] += 1
+                skip = true
+            end
+            if length(FASTQ.sequence(record[2])) < 34
+                metadata["R2_tooshort"] += 1
+                skip = true
+            end
+            if skip
+                continue
+            end
 
             sb1_1 = FASTQ.sequence(record[1], 1:8)
             up1 = FASTQ.sequence(record[1], 9:26)
@@ -292,6 +305,8 @@ mm = matching_metadata
 data = [
 ("", "Total reads", ""),
 ("", f(m["reads"]), ""),
+("R1 too short", "", "R2 too short"),
+(d(m["R1_tooshort"],m["reads"]), "", d(m["R2_tooshort"],m["reads"])),
 ("R1 degen UMI", "", "R2 degen UMI"),
 (d(m["R1_homopolymer_UMI"],m["reads"]), "", d(m["R2_homopolymer_UMI"],m["reads"])),
 ("R1 LQ UMI" , "", "R2 LQ UMI"),
@@ -315,12 +330,12 @@ data = [
 ("", "Matched UMIs", ""),
 ("", d(m["umis_matched"], m["umis_filtered"]), ""),
 ]
-p = plot(xlim=(0, 4), ylim=(0, 24+1), framestyle=:none, size=(7*100, 8*100),
+p = plot(xlim=(0, 4), ylim=(0, 26+1), framestyle=:none, size=(7*100, 8*100),
          legend=false, xticks=:none, yticks=:none)
 for (i, (str1, str2, str3)) in enumerate(data)
-    annotate!(p, 1, 24 - i + 1, text(str1, :center, 12))
-    annotate!(p, 2, 24 - i + 1, text(str2, :center, 12))
-    annotate!(p, 3, 24 - i + 1, text(str3, :center, 12))
+    annotate!(p, 1, 26 - i + 1, text(str1, :center, 12))
+    annotate!(p, 2, 26 - i + 1, text(str2, :center, 12))
+    annotate!(p, 3, 26 - i + 1, text(str3, :center, 12))
 end
 hline!(p, [12.5], linestyle = :solid, color = :black)
 savefig(p, joinpath(out_path, "metadata.pdf"))
