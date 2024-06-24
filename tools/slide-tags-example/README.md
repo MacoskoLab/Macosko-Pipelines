@@ -26,3 +26,4 @@
 1. julia [spatial-count.jl](https://github.com/MacoskoLab/Macosko-Pipelines/tree/main/spatial-count) spatial_fastqs/ pucks/
     * creates SBcounts.h5
 2. Rscript [run-positioning.R](https://github.com/MacoskoLab/Macosko-Pipelines/tree/main/positioning) RNA_data/ SBcounts.h5
+    * creates rest of output
