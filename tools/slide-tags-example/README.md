@@ -11,7 +11,7 @@
 **pucks**:  
 * Puck.csv files with coordinates for each spatial barcode (required)
 
-**SBcounts.h5**
+**SBcounts.h5**:  
 * spatial barcode count matrix produced from the spatial FASTQs via spatial-count.jl
 
 **example_output**:  
