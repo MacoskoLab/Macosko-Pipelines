@@ -181,7 +181,7 @@ function umi_density_plot(table, R)
     x = x[perm]
     y = y[perm]
     
-    model = loess(log10.(x), log10.(y), span=0.075)
+    model = loess(log10.(x), log10.(y), span=0.05)
     ys = (10).^predict(model, log10.(x))
     uc = x[findminima(ys).indices]
     uc = filter(x -> x >= 10, uc) |> sort |> first
