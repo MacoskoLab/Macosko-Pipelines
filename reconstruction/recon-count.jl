@@ -203,7 +203,7 @@ function remove_int(x, y)
     return(x, y)
 end
 function elbow_plot(y, uc, R)
-    y = sort(y, rev=true)
+    sort!(y, rev=true)
     x = 1:length(y)
     bc = count(e -> e >= uc, y)
     
@@ -218,14 +218,14 @@ function elbow_plot(y, uc, R)
     return(p, bc)
 end
 
-tab1 = countmap([key[1] for key in keys(mat)])
-tab2 = countmap([key[3] for key in keys(mat)])
+tab1 = [key[1] for key in keys(mat)] |> countmap |> values |> collect
+tab2 = [key[3] for key in keys(mat)] |> countmap |> values |> collect
 
-p1, uc1 = umi_density_plot(tab1 |> values |> countmap, "R1")
-p3, uc2 = umi_density_plot(tab2 |> values |> countmap, "R2")
+p1, uc1 = umi_density_plot(tab1 |> countmap, "R1")
+p3, uc2 = umi_density_plot(tab2 |> countmap, "R2")
 
-p2, bc1 = elbow_plot(values(tab1), uc1, "R1")
-p4, bc2 = elbow_plot(values(tab2), uc2, "R2")
+p2, bc1 = elbow_plot(tab1, uc1, "R1")
+p4, bc2 = elbow_plot(tab2, uc2, "R2")
 
 p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
 savefig(p, joinpath(out_path, "elbows.pdf"))
