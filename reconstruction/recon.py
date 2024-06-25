@@ -86,7 +86,7 @@ def my_umap(mat, n_epochs, init=init):
 embeddings = []
 # embeddings.append(my_umap(mat, n_epochs=1))
 # embeddings.append(my_umap(mat, n_epochs=10, init=embeddings[-1]))
-embeddings.append(my_umap(mat, n_epochs=10)
+embeddings.append(my_umap(mat, n_epochs=10))
 embeddings.append(my_umap(mat, n_epochs=100, init=embeddings[-1]))
 for i in range(round(n_epochs/1000)):
     embeddings.append(my_umap(mat, init=embeddings[-1], n_epochs=1000))
