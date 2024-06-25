@@ -81,7 +81,8 @@ print("Reading FASTQs... ") ; flush(stdout)
 
 # Read the FASTQs
 function process_fastqs(R1s, R2s)
-    sb_dictionary = Dict{String15, UInt32}() # sb -> sb_i
+    sb1_dictionary = Dict{String15, UInt32}() # sb1 -> sb1_i
+    sb2_dictionary = Dict{String15, UInt32}() # sb2 -> sb2_i
     mat = Dict{Tuple{UInt32, UInt32, UInt32, UInt32}, UInt32}() # (sb1_i, umi1_i, sb2_i, umi2_i) -> reads
     metadata = Dict("reads"=>0, "R1_tooshort"=>0, "R2_tooshort"=>0, "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0, "R1_no_UP"=>0, "R2_no_UP"=>0, "reads_filtered"=>0)
 
@@ -144,8 +145,8 @@ function process_fastqs(R1s, R2s)
             end
 
             # update counts
-            sb1_i = get!(sb_dictionary, sb1_1*sb1_2, length(sb_dictionary) + 1)
-            sb2_i = get!(sb_dictionary, sb2_1*sb2_2, length(sb_dictionary) + 1)
+            sb1_i = get!(sb1_dictionary, sb1_1*sb1_2, length(sb1_dictionary) + 1)
+            sb2_i = get!(sb2_dictionary, sb2_1*sb2_2, length(sb2_dictionary) + 1)
             umi1_i = UMItoindex(umi1)
             umi2_i = UMItoindex(umi2)
             key = (sb1_i, umi1_i, sb2_i, umi2_i)
@@ -154,14 +155,17 @@ function process_fastqs(R1s, R2s)
         end
     end
 
-    sb_whitelist = DataFrame(sb = collect(String15, keys(sb_dictionary)), sb_i = collect(UInt32, values(sb_dictionary)))
-    sort!(sb_whitelist, :sb_i)
-    @assert sb_whitelist.sb_i == 1:size(sb_whitelist, 1)
-
+    sb1_whitelist = DataFrame(sb1 = collect(String15, keys(sb1_dictionary)), sb1_i = collect(UInt32, values(sb1_dictionary)))
+    sb2_whitelist = DataFrame(sb2 = collect(String15, keys(sb2_dictionary)), sb2_i = collect(UInt32, values(sb2_dictionary)))
+    sort!(sb1_whitelist, :sb1_i)
+    sort!(sb2_whitelist, :sb2_i)
+    @assert sb1_whitelist.sb1_i == 1:size(sb1_whitelist, 1)
+    @assert sb2_whitelist.sb2_i == 1:size(sb2_whitelist, 1)
+    
     metadata["umis_filtered"] = length(mat)
-    return(mat, sb_whitelist.sb, metadata)
+    return(mat, sb1_whitelist.sb1, sb2_whitelist.sb2, metadata)
 end
-mat, sb_whitelist, metadata = process_fastqs(R1s, R2s)
+mat, sb1_whitelist, sb2_whitelist, metadata = process_fastqs(R1s, R2s)
 
 println("done") ; flush(stdout) ; GC.gc()
 
@@ -214,12 +218,13 @@ function elbow_plot(y, uc, R)
     return(p, bc)
 end
 
-p1, uc1 = umi_density_plot([key[1] for key in keys(mat)] |> countmap |> values |> countmap, "R1")
-p3, uc2 = umi_density_plot([key[3] for key in keys(mat)] |> countmap |> values |> countmap, "R2")
-
 tab1 = countmap([key[1] for key in keys(mat)])
-p2, bc1 = elbow_plot(values(tab1), uc1, "R1")
 tab2 = countmap([key[3] for key in keys(mat)])
+
+p1, uc1 = umi_density_plot(tab1 |> values |> countmap, "R1")
+p3, uc2 = umi_density_plot(tab2 |> values |> countmap, "R2")
+
+p2, bc1 = elbow_plot(values(tab1), uc1, "R1")
 p4, bc2 = elbow_plot(values(tab2), uc2, "R2")
 
 p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
@@ -348,17 +353,26 @@ sort!(meta_df, :key) ; meta_df = select(meta_df, :key, :value)
 CSV.write(joinpath(out_path,"metadata.csv"), meta_df, writeheader=false)
 
 # Write matrix and barcodes
-m = sort(collect(union(df.sb1_i, df.sb2_i)))
-dict = Dict{UInt32, UInt32}(value => index for (index, value) in enumerate(m))
-sb_whitelist_short = sb_whitelist[m]
-sb1_new = [dict[k] for k in df.sb1_i]
-sb2_new = [dict[k] for k in df.sb2_i]
-@assert sb_whitelist[df.sb1_i] == sb_whitelist_short[sb1_new]
-@assert sb_whitelist[df.sb2_i] == sb_whitelist_short[sb2_new]
+m1 = sort(collect(Set(df.sb1_i)))
+m2 = sort(collect(Set(df.sb2_i)))
+dict1 = Dict{UInt32, UInt32}(value => index for (index, value) in enumerate(m1))
+dict2 = Dict{UInt32, UInt32}(value => index for (index, value) in enumerate(m2))
+sb1_whitelist_short = sb1_whitelist[m1]
+sb2_whitelist_short = sb2_whitelist[m2]
+sb1_new = [dict1[k] for k in df.sb1_i]
+sb2_new = [dict2[k] for k in df.sb2_i]
+@assert sb1_whitelist[df.sb1_i] == sb1_whitelist_short[sb1_new]
+@assert sb2_whitelist[df.sb2_i] == sb2_whitelist_short[sb2_new]
 df.sb1_i = sb1_new
 df.sb2_i = sb2_new
-open(GzipCompressorStream, joinpath(out_path,"barcodes.txt.gz"), "w") do file
-    for line in sb_whitelist_short
+
+open(GzipCompressorStream, joinpath(out_path,"sb1.txt.gz"), "w") do file
+    for line in sb1_whitelist_short
+        write(file, line * "\n")
+    end
+end
+open(GzipCompressorStream, joinpath(out_path,"sb2.txt.gz"), "w") do file
+    for line in sb2_whitelist_short
         write(file, line * "\n")
     end
 end
@@ -368,4 +382,4 @@ end
 
 println("done!") ; flush(stdout) ; GC.gc()
 
-@assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "barcodes.txt.gz", "metadata.csv", "QC.pdf"])
+@assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.txt.gz", "sb2.txt.gz", "metadata.csv", "QC.pdf"])
