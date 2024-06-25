@@ -29,16 +29,16 @@ def get_args():
     return args
 
 args = get_args()
-n_neighbors = args.n_neighbors
-metric = args.metric
-min_dist = args.min_dist
-init = args.init
-n_epochs = args.n_epochs
+n_neighbors = args.n_neighbors ; print(f"n_neighbors = {n_neighbors}")
+metric = args.metric           ; print(f"metric = {metric}")
+min_dist = args.min_dist       ; print(f"min_dist = {min_dist}")
+init = args.init               ; print(f"init = {init}")
+n_epochs = args.n_epochs       ; print(f"n_epochs = {n_epochs}")
 out_dir = f"ANCHOR_{n_neighbors}_{metric}_{min_dist}_{init}_{n_epochs}"
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 
-# Read the matrix
+print("\nReading the matrix...")
 df = pd.read_csv('matrix.csv.gz', compression='gzip', header=None, names=['sb1', 'sb2', 'umi'])
 df.sb1 -= 1 # convert from 1- to 0-indexed
 df.sb2 -= 1 # convert from 1- to 0-indexed
@@ -54,9 +54,8 @@ print(f"{len(sb2)} R2 barcodes")
 # Rows are the anchor beads I wish to recon
 # Columns are the features used for judging similarity
 mat = coo_matrix((df['umi'], (df['sb2'], df['sb1'])))
-# del df ; gc.collect()
 
-# Compute the KNN
+print("\nComputing the KNN...")
 knn = nearest_neighbors(mat,
                         n_neighbors=n_neighbors,
                         metric=metric,
@@ -82,12 +81,13 @@ def my_umap(mat, n_epochs, init=init):
     embedding = reducer.fit_transform(np.log1p(mat))
     return(embedding)
 
-
+print("\nRunning UMAP...")
 embeddings = []
-# embeddings.append(my_umap(mat, n_epochs=1))
-# embeddings.append(my_umap(mat, n_epochs=10, init=embeddings[-1]))
 embeddings.append(my_umap(mat, n_epochs=10))
 embeddings.append(my_umap(mat, n_epochs=100, init=embeddings[-1]))
 for i in range(round(n_epochs/1000)):
+    print(i)
     embeddings.append(my_umap(mat, init=embeddings[-1], n_epochs=1000))
+
+print("\ndone")
 np.savez(os.path.join(out_dir,"embeddings.npz"), *embeddings)
