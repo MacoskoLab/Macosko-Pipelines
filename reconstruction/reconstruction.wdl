@@ -7,7 +7,7 @@ task recon {
   input {
     String id
     Array[String] fastq_paths
-    String parameters
+    String params
     String recon_output_path
     String log_output_path
     Int disksize
@@ -47,10 +47,10 @@ task recon {
     # Run recon.py
     if [[ -f matrix.csv.gz && -f sb1.txt.gz && -f sb2.txt.gz ]] ; then
         echo "Running recon.py"
-        /opt/conda/bin/python recon.py
-        gcloud storage cp umi_histograms.pdf "$recon_output_path"
+        /opt/conda/bin/python recon.py ~{params}
+        gcloud storage cp -r ANCHOR_* "$recon_output_path"
     else
-        echo "Cannot run recon.py, matrix.csv.gz not found" 
+        echo "Cannot run recon.py, matrix.csv.gz or sb1.txt.gz or sb2.txt.gz not found" 
     fi
 
     echo; echo "Writing logs:"
@@ -82,7 +82,7 @@ workflow reconstruction {
     input {
         String fastq_path
         String sample
-        String parameters = ""
+        String params = ""
         Array[Int] lanes = []
         String memory_multiplier = "2"
         String recon_output_path = "gs://"+bucket+"/reconstruction/"+basename(fastq_path,"/")
@@ -104,7 +104,7 @@ workflow reconstruction {
         input:
             id = getfastqsize.id,
             fastq_paths = getfastqsize.fastq_paths,
-            parameters = parameters,
+            params = params,
             recon_output_path = recon_output_path,
             log_output_path = log_output_path,
             disksize = getfastqsize.disksize,
