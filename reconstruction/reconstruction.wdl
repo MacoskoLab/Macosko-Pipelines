@@ -7,8 +7,6 @@ task recon {
   input {
     String id
     Array[String] fastq_paths
-    String read2type
-    String exptype
     String parameters
     String recon_output_path
     String log_output_path
@@ -24,41 +22,39 @@ task recon {
     gcloud config set storage/thread_count  2
 
     # Download the scripts
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/fiducial_seq_blind_whitelist.py
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/reconstruction_blind.py
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/helpers.py
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/recon-count.jl
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/recon.py
 
     recon_output_path="~{recon_output_path}"
     recon_output_path="${recon_output_path%/}/~{id}"
     echo "Output directory: $recon_output_path" ; echo
 
-    # Run fiducial_seq_blind_whitelist.py
-    if gsutil ls "$recon_output_path/blind_raw_reads_filtered.csv.gz" &> /dev/null ; then
-        echo "NOTE: fiducial_seq_blind_whitelist.py has already been run, reusing results"
-        gcloud storage cp "$recon_output_path/blind_raw_reads_filtered.csv.gz" .
+    # Run recon-count.jl
+    if gsutil ls "$recon_output_path/matrix.csv.gz" &> /dev/null ; then
+        echo "NOTE: spatial-count.jl has already been run, reusing results"
+        gcloud storage cp "$recon_output_path/matrix.csv.gz" .
     else
         echo "Downloading fastqs:"
         mkdir fastqs
         gcloud storage cp ~{sep=' ' fastq_paths} fastqs
 
-        echo "Running fiducial_seq_blind_whitelist.py"
-        /opt/conda/bin/python fiducial_seq_blind_whitelist.py -i fastqs -o . -r ~{read2type}
-        gcloud storage cp blind_raw_reads_filtered.csv.gz blind_statistics_filtered.csv QC.pdf "$recon_output_path"
+        echo "Running spatial-count.jl"
+        /software/julia-1.8.5/bin/julia recon-count.jl fastqs .
+        gcloud storage cp matrix.csv.gz sb1.txt.gz sb2.txt.gz metadata.csv QC.pdf "$recon_output_path"
     fi
 
-    # Run reconstruction_blind.py
-    if [[ -f blind_raw_reads_filtered.csv.gz ]] ; then
-        echo "Running reconstruction_blind.py"
-        /opt/conda/bin/python reconstruction_blind.py -i . -o plots -e ~{exptype} ~{parameters}
-        gcloud storage cp -r plots/* "$recon_output_path"
+    # Run recon.py
+    if [[ -f matrix.csv.gz && -f sb1.txt.gz && -f sb2.txt.gz ]] ; then
+        echo "Running recon.py"
+        /opt/conda/bin/python recon.py
+        gcloud storage cp umi_histograms.pdf "$recon_output_path"
     else
-        echo "Cannot run reconstruction_blind.py, blind_raw_reads_filtered.csv.gz not found" 
+        echo "Cannot run recon.py, matrix.csv.gz not found" 
     fi
 
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
     echo; echo "FREE SPACE:"; df -h
-    echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
     log_output_path="~{log_output_path}"
@@ -73,9 +69,9 @@ task recon {
   }
   runtime {
     docker: docker
-    memory: "256 GB"
+    memory: "~{disksize} GB"
     disks: "local-disk ~{disksize} SSD"
-    cpu: 80
+    cpu: 40
     preemptible: 0
   }
 }
@@ -85,8 +81,6 @@ workflow reconstruction {
     input {
         String fastq_path
         String sample
-        String read2type = "V15"
-        String exptype = "tags"
         String parameters = ""
         Array[Int] lanes = []
         String memory_multiplier = "2"
@@ -107,14 +101,12 @@ workflow reconstruction {
     }
     call recon {
         input:
-            id = getdisksize.id,
-            fastq_paths = getdisksize.fastq_paths,
-            read2type = read2type,
-            exptype = exptype,
+            id = getfastqsize.id,
+            fastq_paths = getfastqsize.fastq_paths,
             parameters = parameters,
             recon_output_path = recon_output_path,
             log_output_path = log_output_path,
-            disksize = getdisksize.disksize,
+            disksize = getfastqsize.disksize,
             docker = docker
     }
     output {
