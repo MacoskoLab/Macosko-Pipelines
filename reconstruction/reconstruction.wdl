@@ -41,6 +41,7 @@ task recon {
         echo "Running spatial-count.jl"
         /software/julia-1.8.5/bin/julia recon-count.jl fastqs .
         gcloud storage cp matrix.csv.gz sb1.txt.gz sb2.txt.gz metadata.csv QC.pdf "$recon_output_path"
+        rm -rf fastqs
     fi
 
     # Run recon.py
