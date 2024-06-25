@@ -54,6 +54,7 @@ print(f"{len(sb2)} R2 barcodes")
 # Rows are the anchor beads I wish to recon
 # Columns are the features used for judging similarity
 mat = coo_matrix((df['umi'], (df['sb2'], df['sb1'])))
+# del df ; gc.collect()
 
 # Compute the KNN
 knn = nearest_neighbors(mat,
@@ -81,11 +82,12 @@ def my_umap(mat, n_epochs, init=init):
     embedding = reducer.fit_transform(np.log1p(mat))
     return(embedding)
 
+
 embeddings = []
 # embeddings.append(my_umap(mat, n_epochs=1))
-embeddings.append(my_umap(mat, n_epochs=10, init=embeddings[-1]))
+# embeddings.append(my_umap(mat, n_epochs=10, init=embeddings[-1]))
+embeddings.append(my_umap(mat, n_epochs=10)
 embeddings.append(my_umap(mat, n_epochs=100, init=embeddings[-1]))
 for i in range(round(n_epochs/1000)):
-    embeddings.append(my_umap(mat, n_epochs=1000, init=embeddings[-1]))
-
+    embeddings.append(my_umap(mat, init=embeddings[-1], n_epochs=1000))
 np.savez(os.path.join(out_dir,"embeddings.npz"), *embeddings)
