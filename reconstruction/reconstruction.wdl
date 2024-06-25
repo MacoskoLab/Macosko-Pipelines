@@ -32,7 +32,7 @@ task recon {
     # Run recon-count.jl
     if gsutil ls "$recon_output_path/matrix.csv.gz" &> /dev/null ; then
         echo "NOTE: spatial-count.jl has already been run, reusing results"
-        gcloud storage cp "$recon_output_path/matrix.csv.gz" .
+        gcloud storage cp "$recon_output_path/matrix.csv.gz" "$recon_output_path/sb1.txt.gz" "$recon_output_path/sb2.txt.gz" .
     else
         echo "Downloading fastqs:"
         mkdir fastqs
