@@ -1,7 +1,6 @@
 using CSV
 using FASTX
 using Plots
-using Loess
 using Peaks: findminima
 using CodecZlib
 using PDFmerger
@@ -11,6 +10,7 @@ using DataFrames
 using StringViews
 using LinearAlgebra: dot
 using Combinatorics: combinations
+using Distributions: pdf, Exponential
 
 # Load the command-line arguments
 if length(ARGS) != 2
@@ -180,26 +180,31 @@ function umi_density_plot(table, R)
     perm = sortperm(x)
     x = x[perm]
     y = y[perm]
-    
-    model = loess(log10.(x), log10.(y), span=0.05)
-    ys = (10).^predict(model, log10.(x))
-    uc = x[findminima(ys).indices]
-    uc = filter(x -> x >= 10, uc) |> sort |> first
+
+    lx_s = LinRange(0, maximum(log10.(x)), 1000)
+    ly_s = []
+    for lx_ in lx_s
+        weights = [pdf(Exponential(0.06), abs(lx_ - lx)) for lx in log10.(x)]
+        push!(ly_s, sum(log10.(y) .* weights) / sum(weights))
+    end
+
+    mins = lx_s[findminima(ly_s).indices] |> sort # ; println("log10 UMI local minima: $mins")
+    filter!(x -> x > 1, mins)
+    uc = round(10^mins[1])
     
     p = plot(x, y, seriestype = :scatter, xscale = :log10, yscale = :log10, 
              xlabel = "Number of UMI", ylabel = "Frequency",
              markersize = 3, markerstrokewidth = 0.1,
              title = "$R UMI Count Distribution", titlefont = 10, guidefont = 8, label = "Barcodes")
-    plot!(p, x, ys, seriestype = :line, label="LOESS")
+    plot!(p, (10).^lx_s, (10).^ly_s, seriestype = :line, label="KDE")
     vline!(p, [uc], linestyle = :dash, color = :red, label = "UMI cutoff")
     xticks!(p, [10^i for i in 0:ceil(log10(maximum(x)))])
     yticks!(p, [10^i for i in 0:ceil(log10(maximum(y)))])
     return(p, uc)
 end
-function remove_int(x, y)
+function remove_intermediate(x, y)
     m = (y .!= vcat(y[2:end], NaN)) .| (y .!= vcat(NaN, y[1:end-1]))
-    x = x[m]
-    y = y[m]
+    x = x[m] ; y = y[m]
     return(x, y)
 end
 function elbow_plot(y, uc, R)
@@ -207,12 +212,12 @@ function elbow_plot(y, uc, R)
     x = 1:length(y)
     bc = count(e -> e >= uc, y)
     
-    xp, yp = remove_int(x, y)
+    xp, yp = remove_intermediate(x, y)
     p = plot(xp, yp, seriestype = :line, xscale = :log10, yscale = :log10,
          xlabel = "$R Spatial Barcode Rank", ylabel = "UMI Count", 
          title = "$R Spatial Barcode Elbow Plot", titlefont = 10, guidefont = 8, label = "Barcodes")
     hline!(p, [uc], linestyle = :dash, color = :red, label = "UMI cutoff")
-    vline!(p, [bc], linestyle = :dash, color = :red, label = "SB cutoff")
+    vline!(p, [bc], linestyle = :dash, color = :green, label = "SB cutoff")
     xticks!(p, [10^i for i in 0:ceil(log10(maximum(xp)))])
     yticks!(p, [10^i for i in 0:ceil(log10(maximum(yp)))])
     return(p, bc)
