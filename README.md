@@ -96,7 +96,7 @@ Cell Ranger ATAC 2.1.0
 Cell Ranger ARC 2.0.2  
 
 **us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest**  
-Cell Ranger 8.0.0  
+Cell Ranger 8.0.1  
 Cell Ranger ATAC 2.1.0  
 Cell Ranger ARC 2.0.2  
 Python 2.7.16  
