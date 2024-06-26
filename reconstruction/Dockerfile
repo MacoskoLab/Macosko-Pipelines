@@ -36,7 +36,6 @@ RUN /software/julia-1.8.5/bin/julia -e 'using Pkg;               \
                                         Pkg.add("CSV");          \
                                         Pkg.add("FASTX");        \
                                         Pkg.add("Plots");        \
-                                        Pkg.add("Loess");        \
                                         Pkg.add("Peaks");        \
                                         Pkg.add("CodecZlib");    \
                                         Pkg.add("PDFmerger");    \
@@ -45,4 +44,5 @@ RUN /software/julia-1.8.5/bin/julia -e 'using Pkg;               \
                                         Pkg.add("DataFrames");   \
                                         Pkg.add("StringViews");  \
                                         Pkg.add("LinearAlgebra");\
+                                        Pkg.add("Distributions");\
                                         Pkg.add("Combinatorics")'
