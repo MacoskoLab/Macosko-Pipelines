@@ -3,16 +3,43 @@ version 1.0
 # Compute disk size and run checks
 task getfastqsize {
     input {
-        String fastqs
-        String sample
-        Array[Int] lanes
-        String memory_multiplier
-        String output_path
-        String log_output_path       
+        String fastqs_path
+        Array[String] samples
+        Array[Array[Int]] lanes # [[]] by default (take all lanes of all indexes)
+        String memory_multiplier     
         String docker                
     }
     command <<<
         echo "<< starting getdisksize >>"
+
+        # Validate the input
+        if ! gsutil ls "~{fastqs_path}" &> /dev/null; then
+            echo "ERROR: gsutil ls command failed on input FASTQ path (~{fastqs_path}), does it exist?"
+            exit 1
+        fi
+        if [ ~{length(samples)} -eq 0 ]; then
+            echo "ERROR: the list of provided samples is empty, not able to gather FASTQs"
+            exit 1
+        fi
+        if [[ '~{sep="-" samples}' = *" "* ]]; then
+            echo "ERROR: sample names are not permitted to have spaces"
+            exit 1
+        fi
+
+        # Convert from WDL datastructures into bash arrays
+        samples=(~{sep=' ' samples})
+        lanes=3
+
+
+
+
+        if [ ~{length(lanes)} -eq 1 ] && [ ~{length(lanes[0])} -eq 0 ]; then
+            echo "Taking all lanes of all indexes"
+        else
+            if [ ~{length()} -neq ]
+        exit 1
+
+
 
         # Combine the sample name and lanes into a unique id
         if [ ~{length(lanes)} -eq 0 ]; then
@@ -20,7 +47,7 @@ task getfastqsize {
         else
             id="~{sample}_L~{sep='-' lanes}"
         fi
-        echo "FASTQ path: ~{fastqs}"
+        echo "FASTQ directory: ~{fastq_directory}"
         echo "sample: ~{sample}"
         echo "lanes: ~{sep=',' lanes}"
         echo "id: $id" ; echo
@@ -68,11 +95,6 @@ task getfastqsize {
             echo "ERROR: size limit reached, increase cap ($(cat SIZE) of 1024 GiB)"
             rm -f SIZE
         fi
-
-        # Assert that the paths are actually gs:// paths
-        [[ ! "~{fastqs}" =~ gs:// ]] && echo "ERROR: fastq_path does not contain gs://" && rm -f SIZE
-        [[ ! "~{output_path}" =~ gs:// ]] && echo "ERROR: output_path does not contain gs://" && rm -f SIZE
-        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && rm -f SIZE
 
         echo "<< completed getdisksize >>"
     >>>
