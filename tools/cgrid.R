@@ -549,13 +549,26 @@ anno_blob <- function(df) {
   return(list(center, boundary))
 }
 
+# convert (x,y) to (r,theta)
+anno_polar <- function(df) {
+  validate.xydf(df)
+  center <- anno_points(df)
+  stopifnot("please annotate only one point" = nrow(center) == 1)
+  df$r = sqrt((df$x - center$x)^2 + (df$y - center$y)^2)
+  df$theta = atan2(df$y - center$y, df$x - center$x)
+  return(df)
+}
+
 ### Workflow ###################################################################
 
-# Load + select data
-# obj = qread("~/analyses/9positioning/seurat15.qs")
+# Load + select seurat data
+# obj = qread("seurat.qs")
 # obj %<>% cluster_selector
 # df <- data.frame(x=obj$x_um, y=obj$y_um, col=obj$seurat_clusters) %>% dplyr::filter(is.finite(x), is.finite(y))
 # df %<>% layer_selector
+
+# Load dataframe data
+# df <- read.csv("cgrid_sampledata.csv")
 
 # Draw splines
 # splines <- anno_splines(df)
