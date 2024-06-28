@@ -1,22 +1,20 @@
 version 1.0
 
-import "https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/tools/helpers.wdl" as helpers
-
 # Run the reconstruction scripts
 task recon {
   input {
-    String id
     Array[String] fastq_paths
     String params
-    String recon_output_path
-    String log_output_path
-    Int disksize
+    Int mem_GiB
+    Int disk_GiB
+    String recon_path
+    String log_path
     String docker
   }
   command <<<
     echo "<< starting recon >>"
 
-    dstat --time --cpu --mem --disk --io --freespace --output recon-~{id}.usage &> /dev/null &
+    dstat --time --cpu --mem --disk --io --freespace --output recon.usage &> /dev/null &
 
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
@@ -25,14 +23,12 @@ task recon {
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/recon-count.jl
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/recon.py
 
-    recon_output_path="~{recon_output_path}"
-    recon_output_path="${recon_output_path%/}/~{id}"
-    echo "Output directory: $recon_output_path" ; echo
+    echo "Output directory: ~{recon_path}" ; echo
 
     # Run recon-count.jl
-    if gsutil ls "$recon_output_path/matrix.csv.gz" &> /dev/null ; then
+    if gsutil ls "~{recon_path}/matrix.csv.gz" &> /dev/null ; then
         echo "NOTE: spatial-count.jl has already been run, reusing results"
-        gcloud storage cp "$recon_output_path/matrix.csv.gz" "$recon_output_path/sb1.txt.gz" "$recon_output_path/sb2.txt.gz" .
+        gcloud storage cp "~{recon_path}/matrix.csv.gz" "~{recon_path}/sb1.txt.gz" "~{recon_path}/sb2.txt.gz" .
     else
         echo "Downloading fastqs:"
         mkdir fastqs
@@ -40,7 +36,7 @@ task recon {
 
         echo "Running spatial-count.jl"
         /software/julia-1.8.5/bin/julia recon-count.jl fastqs .
-        gcloud storage cp matrix.csv.gz sb1.txt.gz sb2.txt.gz metadata.csv QC.pdf "$recon_output_path"
+        gcloud storage cp matrix.csv.gz sb1.txt.gz sb2.txt.gz metadata.csv QC.pdf "~{recon_path}"
         rm -rf fastqs
     fi
 
@@ -48,7 +44,7 @@ task recon {
     if [[ -f matrix.csv.gz && -f sb1.txt.gz && -f sb2.txt.gz ]] ; then
         echo "Running recon.py"
         /opt/conda/bin/python recon.py ~{params}
-        gcloud storage cp -r ANCHOR_* "$recon_output_path"
+        gcloud storage cp -r ANCHOR_* "~{recon_path}"
     else
         echo "Cannot run recon.py, matrix.csv.gz or sb1.txt.gz or sb2.txt.gz not found" 
     fi
@@ -58,10 +54,9 @@ task recon {
     echo; echo "FREE SPACE:"; df -h
     
     echo "uploading logs"
-    log_output_path="~{log_output_path}"
-    gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/recon-~{id}.out"
-    gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/recon-~{id}.err"
-    gcloud storage cp recon-~{id}.usage "${log_output_path%/}/recon-~{id}.usage"
+    gcloud storage cp /cromwell_root/stdout "~{log_path}/recon.out"
+    gcloud storage cp /cromwell_root/stderr "~{log_path}/recon.err"
+    gcloud storage cp recon.usage "~{log_path}/recon.usage"
     
     echo "<< completed recon >>"
   >>>
@@ -70,8 +65,8 @@ task recon {
   }
   runtime {
     docker: docker
-    memory: "~{disksize} GB"
-    disks: "local-disk ~{disksize} SSD"
+    memory: "~{mem_GiB} GB"
+    disks: "local-disk ~{disk_GiB} SSD"
     cpu: 40
     preemptible: 0
   }
@@ -80,34 +75,24 @@ task recon {
 workflow reconstruction {
     String pipeline_version = "1.0.0"
     input {
-        String fastq_path
-        String sample
+        String id
+        Array[String] fastq_paths
         String params = ""
-        Array[Int] lanes = []
-        String memory_multiplier = "2"
-        String recon_output_path = "gs://"+bucket+"/reconstruction/"+basename(fastq_path,"/")
-        String log_output_path = "gs://"+bucket+"/logs/"+basename(fastq_path,"/")
+        Int mem_GiB = 64
+        Int disk_GiB = 128
+        String recon_path = "gs://"+bucket+"/reconstruction/"+id
+        String log_path = "gs://"+bucket+"/logs/"+id
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-recon/img:latest"
     }
-    call helpers.getfastqsize {
-        input:
-            fastqs = fastq_path,
-            sample = sample,
-            lanes = lanes,
-            memory_multiplier = memory_multiplier,
-            output_path = recon_output_path,
-            log_output_path = log_output_path,
-            docker = docker
-    }
     call recon {
         input:
-            id = getfastqsize.id,
-            fastq_paths = getfastqsize.fastq_paths,
+            fastq_paths = fastq_paths,
             params = params,
-            recon_output_path = recon_output_path,
-            log_output_path = log_output_path,
-            disksize = getfastqsize.disksize,
+            mem_GiB = mem_GiB,
+            disk_GiB = disk_GiB,
+            recon_path = recon_path,
+            log_path = log_path,
             docker = docker
     }
     output {
