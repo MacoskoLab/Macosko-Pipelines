@@ -23,44 +23,45 @@ task mkfastq {
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
-    # Assert that the paths are actually gs:// paths
-    [[ ! "~{bcl}"               =~ gs:// ]] && echo "ERROR: bcl does not contain gs://" && exit 1
-    [[ ! "~{samplesheet}"       =~ gs:// ]] && echo "ERROR: samplesheet does not contain gs://" && exit 1
-    [[ ! "~{fastq_output_path}" =~ gs:// ]] && echo "ERROR: fastq_output_path does not contain gs://" && exit 1
-    [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && exit 1
-
-
-    # Assert that the samplesheet exists
-    if ! gsutil stat "~{samplesheet}" &> /dev/null
-    then
-        echo "ERROR: gsutil stat command failed on input samplesheet path"
-        rm -f SIZE
-    fi
-
-    # Warn if the FASTQ folder already exists
-    if gsutil ls "~{fastq_output_path}" &> /dev/null
-    then
-        echo "WARNING: fastq output directory already exists"
-    fi
-
-
+    # Assign the WDL variables to bash variables
     bcl_path="~{bcl}"
     samplesheet_path="~{samplesheet}"
     fastq_output_path="~{fastq_output_path}"
     log_output_path="~{log_output_path}"
+    # Remove trailing slashes
+    bcl_path="${bcl_path%/}"
+    samplesheet_path="${samplesheet_path%/}"
+    fastq_output_path="${fastq_output_path%/}"
+    log_output_path="${log_output_path%/}"
+    
+    # Assert that the paths are actually gs:// paths
+    [[ ! "${bcl_path:0:5}"          == "gs://" ]] && echo "ERROR: bcl does not start with gs://" && exit 1
+    [[ ! "${samplesheet_path:0:5}"  == "gs://" ]] && echo "ERROR: samplesheet does not start with gs://" && exit 1
+    [[ ! "${fastq_output_path:0:5}" == "gs://" ]] && echo "ERROR: fastq_output_path does not start with gs://" && exit 1
+    [[ ! "${log_output_path:0:5}"   == "gs://" ]] && echo "ERROR: log_output_path does not start with gs://" && exit 1
 
-    # get the samplesheet
-    gcloud storage cp "$samplesheet_path" Indexes.csv |& ts
-    echo; echo "Indexes.csv:"; cat Indexes.csv; echo; echo
+    # Warn if the FASTQ folder already exists
+    if gsutil ls "$fastq_output_path" &> /dev/null; then
+        echo "WARNING: fastq output directory already exists"
+    fi
 
-    # get the BCL if the samplesheet exists
+    # Download the samplesheet
+    if ! gsutil stat "~{samplesheet}" &> /dev/null; then
+        echo "ERROR: gsutil stat command failed on input samplesheet path (~{samplesheet})"
+        exit 1
+    else
+        gcloud storage cp "$samplesheet_path" Indexes.csv |& ts
+        echo; echo "Indexes.csv:"; cat Indexes.csv; echo; echo
+    fi
+
+    # Download the BCL if the samplesheet exists
     if [[ -s Indexes.csv ]]; then
         echo "Downloading BCL:"
         mkdir BCL
-        gcloud storage cp -r "${bcl_path%/}/*" BCL |& ts
+        gcloud storage cp -r "$bcl_path/*" BCL |& ts
     else
         echo "ERROR: empty samplesheet"
-        rm Indexes.csv
+        rm -f Indexes.csv
     fi
 
     # run the bcl2fastq/mkfastq command
@@ -70,52 +71,52 @@ task mkfastq {
           --run=BCL                                         \
           --id=mkfastq                                      \
           --csv=Indexes.csv                                 \
-          --disable-ui |& ts
+          --disable-ui ~{params} |& ts
     elif [[ ~{technique} == "cellranger-arc" ]]; then
         echo; echo "Running cellranger-arc mkfastq"
         time stdbuf -oL -eL cellranger-arc mkfastq          \
           --run=BCL                                         \
           --id=mkfastq                                      \
           --csv=Indexes.csv                                 \
-          --disable-ui |& ts
+          --disable-ui ~{params} |& ts
     elif [[ ~{technique} == "cellranger-atac" ]]; then
         echo; echo "Running cellranger-atac mkfastq"
         time stdbuf -oL -eL cellranger-atac mkfastq         \
           --run=BCL                                         \
           --id=mkfastq                                      \
           --csv=Indexes.csv                                 \
-          --disable-ui |& ts
+          --disable-ui ~{params} |& ts
     elif [[ ~{technique} == "bcl2fastq" ]]; then
         echo; echo "Running bcl2fastq"
         time stdbuf -oL -eL bcl2fastq                       \
-          --runfolder-dir ./BCL                             \
-          --output-dir ./mkfastq                            \
-          --sample-sheet ./Indexes.csv                      \
+          --runfolder-dir BCL                               \
+          --output-dir mkfastq                              \
+          --sample-sheet Indexes.csv                        \
           ~{params} |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
 
     # delete undetermined fastqs
-    find ./mkfastq -type f -name "Undetermined_S0_*.fastq.gz" -exec rm {} +
+    find mkfastq -type f -name "Undetermined_S0_*.fastq.gz" -exec rm {} +
 
     # delete MAKE_FASTQS_CS
     rm -rf mkfastq/MAKE_FASTQS_CS
 
     # rename the 'Reports' and 'Stats' directories to the samplesheet used
-    # (this is because we may need to run mkfastq multiple times)
+    # (this is because we may need to run bcl2fastq multiple times)
     name="$(basename "$samplesheet_path" | cut -d. -f1)"
     mkdir -p "mkfastq/$name"
     cp Indexes.csv "mkfastq/$name/$(basename "$samplesheet_path")"
-    reports_path=$(find ./mkfastq -type d -name "Reports" -print -quit)
+    reports_path=$(find mkfastq -type d -name "Reports" -print -quit)
     mv "$reports_path" "mkfastq/$name"
-    stats_path=$(find ./mkfastq -type d -name "Stats" -print -quit)
+    stats_path=$(find mkfastq -type d -name "Stats" -print -quit)
     mv "$stats_path" "mkfastq/$name"
     
     # upload the results
     if [[ -f "mkfastq/$name/Reports/html/index.html" ]]; then
         echo "Success, uploading fastqs"
-        gcloud storage cp -r mkfastq/* "${fastq_output_path%/}"
+        gcloud storage cp -r mkfastq/* "$fastq_output_path"
         echo "true" > DONE
     else
         echo "ERROR: CANNOT FIND: index.html"
@@ -127,10 +128,10 @@ task mkfastq {
     echo; echo "mkfastq size:"; du -sh mkfastq
     echo; echo "FREE SPACE:"; df -h
     
-    echo "uploading logs"
-    gcloud storage cp /cromwell_root/stdout "${log_output_path%/}/mkfastq_$name.out"
-    gcloud storage cp /cromwell_root/stderr "${log_output_path%/}/mkfastq_$name.err"
-    gcloud storage cp mkfastq.usage "${log_output_path%/}/mkfastq_$name.usage"
+    echo; echo "Uploading logs"
+    gcloud storage cp /cromwell_root/stdout "$log_output_path/mkfastq_$name.out"
+    gcloud storage cp /cromwell_root/stderr "$log_output_path/mkfastq_$name.err"
+    gcloud storage cp mkfastq.usage "$log_output_path/mkfastq_$name.usage"
     
     echo "<< completed mkfastq >>"
   >>>
