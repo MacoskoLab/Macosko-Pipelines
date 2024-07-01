@@ -64,7 +64,7 @@ task mkfastq {
         rm -f Indexes.csv
     fi
 
-    # run the bcl2fastq/mkfastq command
+    # Run the bcl2fastq/mkfastq command
     if [[ ~{technique} == "cellranger" ]]; then
         echo; echo "Running cellranger mkfastq"
         time stdbuf -oL -eL cellranger mkfastq              \
@@ -97,13 +97,13 @@ task mkfastq {
         echo "ERROR: could not recognize technique ~{technique}"
     fi
 
-    # delete undetermined fastqs
+    # Delete undetermined fastqs
     find mkfastq -type f -name "Undetermined_S0_*.fastq.gz" -exec rm {} +
 
-    # delete MAKE_FASTQS_CS
+    # Delete MAKE_FASTQS_CS
     rm -rf mkfastq/MAKE_FASTQS_CS
 
-    # rename the 'Reports' and 'Stats' directories to the samplesheet used
+    # Rename the 'Reports' and 'Stats' directories to the samplesheet used
     # (this is because we may need to run bcl2fastq multiple times)
     name="$(basename "$samplesheet_path" | cut -d. -f1)"
     mkdir -p "mkfastq/$name"
@@ -113,7 +113,7 @@ task mkfastq {
     stats_path=$(find mkfastq -type d -name "Stats" -print -quit)
     mv "$stats_path" "mkfastq/$name"
     
-    # upload the results
+    # Upload the results
     if [[ -f "mkfastq/$name/Reports/html/index.html" ]]; then
         echo "Success, uploading fastqs"
         gcloud storage cp -r mkfastq/* "$fastq_output_path"
