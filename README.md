@@ -15,7 +15,6 @@ bcl2fastq
 * cellranger mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 * cellranger-arc mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui  
 * cellranger-atac mkfastq --run=BCL --id=mkfastq --csv=Indexes.csv --disable-ui
-* bcl2fastq --runfolder-dir BCL --input-dir BCL/Data/Intensities/BaseCalls --output-dir mkfastq --sample-sheet Indexes.csv --create-fastq-for-index-reads
 * bcl2fastq --runfolder-dir BCL --output-dir mkfastq --sample-sheet Indexes.csv  
 
 **Outputs**  
@@ -27,6 +26,7 @@ bcl2fastq
 * throws an error if the disk is >6TB (edit bcl2fastq.wdl to increase cap)  
 * prints a warning (and proceeds) if the fastq directory already exists
 * removes MAKE_FASTQS_CS and Undetermined FASTQs
+* the `Reports` and `Stats` directories can be found with the fastqs in a folder named after samplesheet
 
 cellranger-count
 ----------------
