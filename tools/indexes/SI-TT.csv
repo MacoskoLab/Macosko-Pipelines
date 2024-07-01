@@ -1,6 +1,3 @@
-# Workflow A = Illumina Forward Strand Sequencing Workflow,,,
-# Workflow B = Illumina Reverse Complement Sequencing Workflow,,,
-# Please contact www.illumina.com if you are unsure which sequencing workflow your Illumina instrument & Illumina reagent kit uses,,,
 index_name,index(i7),index2_workflow_a(i5),index2_workflow_b(i5)
 SI-TT-A1,GTAACATGCG,AGTGTTACCT,AGGTAACACT
 SI-TT-A2,GTGGATCAAA,GCCAACCCTG,CAGGGTTGGC
