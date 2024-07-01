@@ -23,6 +23,27 @@ task mkfastq {
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
+    # Assert that the paths are actually gs:// paths
+    [[ ! "~{bcl}"               =~ gs:// ]] && echo "ERROR: bcl does not contain gs://" && exit 1
+    [[ ! "~{samplesheet}"       =~ gs:// ]] && echo "ERROR: samplesheet does not contain gs://" && exit 1
+    [[ ! "~{fastq_output_path}" =~ gs:// ]] && echo "ERROR: fastq_output_path does not contain gs://" && exit 1
+    [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && exit 1
+
+
+    # Assert that the samplesheet exists
+    if ! gsutil stat "~{samplesheet}" &> /dev/null
+    then
+        echo "ERROR: gsutil stat command failed on input samplesheet path"
+        rm -f SIZE
+    fi
+
+    # Warn if the FASTQ folder already exists
+    if gsutil ls "~{fastq_output_path}" &> /dev/null
+    then
+        echo "WARNING: fastq output directory already exists"
+    fi
+
+
     bcl_path="~{bcl}"
     samplesheet_path="~{samplesheet}"
     fastq_output_path="~{fastq_output_path}"
@@ -129,57 +150,32 @@ task mkfastq {
 task getdisksize {
     input {
         String bcl
-        String samplesheet
-        String fastq_output_path
-        String log_output_path
         String docker
     }
     command <<<
         echo "<< starting getdisksize >>"
+
+        # Assert that the bcl exists
+        if ! gsutil ls "~{bcl}" &> /dev/null; then
+            echo "ERROR: gsutil ls command failed on input bcl path"
+            exit 1
+        fi
 
         # Get the size of the bcl * 2.5
         gsutil du -sc "~{bcl}" | grep total | 
         awk '{size=$1/1024/1024/1024 ; size=size*2.5 ; if (size<96) size=96 ; printf "%d\n", size}' > SIZE
 
         # Assert that the disksize file exists
-        if [[ ! -s SIZE ]]
-        then
-            echo "ERROR: gsutil du command failed on input bcl path"
+        if [[ ! -s SIZE ]]; then
+            echo "ERROR: gsutil du command failed on input bcl path (~{bcl})"
             rm -f SIZE
         fi
 
         # Assert that the disksize is not too large
-        if [[ $(cat SIZE) -gt 6000 ]]
-        then
-            echo "ERROR: BCL size limit reached, increase cap (6000 GiB)"
+        if [[ $(cat SIZE) -gt 6000 ]]; then
+            echo "ERROR: BCL size limit reached, increase cap ($(cat SIZE)/6000 GiB)"
             rm -f SIZE
         fi
-
-        # Assert that the bcl exists
-        if ! gsutil ls "~{bcl}" &> /dev/null
-        then
-            echo "ERROR: gsutil ls command failed on input bcl path"
-            rm -f SIZE
-        fi
-
-        # Assert that the samplesheet exists
-        if ! gsutil stat "~{samplesheet}" &> /dev/null
-        then
-            echo "ERROR: gsutil stat command failed on input samplesheet path"
-            rm -f SIZE
-        fi
-
-        # Warn if the FASTQ folder already exists
-        if gsutil ls "~{fastq_output_path}" &> /dev/null
-        then
-            echo "WARNING: fastq output directory already exists"
-        fi
-
-        # Assert that the paths are actually gs:// paths
-        [[ ! "~{bcl}"               =~ gs:// ]] && echo "ERROR: bcl does not contain gs://" && rm -f SIZE
-        [[ ! "~{samplesheet}"       =~ gs:// ]] && echo "ERROR: samplesheet does not contain gs://" && rm -f SIZE
-        [[ ! "~{fastq_output_path}" =~ gs:// ]] && echo "ERROR: fastq_output_path does not contain gs://" && rm -f SIZE
-        [[ ! "~{log_output_path}"   =~ gs:// ]] && echo "ERROR: log_output_path does not contain gs://" && rm -f SIZE
 
         echo "<< completed getdisksize >>"
     >>>
@@ -210,9 +206,6 @@ workflow bcl2fastq {
     call getdisksize {
         input:
             bcl = bcl,
-            samplesheet = samplesheet,
-            fastq_output_path = fastq_output_path,
-            log_output_path = log_output_path,
             docker = docker
     }
     call mkfastq {
