@@ -54,7 +54,7 @@ task mkfastq {
         echo; echo "Indexes.csv:"; cat Indexes.csv; echo; echo
     fi
 
-    # Download the BCL if the samplesheet exists
+    # Download the BCL
     if [[ -s Indexes.csv ]]; then
         echo "Downloading BCL:"
         mkdir BCL
