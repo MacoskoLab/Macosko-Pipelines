@@ -91,8 +91,8 @@ workflow reconstruction {
         String id
         Array[String] fastq_paths
         String params = ""
-        Int mem_GiB
-        Int disk_GiB
+        Int mem_GiB = 64
+        Int disk_GiB = 128
         String recon_output_path = "gs://"+bucket+"/reconstruction/"+id
         String log_output_path = "gs://"+bucket+"/logs/"+id
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
