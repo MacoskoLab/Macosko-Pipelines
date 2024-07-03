@@ -190,7 +190,7 @@ function umi_density_plot(table, R)
 
     mins = lx_s[findminima(ly_s).indices] |> sort # ; println("log10 UMI local minima: $mins")
     filter!(x -> x > 1, mins)
-    uc = length(mins) > 0 ? round(10^mins[1]) : (println("ERROR: no elbow found") ; 0)
+    uc = length(mins) > 0 ? round(10^mins[1]) : (println("ERROR: no elbow found") ; 1)
     
     p = plot(x, y, seriestype = :scatter, xscale = :log10, yscale = :log10, 
              xlabel = "Number of UMI", ylabel = "Frequency",
