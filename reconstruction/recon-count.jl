@@ -181,17 +181,27 @@ function umi_density_plot(table, R)
     x = x[perm]
     y = y[perm]
 
-    lx_s = LinRange(0, maximum(log10.(x)), 1000)
+    # Compute the KDE
+    lx_s = 0:0.001:ceil(maximum(log10.(x)), digits=3)
     ly_s = []
     for lx_ in lx_s
-        weights = [pdf(Exponential(0.06), abs(lx_ - lx)) for lx in log10.(x)]
-        push!(ly_s, sum(log10.(y) .* weights) / sum(weights))
+        weights = [pdf(Exponential(0.05), abs(lx_ - lx)) for lx in log10.(x)]
+        kde = sum(log10.(y) .* weights) / sum(weights)
+        push!(ly_s, kde)
     end
 
-    mins = lx_s[findminima(ly_s).indices] |> sort # ; println("log10 UMI local minima: $mins")
+    # Find the flattest point
+    mins = lx_s[findminima(ly_s).indices] |> sort
     filter!(x -> x > 1, mins)
-    uc = length(mins) > 0 ? round(10^mins[1]) : (println("ERROR: no elbow found") ; 1)
-    
+    if length(mins) > 0
+        uc = round(10^mins[1])
+    else
+        println("WARNING: no local min found for $R, selecting flattest point along curve")
+        i = argmin(abs.(diff(ly_s[1000:min(3000,length(lx_s))])))
+        uc = round(10^lx_s[1000-1+i])
+    end
+
+    # Create an elbow plot
     p = plot(x, y, seriestype = :scatter, xscale = :log10, yscale = :log10, 
              xlabel = "Number of UMI", ylabel = "Frequency",
              markersize = 3, markerstrokewidth = 0.1,
