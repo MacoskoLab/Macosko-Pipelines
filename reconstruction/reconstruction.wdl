@@ -62,6 +62,11 @@ task recon {
         echo "Cannot run recon.py, matrix.csv.gz or sb1.txt.gz or sb2.txt.gz not found" 
     fi
 
+    # Check for success
+    for dir in ANCHOR_*; do
+        [ -f "$dir/embeddings.npz" ] && echo "true" > DONE
+    done
+
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
     echo; echo "FREE SPACE:"; df -h
