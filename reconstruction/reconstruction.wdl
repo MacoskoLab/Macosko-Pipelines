@@ -85,7 +85,7 @@ task recon {
     docker: docker
     memory: "~{mem_GiB} GB"
     disks: "local-disk ~{disk_GiB} SSD"
-    cpu: 20
+    cpu: 40
     preemptible: 0
   }
 }
