@@ -70,9 +70,9 @@ task recon {
     echo; echo "FREE SPACE:"; df -h
     
     echo "uploading logs"
-    gcloud storage cp /cromwell_root/stdout "~{log_output_path}/recon.out"
-    gcloud storage cp /cromwell_root/stderr "~{log_output_path}/recon.err"
-    gcloud storage cp recon.usage "~{log_output_path}/recon.usage"
+    gcloud storage cp /cromwell_root/stdout "$log_output_path/recon.out"
+    gcloud storage cp /cromwell_root/stderr "$log_output_path/recon.err"
+    gcloud storage cp recon.usage "$log_output_path/recon.usage"
     
     echo "<< completed recon >>"
   >>>
