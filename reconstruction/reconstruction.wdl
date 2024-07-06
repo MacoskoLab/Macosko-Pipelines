@@ -33,7 +33,7 @@ task recon {
     [[ ! "${log_output_path:0:5}"   == "gs://" ]] && echo "ERROR: log_output_path does not start with gs://" && exit 1
 
     echo "FASTQs: ~{length(fastq_paths)} paths provided"
-    echo "Parameters: $params"
+    echo "Parameters: ~{params}"
     echo "Output directory: $recon_output_path" ; echo
 
     # Run recon-count.jl
