@@ -1,12 +1,10 @@
 version 1.0
 
-import "https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/tools/helpers.wdl" as helpers
-
 task count {
   input {
     String id
-    String reference
     Array[String] fastq_paths
+    String reference
     String sample
     String technique
     String count_output_path
