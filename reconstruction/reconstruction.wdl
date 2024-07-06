@@ -32,11 +32,9 @@ task recon {
     [[ ! "${recon_output_path:0:5}" == "gs://" ]] && echo "ERROR: recon_output_path does not start with gs://" && exit 1
     [[ ! "${log_output_path:0:5}"   == "gs://" ]] && echo "ERROR: log_output_path does not start with gs://" && exit 1
 
-    echo
     echo "FASTQs: ~{length(fastq_paths)} paths provided"
     echo "Parameters: $params"
-    echo "Output directory: $recon_output_path"
-    echo
+    echo "Output directory: $recon_output_path" ; echo
 
     # Run recon-count.jl
     if gsutil ls "$recon_output_path/matrix.csv.gz" &> /dev/null ; then
