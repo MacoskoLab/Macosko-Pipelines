@@ -49,6 +49,11 @@ assert sorted(list(set(df.sb2))) == list(range(len(sb2)))
 print(f"{len(sb1)} R1 barcodes")
 print(f"{len(sb2)} R2 barcodes")
 
+# ???
+grouped_sum = df.groupby('sb1')['umi'].sum()
+sb1_to_keep = grouped_sum[grouped_sum <= 7000].index
+df = df[df['sb1'].isin(sb1_to_keep)]
+
 # Rows are the anchor beads I wish to recon
 # Columns are the features used for judging similarity
 mat = coo_matrix((df['umi'], (df['sb2'], df['sb1'])))
