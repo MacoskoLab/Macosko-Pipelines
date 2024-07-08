@@ -55,7 +55,7 @@ task recon {
     if [[ -f matrix.csv.gz && -f sb1.txt.gz && -f sb2.txt.gz ]] ; then
         echo "Running recon.py"
         /opt/conda/bin/python recon.py ~{params}
-        gcloud storage cp -r ANCHOR_* "$recon_output_path"
+        gcloud storage cp -r ANCHOR* "$recon_output_path"
     else
         echo "Cannot run recon.py, matrix.csv.gz or sb1.txt.gz or sb2.txt.gz not found" 
     fi
