@@ -15,7 +15,7 @@ task count {
   command <<<
     echo "<< starting cellranger-count >>"
 
-    dstat --time --cpu --mem --disk --io --freespace --output cellranger-count-~{sample}.usage &> /dev/null &
+    dstat --time --cpu --mem --disk --io --freespace --output cellranger-count.usage &> /dev/null &
 
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
@@ -107,9 +107,9 @@ task count {
     echo; echo "FREE SPACE:"; df -h
     
     echo "uploading logs"
-    gcloud storage cp /cromwell_root/stdout "$log_output_path/cellranger-count-~{sample}.out"
-    gcloud storage cp /cromwell_root/stderr "$log_output_path/cellranger-count-~{sample}.err"
-    gcloud storage cp cellranger-count-~{sample}.usage "$log_output_path/cellranger-count-~{sample}.usage"
+    gcloud storage cp /cromwell_root/stdout "$log_output_path/cellranger-count.out"
+    gcloud storage cp /cromwell_root/stderr "$log_output_path/cellranger-count.err"
+    gcloud storage cp cellranger-count.usage "$log_output_path/cellranger-count.usage"
     
     echo "<< completed cellranger-count >>"
   >>>
