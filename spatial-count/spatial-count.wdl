@@ -1,19 +1,17 @@
 version 1.0
 
-import "https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/tools/helpers.wdl" as helpers
-
 task count {
   input {
-    String id
     Array[String] fastq_paths
     Array[String] pucks
+    Int mem_GiB
+    Int disk_GiB
     String count_output_path
     String log_output_path
-    Int disksize
     String docker
   }
   command <<<
-    echo "<< starting count >>"
+    echo "<< starting spatial-count >>"
     dstat --time --cpu --mem --disk --io --freespace --output count-~{id}.usage &> /dev/null &
 
     gcloud config set storage/process_count 16
@@ -22,6 +20,15 @@ task count {
     # Download the script
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/spatial-count/spatial-count.jl
 
+    # Assert that the fastqs exist
+    fastqs=(~{sep=' ' fastq_paths})
+    for fastq in "${fastqs[@]}" ; do
+        if ! gsutil ls "$fastq" &> /dev/null ; then
+            echo "ERROR: gsutil ls command failed on fastq $fastq"
+            exit 1
+        fi
+    done
+
     # Download the fastqs
     echo "Downloading fastqs:"
     mkdir fastqs
@@ -29,12 +36,7 @@ task count {
 
     # Assert that the pucks exist
     pucks=(~{sep=' ' pucks})
-    for puck in "${pucks[@]}"
-    do
-        if [[ ! "$puck"  =~ gs:// ]] ; then
-            echo "ERROR: puck $puck does not contain gs://"
-            exit 1
-        fi
+    for puck in "${pucks[@]}" ; do
         if ! gsutil ls "$puck" &> /dev/null ; then
             echo "ERROR: gsutil ls command failed on puck $puck"
             exit 1
@@ -47,13 +49,12 @@ task count {
     gcloud storage cp ~{sep=' ' pucks} pucks
 
     # Run the script
+    echo ; echo "Running spatial-count.jl"
     /software/julia-1.8.5/bin/julia spatial-count.jl fastqs pucks
 
-    if [[ -f SBcounts.h5 ]]
-    then
+    if [[ -f SBcounts.h5 ]] ; then
         echo ; echo "Success, uploading counts"
-        count_output_path="~{count_output_path}"
-        gcloud storage cp -r SBcounts.h5 "${count_output_path%/}/~{id}/SBcounts.h5"
+        gcloud storage cp -r SBcounts.h5 "$count_output_path/SBcounts.h5"
         echo "true" > DONE
     else
         echo ; echo "ERROR: CANNOT FIND: SBcounts.h5"
@@ -63,26 +64,23 @@ task count {
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
     echo; echo "fastqs size:"; du -sh fastqs
     echo; echo "pucks size:"; du -sh pucks
+    echo; echo "output size:"; du -sh SBcounts.h5
     echo; echo "FREE SPACE:"; df -h
-    echo; echo "CPU INFO:"; lscpu ; echo
     
     echo "uploading logs"
-    cp /cromwell_root/stdout count-~{id}.out
-    cp /cromwell_root/stderr count-~{id}.err
-    log_output_path="~{log_output_path}"
-    gcloud storage cp count-~{id}.out "${log_output_path%/}/count-~{id}.out"
-    gcloud storage cp count-~{id}.err "${log_output_path%/}/count-~{id}.err"
-    gcloud storage cp count-~{id}.usage "${log_output_path%/}/count-~{id}.usage"
+    gcloud storage cp /cromwell_root/stdout "$log_output_path/spatial-count.out"
+    gcloud storage cp /cromwell_root/stderr "$log_output_path/spatial-count.err"
+    gcloud storage cp spatial-count.usage "$log_output_path/spatial-count.usage"
     
-    echo "<< completed count >>"
+    echo "<< completed spatial-count >>"
   >>>
   output {
     Boolean DONE = read_boolean("DONE")
   }
   runtime {
     docker: docker
-    memory: "~{disksize} GB"
-    disks: "local-disk ~{disksize} SSD"
+    memory: "~{mem_GiB} GB"
+    disks: "local-disk ~{disk_GiB} SSD"
     cpu: 1
     preemptible: 0
   }
@@ -91,34 +89,24 @@ task count {
 workflow spatial_count {
     String pipeline_version = "1.0.0"
     input {
-        String fastq_path
-        String sample
+        String id
+        Array[String] fastq_paths
         Array[String] pucks
-        Array[Int] lanes = []
-        String memory_multiplier = "2"
-        String count_output_path = "gs://"+bucket+"/spatial-count/"+basename(fastq_path,"/")
-        String log_output_path = "gs://"+bucket+"/logs/"+basename(fastq_path,"/")
+        Int mem_GiB = 64
+        Int disk_GiB = 128
+        String count_output_path = "gs://"+bucket+"/spatial-count/"+id
+        String log_output_path = "gs://"+bucket+"/logs/"+id
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest"
     }
-    call helpers.getfastqsize {
-        input:
-            fastqs = fastq_path,
-            sample = sample,
-            lanes = lanes,
-            memory_multiplier = memory_multiplier,
-            output_path = count_output_path,
-            log_output_path = log_output_path,
-            docker = docker
-    }
     call count {
         input:
-            id = getfastqsize.id,
-            fastq_paths = getfastqsize.fastq_paths,
+            fastq_paths = fastq_paths,
             pucks = pucks,
+            mem_GiB = mem_GiB,
+            disk_GiB = disk_GiB,
             count_output_path = count_output_path,
             log_output_path = log_output_path,
-            disksize = getfastqsize.disksize,
             docker = docker
     }
     output {
