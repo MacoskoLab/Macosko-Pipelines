@@ -61,7 +61,7 @@ task recon {
     fi
 
     # Check for success
-    for dir in ANCHOR_*; do
+    for dir in ANCHOR*; do
         [ -f "$dir/embeddings.npz" ] && echo "true" > DONE
     done
 
