@@ -12,7 +12,7 @@ task count {
   }
   command <<<
     echo "<< starting spatial-count >>"
-    dstat --time --cpu --mem --disk --io --freespace --output count-~{id}.usage &> /dev/null &
+    dstat --time --cpu --mem --disk --io --freespace --output spatial-count.usage &> /dev/null &
 
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
