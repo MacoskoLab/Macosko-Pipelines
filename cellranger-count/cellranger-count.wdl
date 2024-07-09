@@ -89,9 +89,9 @@ task count {
     rm -rf ~{sample}/SC_RNA_COUNTER_CS
 
     if [[ -f ~{sample}/outs/metrics_summary.csv ]] ; then
-        echo "Success, uploading counts"
+        echo ; echo "Success, uploading counts"
         if gsutil ls "$count_output_path" &> /dev/null ; then
-            echo "ERROR: count output already exists"
+            echo ; echo "ERROR: count output already exists"
         else
             gcloud storage cp -r ~{sample} "$count_output_path"
             echo "true" > DONE
