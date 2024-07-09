@@ -20,11 +20,25 @@ task count {
     # Download the script
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/spatial-count/spatial-count.jl
 
+    # Assign the WDL variables to bash variables
+    count_output_path="~{count_output_path}"
+    log_output_path="~{log_output_path}"
+    # Remove trailing slashes
+    count_output_path="${count_output_path%/}"
+    log_output_path="${log_output_path%/}"
+    # Assert that the paths are actually gs:// paths
+    [[ ! "${count_output_path:0:5}" == "gs://" ]] && echo "ERROR: count_output_path does not start with gs://" && exit 1
+    [[ ! "${log_output_path:0:5}"   == "gs://" ]] && echo "ERROR: log_output_path does not start with gs://" && exit 1
+
+    echo "FASTQs: ~{length(fastq_paths)} paths provided"
+    echo "Pucks: ~{length(pucks)} puck(s) provided"
+    echo "Output directory: $count_output_path" ; echo
+
     # Assert that the fastqs exist
     fastqs=(~{sep=' ' fastq_paths})
     for fastq in "${fastqs[@]}" ; do
-        if ! gsutil ls "$fastq" &> /dev/null ; then
-            echo "ERROR: gsutil ls command failed on fastq $fastq"
+        if ! gsutil stat "$fastq" &> /dev/null ; then
+            echo "ERROR: gsutil stat command failed on fastq $fastq"
             exit 1
         fi
     done
@@ -37,8 +51,8 @@ task count {
     # Assert that the pucks exist
     pucks=(~{sep=' ' pucks})
     for puck in "${pucks[@]}" ; do
-        if ! gsutil ls "$puck" &> /dev/null ; then
-            echo "ERROR: gsutil ls command failed on puck $puck"
+        if ! gsutil stat "$puck" &> /dev/null ; then
+            echo "ERROR: gsutil stat command failed on puck $puck"
             exit 1
         fi
     done
