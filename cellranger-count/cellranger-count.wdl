@@ -97,7 +97,7 @@ task count {
             echo "true" > DONE
         fi
     else
-        echo "ERROR: CANNOT FIND: metrics_summary.csv"
+        echo ; echo "ERROR: CANNOT FIND: metrics_summary.csv"
     fi
 
     echo; echo "Writing logs:"
