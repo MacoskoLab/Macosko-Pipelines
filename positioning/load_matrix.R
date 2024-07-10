@@ -161,6 +161,7 @@ fuzzy_matching <- function(df, cb_list, cb_whitelist) {
   stopifnot(colnames(df12) == colnames(df3))
   df = rbind(df12, df3)
   stopifnot(df$cb_index != 0)
+  stopifnot(sum(df$cb_index > 0) > 0)
   stopifnot(sum(df$reads) == sum(cb_matching_count))
   
   meta <- metadata
