@@ -11,6 +11,9 @@ from umap import UMAP
 import umap.plot
 from umap.umap_ import nearest_neighbors
 
+#os.chdir("/home/nsachdev/recon/data/615-2cm")
+#os.chdir("/home/nsachdev/recon/data/609-6mm")
+
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
     parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default=".")
@@ -78,11 +81,13 @@ if c2 > 0:
     print(f"{len(sb2)-len(sb2_keep)} R2 beads filtered ({round((len(sb2)-len(sb2_keep))/len(sb2)*100, 2)}%)")
 if c1 > 0:
     df = df[df['sb1'].isin(sb1_keep)]
+if c2 > 0:
+    df = df[df['sb2'].isin(sb2_keep)]
+if c1 > 0:
     codes, uniques = pd.factorize(df['sb1'], sort=True)
     df['sb1'] = codes
     with gzip.open(os.path.join(out_dir, 'sb1_uniques.txt.gz'), 'wt') as f: f.write('\n'.join(map(str, uniques)))
 if c2 > 0:
-    df = df[df['sb2'].isin(sb2_keep)]
     codes, uniques = pd.factorize(df['sb2'], sort=True)
     df['sb2'] = codes
     with gzip.open(os.path.join(out_dir, 'sb2_uniques.txt.gz'), 'wt') as f: f.write('\n'.join(map(str, uniques)))
@@ -151,4 +156,3 @@ if algo == "umap":
     plt.tight_layout()
     fig.savefig(os.path.join(out_dir, "umap.png"), dpi=200)
     plt.close(fig)
-
