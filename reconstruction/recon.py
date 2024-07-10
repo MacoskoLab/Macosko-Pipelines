@@ -11,8 +11,8 @@ from umap import UMAP
 import umap.plot
 from umap.umap_ import nearest_neighbors
 
-# os.chdir("/home/nsachdev/recon/data/615-2cm")
-# os.chdir("/home/nsachdev/recon/data/609-6mm")
+#os.chdir("/home/nsachdev/recon/data/615-2cm")
+os.chdir("/home/nsachdev/recon/data/609-6mm")
 
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
@@ -20,6 +20,8 @@ def get_args():
     parser.add_argument("-o", "--out_dir", help="output data folder", type=str, default=".")
     # parser.add_argument("-c", "--core", help="define core type to use (CPU or GPU)", type=str, default="CPU")
     # bead type? tags or seq? "-e", "--exptype", help="define experiment type (seq or tags)", type=str, required=True,
+    parser.add_argument("-c1", "--cutoff1", help="R1 UMI cutoff", type=int, default=0)
+    parser.add_argument("-c2", "--cutoff2", help="R2 UMI cutoff", type=int, default=0)
 
     parser.add_argument("-a", "--algorithm", help="dimensionality reduction algo", type=str, default="umap")
     
@@ -34,6 +36,11 @@ def get_args():
     return args
 
 args = get_args()
+in_dir = args.in_dir ; assert all(os.path.isfile(os.path.join(in_dir, file)) for file in ['matrix.csv.gz', 'sb1.txt.gz', 'sb2.txt.gz'])
+c1 = args.cutoff1 ; print(f"cutoff1 = {c1}")
+c2 = args.cutoff2 ; print(f"cutoff2 = {c2}")
+base = f"ANCHOR_c1={c1}_c2={c2}"
+
 algo = args.algorithm ; print(f"algorithm = {algo}")
 if algo == "umap":
     n_neighbors = args.n_neighbors ; print(f"n_neighbors = {n_neighbors}")
@@ -42,15 +49,11 @@ if algo == "umap":
     n_epochs = args.n_epochs       ; print(f"n_epochs = {n_epochs}")
     init = args.init               ; print(f"init = {init}")
     metric = args.metric           ; print(f"metric = {metric}")
-    out_dir = os.path.join(args.out_dir, f"ANCHOR_n={n_neighbors}_d={min_dist}_s={spread}_N={n_epochs}_I={init}_m={metric}")
+    out_dir = os.path.join(args.out_dir, f"{base}_n={n_neighbors}_d={min_dist}_s={spread}_I={init}_m={metric}")
 else:
-    out_dir = os.path.join(args.out_dir, f"ANCHOR")
-
-in_dir = args.in_dir
-assert all(os.path.isfile(os.path.join(in_dir, file)) for file in ['matrix.csv.gz', 'sb1.txt.gz', 'sb2.txt.gz'])
-
+    out_dir = os.path.join(args.out_dir, f"{base}")
 if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    os.makedirs(out_dir)
 
 print("\nReading the matrix...")
 df = pd.read_csv(os.path.join(in_dir, 'matrix.csv.gz'), compression='gzip', header=None, names=['sb1', 'sb2', 'umi'])
@@ -65,51 +68,35 @@ assert sorted(list(set(df.sb2))) == list(range(len(sb2)))
 print(f"{len(sb1)} R1 barcodes")
 print(f"{len(sb2)} R2 barcodes")
 
+# Filter the matrix
+print("\nFiltering the beads...")
+umi_before = sum(df["umi"])
+if c1 > 0:
+    grouped = df.groupby('sb1')['umi'].sum()
+    sb1_keep = grouped[grouped <= c1].index
+    print(f"{len(sb1)-len(sb1_keep)} R1 beads filtered ({round((len(sb1)-len(sb1_keep))/len(sb1)*100, 2)}%)")
+if c2 > 0:
+    grouped = df.groupby('sb2')['umi'].sum()
+    sb2_keep = grouped[grouped <= c2].index
+    print(f"{len(sb2)-len(sb2_keep)} R2 beads filtered ({round((len(sb2)-len(sb2_keep))/len(sb2)*100, 2)}%)")
+if c1 > 0:
+    df = df[df['sb1'].isin(sb1_keep)]
+    codes, uniques = pd.factorize(df['sb1'], sort=True)
+    df['sb1'] = codes
+    with gzip.open(os.path.join(out_dir, 'sb1_uniques.txt.gz'), 'wt') as f: f.write('\n'.join(map(str, uniques)))
+if c2 > 0:
+    df = df[df['sb2'].isin(sb2_keep)]
+    codes, uniques = pd.factorize(df['sb2'], sort=True)
+    df['sb2'] = codes
+    with gzip.open(os.path.join(out_dir, 'sb2_uniques.txt.gz'), 'wt') as f: f.write('\n'.join(map(str, uniques)))
+umi_after = sum(df["umi"])
+print(f"{umi_before-umi_after} UMIs filtered ({round((umi_before-umi_after)/umi_before*100, 2)}%)")
+assert sorted(list(set(df.sb1))) == list(range(len(set(df.sb1))))
+assert sorted(list(set(df.sb2))) == list(range(len(set(df.sb2))))
+
 # Rows are the anchor beads I wish to recon
 # Columns are the features used for judging similarity
 mat = coo_matrix((df['umi'], (df['sb2'], df['sb1'])))
-
-### PLOTS ######################################################################
-
-# fig, axs = plt.subplots(3, 2, figsize=(7, 8))
-
-# def plot_histogram(ax, df, col, operation):
-#     if operation == 'umi':
-#         gdf = df.groupby(col)['umi'].sum().reset_index()
-#         gdf["umi"] = np.log10(gdf["umi"])
-#         xlab = "log10 umi"
-#     elif operation == 'connections':
-#         gdf = df.groupby(col)['umi'].size().reset_index()
-#         gdf.columns = [col, 'umi']
-#         gdf["umi"] = np.log10(gdf["umi"])
-#         xlab = "log10 connections"
-#     elif operation == 'entropy':
-#         gdf = df.groupby(col)['umi'].apply(shannon_entropy).reset_index()
-#         gdf.columns = [col, 'umi']
-#         xlab = "entropy"
-
-#     #meanumi = np.log10(gdf['umi'].mean())
-#     #meanumi = gdf['umi'].mean()
-#     ax.hist(gdf['umi'], bins=100)
-#     #ax.axvline(meanumi, color='red', linestyle='dashed', linewidth=2)
-#     #ax.text(meanumi, ax.get_ylim()[1]*0.9, f'Mean: {10**meanumi:.1f}', color='red', fontsize=12, ha='center')
-#     ax.set_yscale('log')
-#     ax.set_title(f"Histogram of total {operation} per {col}")
-#     ax.set_xlabel(xlab)
-#     ax.set_ylabel('log10 count')
-
-# plot_histogram(axs[0,0], df, 'sb1', 'umi')
-# plot_histogram(axs[1,0], df, 'sb1', 'connections')
-# #plot_histogram(axs[2,0], df, 'sb1', 'entropy')
-# plot_histogram(axs[0,1], df, 'sb2', 'umi')
-# plot_histogram(axs[1,1], df, 'sb2', 'connections')
-# #plot_histogram(axs[2,1], df, 'sb2', 'entropy')
-
-# # Adjust layout to prevent overlap
-# plt.tight_layout()
-
-# # Save the plot as a PDF
-# plt.savefig('umi_histograms.pdf')
 
 ### UMAP TIME ##################################################################
 
@@ -156,3 +143,15 @@ if algo == "umap":
     
     print("\ndone")
     np.savez(os.path.join(out_dir, "embeddings.npz"), *embeddings)
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    x, y = embeddings[-1][:, 0], embeddings[-1][:, 1]
+    hb = ax.hexbin(x, y, cmap='viridis', linewidths=0.1)
+    cb = fig.colorbar(hb, ax=ax, shrink = 0.75)
+    ax.set_xlim(x.min(), x.max())
+    ax.set_ylim(y.min(), y.max())
+    ax.axis('equal')
+    plt.tight_layout()
+    fig.savefig(os.path.join(out_dir, "umap.png"), dpi=200)
+    plt.close(fig)
+
