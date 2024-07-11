@@ -62,7 +62,7 @@ task recon {
 
     # Check for success
     for dir in ANCHOR*; do
-        [ -f "$dir/embeddings.npz" ] && echo "true" > DONE
+        [ -s "$dir/Puck.csv" ] && echo "true" > DONE
     done
 
     echo; echo "Writing logs:"
