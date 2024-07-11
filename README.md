@@ -99,6 +99,7 @@ Cell Ranger ARC 2.0.2
 Python 2.7.16  
 Python3 3.7.3  
 Julia 1.8.5  
+Rust 1.79.0  
 R 4.3.3  
 
 **us-central1-docker.pkg.dev/velina-208320/docker-recon/img:latest**  
