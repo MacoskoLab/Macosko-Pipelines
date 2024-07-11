@@ -13,9 +13,6 @@ from umap import UMAP
 import umap.plot
 from umap.umap_ import nearest_neighbors
 
-#os.chdir("/home/nsachdev/recon/data/615-2cm")
-#os.chdir("/home/nsachdev/recon/data/609-6mm")
-
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
     parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default=".")
@@ -105,10 +102,11 @@ assert sorted(list(set(df.sb2))) == list(range(len(set(df.sb2))))
 mat = coo_matrix((df['umi'], (df['sb2'], df['sb1'])))
 
 # Get the previous embeddings
+print("\nDownloading previous embeddings...")
+file_path = os.path.join(args.gspath, name, "embeddings.npz")
+print(f"\nSearching {file_path}...")
 try:
     import gcsfs
-    file_path = os.path.join(args.gspath, name, "embeddings.npz")
-    print(f"Searching {file_path}...")
     with gcsfs.GCSFileSystem().open(file_path, 'rb') as f:
         data = np.load(f)
         embeddings = [data[key] for key in data]
@@ -117,6 +115,8 @@ except Exception as e:
     embeddings = []
     print(f"Embeddings load error: {str(e)}")
     print("No previous embeddings found, starting from scratch")
+
+sys.stdout.flush()
 
 ### UMAP TIME ##################################################################
 
