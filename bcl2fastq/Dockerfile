@@ -18,8 +18,8 @@ RUN unzip -d /software/ /software/bcl2fastq2-v2-20-0-linux-x86-64.zip && \
     rm /software/bcl2fastq2-v2*
 
 # Add Cell Ranger
-ADD cellranger-8.0.0 /software/cellranger-8.0.0
-ENV PATH=/software/cellranger-8.0.0:$PATH
+ADD cellranger-8.0.1 /software/cellranger-8.0.1
+ENV PATH=/software/cellranger-8.0.1:$PATH
 ADD cellranger-atac-2.1.0 /software/cellranger-atac-2.1.0
 ENV PATH=/software/cellranger-arc-2.0.2:$PATH
 ADD cellranger-arc-2.0.2 /software/cellranger-arc-2.0.2
