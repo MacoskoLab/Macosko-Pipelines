@@ -13,6 +13,9 @@ from umap import UMAP
 import umap.plot
 from umap.umap_ import nearest_neighbors
 
+#os.chdir("/home/nsachdev/recon/data/615-2cm")
+#os.chdir("/home/nsachdev/recon/data/609-6mm")
+
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
     parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default=".")
@@ -40,7 +43,6 @@ args = get_args()
 in_dir = args.in_dir ; assert all(os.path.isfile(os.path.join(in_dir, file)) for file in ['matrix.csv.gz', 'sb1.txt.gz', 'sb2.txt.gz'])
 c1 = args.cutoff1 ; print(f"R1 UMI cutoff = {c1}")
 c2 = args.cutoff2 ; print(f"R2 UMI cutoff = {c2}")
-base = f"ANCHOR_c1={c1}_c2={c2}"
 
 algo = args.algorithm ; print(f"algorithm = {algo}")
 if algo == "umap":
@@ -50,11 +52,15 @@ if algo == "umap":
     n_epochs = args.n_epochs       ; print(f"n_epochs = {n_epochs}")
     init = args.init               ; print(f"init = {init}")
     metric = args.metric           ; print(f"metric = {metric}")
-    out_dir = os.path.join(args.out_dir, f"{base}_n={n_neighbors}_d={min_dist}_s={spread}_I={init}_m={metric}")
+    name = os.path.join(f"ANCHOR_c1={c1}_c2={c2}_n={n_neighbors}_d={min_dist}_s={spread}_I={init}_m={metric}")
 else:
-    out_dir = os.path.join(args.out_dir, f"{base}")
+    name = os.path.join(f"ANCHOR_c1={c1}_c2={c2}")
+print(f"name = {name}")
+
+out_dir = os.path.join(args.out_dir, name)
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
+print(f"output directory = {out_dir}")
 
 print("\nReading the matrix...")
 df = pd.read_csv(os.path.join(in_dir, 'matrix.csv.gz'), compression='gzip', header=None, names=['sb1', 'sb2', 'umi'])
@@ -101,8 +107,7 @@ mat = coo_matrix((df['umi'], (df['sb2'], df['sb1'])))
 # Get the previous embeddings
 try:
     import gcsfs
-    file_path = os.path.join(args.gspath, out_dir, "embeddings.npz")
-    # file_path = r"gs://fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36/reconstruction/240615_SL-EXG_0144_A22KH5WLT3/D703_D704_D705_D706/ANCHOR_c1=0_c2=0_n=25_d=0.001_s=1.0_I=spectral_m=cosine/embeddings.npz"
+    file_path = os.path.join(args.gspath, name, "embeddings.npz")
     print(f"Searching {file_path}...")
     with gcsfs.GCSFileSystem().open(file_path, 'rb') as f:
         data = np.load(f)
@@ -156,6 +161,17 @@ if algo == "umap":
         embeddings.append(my_umap(mat, n_epochs=1000))
     
     for i in range(ceil(n_epochs/1000)-1):
+        # Upload intermediate embeddings
+        try:
+            import gcsfs
+            file_path = os.path.join(args.gspath, name, "embeddings.npz")
+            with gcsfs.GCSFileSystem().open(file_path, 'wb') as f:
+                np.savez(f, **{f"arr_{i}":e for i,e in enumerate(embeddings)})
+            print("Intermediate embeddings successfully uploaded")
+        except Exception as e:
+            print(f"Unable to upload intermediate embeddings: {str(e)}")
+
+        # Run more umap
         print(i+2)
         embeddings.append(my_umap(mat, init=embeddings[-1], n_epochs=1000))
     
