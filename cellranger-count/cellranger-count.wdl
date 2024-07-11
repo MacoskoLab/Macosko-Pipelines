@@ -138,7 +138,7 @@ workflow cellranger_count {
         String count_output_path = "gs://"+bucket+"/cellranger-count/"+id
         String log_output_path = "gs://"+bucket+"/logs/"+id
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
-        String docker = "us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest"
+        String docker = "us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/img:latest"
     }
     call count {
         input:
