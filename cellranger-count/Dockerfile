@@ -11,14 +11,6 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends apt-transport-https ca-certificates libssl-dev libxml2-dev && \
     apt-get install -y --no-install-recommends libfreetype6-dev libcairo2-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev
 
-# Add Cell Ranger
-ADD cellranger-8.0.1 /software/cellranger-8.0.1
-ENV PATH=/software/cellranger-8.0.1:$PATH
-ADD cellranger-atac-2.1.0 /software/cellranger-atac-2.1.0
-ENV PATH=/software/cellranger-arc-2.0.2:$PATH
-ADD cellranger-arc-2.0.2 /software/cellranger-arc-2.0.2
-ENV PATH=/software/cellranger-atac-2.1.0:$PATH
-
 # Install Google Cloud SDK
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
 
