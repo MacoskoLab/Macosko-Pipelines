@@ -102,7 +102,7 @@ for (puck, puckdf) in zip(pucks, puckdfs)
     assert_not_missing(puckdf, :sb)
     assert_not_missing(puckdf, :x)
     assert_not_missing(puckdf, :y)
-    @assert all(length(s) == (14+n) for s in puckdf.sb) "Some spatial barcodes in $puck do not have 14bp"
+    @assert all(length(s) == (14+n) for s in puckdf.sb) "Some spatial barcodes in $puck do not have $(14+n)bp"
     @assert length(puckdf.sb) == length(Set(puckdf.sb)) "Some spatial barcodes in $puck are repeated"
 end
 
