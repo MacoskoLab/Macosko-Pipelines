@@ -79,6 +79,20 @@ end
 pucks = filter(x -> endswith(x, ".csv"), readdir(puckpath, join=true)) ; println("Pucks: ", basename.(pucks))
 puckdfs = [rename(CSV.read(puck, DataFrame, header=false, types=[String15, Float64, Float64]), [:sb,:x,:y]) for puck in pucks]
 
+# Get the spatial barcode length
+function get_sb_length(puckdfs)
+    sb_sizes = union([Set(length(s) for s in puckdf.sb) for puckdf in puckdfs]...)
+    @assert length(sb_sizes) == 1
+    return(first(sb_sizes))
+end
+if get_sb_length(puckdfs) == 14
+    const n = 0
+elseif get_sb_length(puckdfs) == 15
+    const n = 1
+else
+    error("Unrecognized puck spatial barcode length ($(get_sb_length(puckdfs)))")
+end
+
 # Validate the pucks
 function assert_not_missing(df, col_name)
     @assert all(!ismissing, df[!, col_name]) "Puck column $(col_name) contains missing values, is the data type correct?"
@@ -88,7 +102,7 @@ for (puck, puckdf) in zip(pucks, puckdfs)
     assert_not_missing(puckdf, :sb)
     assert_not_missing(puckdf, :x)
     assert_not_missing(puckdf, :y)
-    @assert all(length(s) == 14 for s in puckdf.sb) "Some spatial barcodes in $puck do not have 14bp"
+    @assert all(length(s) == (14+n) for s in puckdf.sb) "Some spatial barcodes in $puck do not have 14bp"
     @assert length(puckdf.sb) == length(Set(puckdf.sb)) "Some spatial barcodes in $puck are repeated"
 end
 
@@ -172,21 +186,21 @@ function create_SBtoindex(sb_whitelist)
         if numN == 0
             # Add Hamming distance = 1 strings
             for (sb_f, ind) in listHD1neighbors(sb)
-                sbtuple = (sb_f[1:8], sb_f[9:14])
+                sbtuple = (sb_f[1:8], sb_f[9:14+n])
                 haskey(SBtoindex, sbtuple) ? SBtoindex[sbtuple] = (0, 0) : SBtoindex[sbtuple] = (i, ind)
             end
             # Add strings with one deletion
-            sb2 = sb[9:14]
+            sb2 = sb[9:14+n]
             for (ind, sb1) in enumerate(listDEL1neighbors(sb[1:8]))
                 sbtuple = (sb1, sb2)
                 haskey(SBtoindex, sbtuple) ? SBtoindex[sbtuple] = (0, 0) : SBtoindex[sbtuple] = (i, -ind)
             end
         elseif numN == 1
             ind = findfirst(isequal('N'), sb)
-            sbtuple = (sb[1:8], sb[9:14])
+            sbtuple = (sb[1:8], sb[9:14+n])
             haskey(SBtoindex, sbtuple) ? SBtoindex[sbtuple] = (0, 0) : SBtoindex[sbtuple] = (i, ind)
             for sb_f in expand_N(sb)
-                sbtuple = (sb_f[1:8], sb_f[9:14])
+                sbtuple = (sb_f[1:8], sb_f[9:14+n])
                 haskey(SBtoindex, sbtuple) ? SBtoindex[sbtuple] = (0, 0) : SBtoindex[sbtuple] = (i, ind)
             end
         end
@@ -195,7 +209,7 @@ function create_SBtoindex(sb_whitelist)
     # Exact matches
     for (i, sb) in enumerate(sb_whitelist)
         if !occursin('N', sb)
-            sbtuple = (sb[1:8], sb[9:14])
+            sbtuple = (sb[1:8], sb[9:14+n])
             SBtoindex[sbtuple] = (i, 0)
         end
     end
@@ -221,7 +235,7 @@ function process_fastqs(R1s, R2s, sb_whitelist)
     reads = 0
     m = Dict("exact"=>0, "GG"=>0, "none"=>0, "-1X"=>0, "1D-"=>0, "1D-1X"=>0, "-1D"=>0, "-2X"=>0, "umi_N"=>0, "umi_homopolymer"=>0)
     p = Dict("exact"=>0, "HD1"=>0, "HD1ambig"=>0, "none"=>0)
-    l = Dict(i=>0 for i in collect(-8:14))
+    l = Dict(i=>0 for i in collect(-8:14+n))
     cb_dictionary = Dict{String31, UInt32}() # cb -> cb_i
     mat = Dict{Tuple{UInt32, UInt32, UInt32}, UInt32}() # (cb_i, umi_i, sb_i) -> reads
     
@@ -247,6 +261,7 @@ function process_fastqs(R1s, R2s, sb_whitelist)
     print("Reading FASTQs... ") ; flush(stdout)
     
     for fastqpair in zip(R1s, R2s)
+        println(fastqpair) ; flush(stdout)
         it1 = fastqpair[1] |> open |> GzipDecompressorStream |> FASTQ.Reader;
         it2 = fastqpair[2] |> open |> GzipDecompressorStream |> FASTQ.Reader;
         for record in zip(it1, it2)
@@ -264,21 +279,21 @@ function process_fastqs(R1s, R2s, sb_whitelist)
             end
 
             # Load R2
-            r2 = FASTQ.sequence(record[2], 1:32)
+            r2 = FASTQ.sequence(record[2], 1:32+n)
             if r2[9:26] == UPseq # exact match
-                sb1=r2[1:8]; sb2=r2[27:32]; m["exact"]+=1
+                sb1=r2[1:8]; sb2=r2[27:32+n]; m["exact"]+=1
             elseif in(r2[9:26], UPseqHD1) # one UP base flip (could be del at last base - could check cap seq)
-                sb1=r2[1:8]; sb2=r2[27:32]; m["-1X"]+=1
+                sb1=r2[1:8]; sb2=r2[27:32+n]; m["-1X"]+=1
             elseif in(r2[9:26], GG_whitelist) # discard
                 m["GG"]+=1; continue
             elseif r2[8:25]==UPseq # deletion in sb1, exact UP match
-                sb1=r2[1:7]; sb2=r2[26:31]; m["1D-"]+=1
+                sb1=r2[1:7]; sb2=r2[26:31+n]; m["1D-"]+=1
             elseif in(r2[8:25], UPseqHD1) # deletion in sb1, one UP base flip
-                sb1=r2[1:7]; sb2=r2[26:31]; m["1D-1X"]+=1
+                sb1=r2[1:7]; sb2=r2[26:31+n]; m["1D-1X"]+=1
             elseif in(r2[9:25], UPseqLD1) # deletion in UP
-                sb1=r2[1:8]; sb2=r2[26:31]; m["-1D"]+=1
+                sb1=r2[1:8]; sb2=r2[26:31+n]; m["-1D"]+=1
             elseif in(r2[9:26], UPseqHD2) # two UP base flips
-                sb1=r2[1:8]; sb2=r2[27:32]; m["-2X"]+=1
+                sb1=r2[1:8]; sb2=r2[27:32+n]; m["-2X"]+=1
             else # No detectable UP sequence
                 m["none"]+=1; continue
             end
@@ -305,7 +320,7 @@ function process_fastqs(R1s, R2s, sb_whitelist)
         end
     end
     
-    println("done") ; flush(stdout) ; GC.gc()
+    println("...done") ; flush(stdout) ; GC.gc()
 
     print("Processing results... ") ; flush(stdout)
     
@@ -390,7 +405,7 @@ h5open("SBcounts.h5", "w") do file
     file["metadata/downsampling"] = downsampling # Vector{UInt32}
 end;
 
-println("Done") ; flush(stdout) ; GC.gc()
+println("done") ; flush(stdout) ; GC.gc()
 
 ##### Documentation ############################################################
 
