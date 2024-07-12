@@ -13,6 +13,8 @@ from umap import UMAP
 import umap.plot
 from umap.umap_ import nearest_neighbors
 
+quit()
+
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
     parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default=".")
