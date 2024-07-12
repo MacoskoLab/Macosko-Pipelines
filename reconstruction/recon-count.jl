@@ -4,8 +4,8 @@ using Plots
 using Peaks: findminima
 using CodecZlib
 using PDFmerger
+using StatsBase
 using IterTools: product
-using StatsBase: countmap
 using DataFrames
 using StringViews
 using LinearAlgebra: dot
@@ -348,7 +348,7 @@ println("done") ; flush(stdout) ; GC.gc()
 
 ####################################################################################################
 
-print("Writing Output... ") ; flush(stdout)
+print("Writing output... ") ; flush(stdout)
 
 # Normalize the barcode indexes
 m1 = sort(collect(Set(df.sb1_i)))
@@ -373,12 +373,17 @@ sort!(df2, :sb2_i)
 @assert df2.sb2_i == collect(1:nrow(df2))
 
 # Write UMI histograms
-p1 = histogram(log10.(df1[!, :umi]), yscale = :log10, bins = 100, legend = false,
-          xlabel = "log10 umi", ylabel = "log10 beads", title = "Histogram of total umi per sb1",
-          yticks = [10^i for i in 0:10], linewidth = 0, linealpha = 0, fillcolor = :gray50)
-p2 = histogram(log10.(df2[!, :umi]), yscale = :log10, bins = 100, legend = false,
-          xlabel = "log10 umi", ylabel = "log10 beads", title = "Histogram of total umi per sb2",
-          yticks = [10^i for i in 0:10], linewidth = 0, linealpha = 0, fillcolor = :gray50)
+function plot_umi_histogram(vec, bead)
+    hist = fit(Histogram, vec, nbins=100)
+    bin_heights = hist.weights
+    bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) ./ 2
+    bar(bin_centers, log10.(bin_heights), legend = false,
+        xlabel = "log10 umi", ylabel = "log10 beads", title = "Histogram of total umi per $bead",
+        titlefont = 10, guidefont = 8, xticks = [i for i in 0:10], yticks = [i for i in 0:10],
+        linewidth = 0, linealpha = 0, fillcolor = :gray50)
+end
+p1 = plot_umi_histogram(log10.(df1[!, :umi]), "sb1")
+p2 = plot_umi_histogram(log10.(df2[!, :umi]), "sb2")
 p = plot(p1, p2, layout = (2, 1), size=(7*100, 8*100))
 savefig(p, joinpath(out_path, "histograms.pdf"))
 
