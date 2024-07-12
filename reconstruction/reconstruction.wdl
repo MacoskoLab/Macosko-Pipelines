@@ -39,7 +39,7 @@ task recon {
     # Run recon-count.jl
     if gsutil ls "$recon_output_path/matrix.csv.gz" &> /dev/null ; then
         echo "NOTE: spatial-count.jl has already been run, reusing results"
-        gcloud storage cp "$recon_output_path/matrix.csv.gz" "$recon_output_path/sb1.txt.gz" "$recon_output_path/sb2.txt.gz" .
+        gcloud storage cp "$recon_output_path/matrix.csv.gz" "$recon_output_path/sb1.csv.gz" "$recon_output_path/sb2.csv.gz" .
     else
         echo "Downloading fastqs:"
         mkdir fastqs
@@ -47,17 +47,17 @@ task recon {
 
         echo "Running spatial-count.jl"
         time stdbuf -oL -eL /software/julia-1.8.5/bin/julia recon-count.jl fastqs .
-        gcloud storage cp matrix.csv.gz sb1.txt.gz sb2.txt.gz metadata.csv QC.pdf "$recon_output_path"
+        gcloud storage cp matrix.csv.gz sb1.csv.gz sb2.csv.gz metadata.csv QC.pdf "$recon_output_path"
         rm -rf fastqs
     fi
 
     # Run recon.py
-    if [[ -f matrix.csv.gz && -f sb1.txt.gz && -f sb2.txt.gz ]] ; then
+    if [[ -f matrix.csv.gz && -f sb1.csv.gz && -f sb2.csv.gz ]] ; then
         echo "Running recon.py"
         time stdbuf -oL -eL /opt/conda/bin/python recon.py --gspath="$recon_output_path" ~{params}
         gcloud storage cp -r ANCHOR* "$recon_output_path"
     else
-        echo "Cannot run recon.py, matrix.csv.gz or sb1.txt.gz or sb2.txt.gz not found" 
+        echo "Cannot run recon.py, matrix.csv.gz or sb1.csv.gz or sb2.csv.gz not found" 
     fi
 
     # Check for success
