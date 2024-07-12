@@ -405,6 +405,14 @@ obj2ir <- function(obj, cgrid) {
 }
 
 ### Shiny Servers ##############################################################
+# cluster_selector
+# layer_selector
+# anno_points
+# select_points
+# anno_spline
+# anno_splines
+# anno_blob
+# anno_polar
 
 # Return a seurat object with only the selected clusters
 cluster_selector <- function(seurat_obj, col="seurat_clusters") {
