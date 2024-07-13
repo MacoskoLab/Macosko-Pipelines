@@ -43,34 +43,63 @@ end
 @assert length(unique([fastq_seq_len(R1) for R1 in R1s])) == 1 "WARNING: R1s have different FASTQ sequence lengths - proceed only if you are sure they have the same read structure"
 @assert length(unique([fastq_seq_len(R2) for R2 in R2s])) == 1 "WARNING: R2s have different FASTQ sequence lengths - proceed only if you are sure they have the same read structure"
 
+# Switch R1 and R2 if needed
 # Scan the first 100k records of both fastqs and identify R2 as the FASTQ with more UP
 function learn_switch(R1, R2)
     @assert (fastq_seq_len(R1) >= 32 || fastq_seq_len(R2) >= 32) "ERROR: at least one FASTQ should have a read length of 32 bases"
     i1 = R1 |> open |> GzipDecompressorStream |> FASTQ.Reader
     i2 = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
-    UPseq = String31("TCTTCAGCGTTCCCGAGA")
+    UPseq9 = String31("TCTTCAGCGTTCCCGAGA")
+    UPseq15 = String15("CTGTTTCCTG")
     s1 = 0 ; s2 = 0
     for (i, record) in enumerate(zip(i1, i2))
         i > 100000 ? break : nothing
-        s1 += FASTQ.sequence(record[1])[9:26] == UPseq
-        s2 += FASTQ.sequence(record[2])[9:26] == UPseq
+        seq1 = FASTQ.sequence(record[1])
+        seq2 = FASTQ.sequence(record[2])
+        s1 += seq1[9:26] == UPseq9 || seq1[16:25] == UPseq15
+        s2 += seq2[9:26] == UPseq9 || seq2[16:25] == UPseq15
     end
     println("R1: ", s1, " R2: ", s2)
     return(s2 >= s1 ? false : true)
 end
-
-# Switch R1 and R2 if needed
 println("Learning the correct R1 and R2 assignment")
-switch = false
 res_list = [learn_switch(R1, R2) for (R1, R2) in zip(R1s, R2s)]
 @assert all(res_list) || !any(res_list) "ERROR: the R1/R2 read assignment is not consistent"
 switch = all(res_list)
-
+println("switch: $switch")
 if switch == true
     println("Switching R1 and R2")
     temp = R1s
     R1s = R2s
     R2s = temp
+end
+
+# Determine the bead type (V9 or V15)
+function learn_R2type(R2)
+    iter = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
+    UPseq9 = String31("TCTTCAGCGTTCCCGAGA")
+    UPseq15 = String15("CTGTTTCCTG")
+    s9 = 0 ; s15 = 0
+    for (i, record) in enumerate(iter)
+        i > 100000 ? break : nothing
+        s9  += FASTQ.sequence(record, 9:26)  == UPseq9
+        s15 += FASTQ.sequence(record, 16:25) == UPseq15
+    end
+    println("V9: ", s9, " V15: ", s15)
+    return(s9 >= s15 ? "V9" : "V15")
+end
+println("Learning the correct bead type")
+res_list = [learn_R2type(R2) for R2 in R2s]
+if all(x -> x == "V9", res_list)
+    println("R2 bead type: V9")
+    const bead = "V9"
+    const UPseq = String31("TCTTCAGCGTTCCCGAGA")
+elseif all(x -> x == "V15", res_list)
+    println("R2 bead type: V15")
+    const bead = "V15"
+    const UPseq = String31("CTGTTTCCTG")
+else
+    error("Error: The R2 bead type is not consistent ($res_list)")
 end
 
 ##### Load the puck data #######################################################
@@ -217,13 +246,68 @@ function create_SBtoindex(sb_whitelist)
     return(SBtoindex)
 end
 
+function load_R2_V9(r2::StringView{SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}}, m::Dict)
+    if r2[9:26] == UPseq # exact match
+        sb1=r2[1:8]; sb2=r2[27:32+n]; m["exact"]+=1
+    elseif in(r2[9:26], UPseqHD1) # one UP base flip (could be del at last base - could check cap seq)
+        sb1=r2[1:8]; sb2=r2[27:32+n]; m["-1X"]+=1
+    elseif in(r2[9:26], GG_whitelist) # discard
+        sb1=""; sb2=""; m["GG"]+=1
+    elseif r2[8:25]==UPseq # deletion in sb1, exact UP match
+        sb1=r2[1:7]; sb2=r2[26:31+n]; m["1D-"]+=1
+    elseif in(r2[8:25], UPseqHD1) # deletion in sb1, one UP base flip
+        sb1=r2[1:7]; sb2=r2[26:31+n]; m["1D-1X"]+=1
+    elseif in(r2[9:25], UPseqLD1) # deletion in UP
+        sb1=r2[1:8]; sb2=r2[26:31+n]; m["-1D"]+=1
+    elseif in(r2[9:26], UPseqHD2) # two UP base flips
+        sb1=r2[1:8]; sb2=r2[27:32+n]; m["-2X"]+=1
+    else # No detectable UP sequence
+        sb1=""; sb2=""; m["none"]+=1
+    end
+    return sb1, sb2, m
+end
+
+function load_R2_V15(r2::StringView{SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}}, m::Dict)
+    if r2[16:25] == UPseq # exact match
+        sb1=r2[1:8]; sb2=r2[9:14+n]; m["exact"]+=1
+    elseif in(r2[16:25], UPseqHD1) # one UP base flip (could be del at last base - could check cap seq)
+        sb1=r2[1:8]; sb2=r2[9:14+n]; m["-1X"]+=1
+    elseif in(r2[16:25], GG_whitelist) # discard
+        sb1=""; sb2=""; m["GG"]+=1
+    elseif r2[15:24]==UPseq # deletion in sb1, exact UP match
+        sb1=r2[1:7]; sb2=r2[8:13+n]; m["1D-"]+=1
+    elseif in(r2[15:24], UPseqHD1) # deletion in sb1, one UP base flip
+        sb1=r2[1:7]; sb2=r2[8:13+n]; m["1D-1X"]+=1
+    elseif in(r2[16:24], UPseqLD1) # deletion in UP
+        sb1=r2[1:8]; sb2=r2[9:14+n]; m["-1D"]+=1
+    elseif in(r2[16:25], UPseqHD2) # two UP base flips
+        sb1=r2[1:8]; sb2=r2[9:14+n]; m["-2X"]+=1
+    else # No detectable UP sequence
+        sb1=""; sb2=""; m["none"]+=1
+    end
+    return sb1, sb2, m
+end
+
+const load_R2 = Ref{Function}()
+if bead == "V9"
+    load_R2[] = load_R2_V9
+elseif bead == "V15"
+    load_R2[] = load_R2_V15
+end
+
+const homopolymer_whitelist = union([listHDneighbors(str, i) for str in [String15(c^12) for c in ["A","C","G","T","N"]] for i in 0:2]...) |> x -> Set{String15}(x)
+const UPseqHD1 = Set{String31}(listHDneighbors(UPseq, 1))
+const UPseqHD2 = Set{String31}(listHDneighbors(UPseq, 2))
+const UPseqLD1 = Set{String31}(listDEL1neighbors(UPseq))
+const GG_whitelist = Set{String31}(union([listHDneighbors("G"^length(UPseq), i) for i in 0:3]...))
+
 # UMI compressing (between 0x00000000 and 0x00ffffff for a 12bp UMI)
 const px = [convert(UInt32, 4^i) for i in 0:(12-1)]
 function UMItoindex(UMI::StringView{SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}})::UInt32
     return(dot(px, (codeunits(UMI).>>1).&3))
 end
 # Convert compressed UMIs back into strings
-bases = ['A','C','T','G'] # MUST NOT change this order
+const bases = ['A','C','T','G'] # MUST NOT change this order
 function indextoUMI(i::UInt32)::String15
     return(String15(String([bases[(i>>n)&3+1] for n in 0:2:22])))
 end
@@ -238,27 +322,14 @@ function process_fastqs(R1s, R2s, sb_whitelist)
     l = Dict(i=>0 for i in collect(-8:14+n))
     cb_dictionary = Dict{String31, UInt32}() # cb -> cb_i
     mat = Dict{Tuple{UInt32, UInt32, UInt32}, UInt32}() # (cb_i, umi_i, sb_i) -> reads
-    
-    print("Creating matching dictionaries... ") ; flush(stdout)
-    
-    homopolymer_whitelist = Set{String15}()
-    for i in 0:2
-        for str in [String15(c^12) for c in ["A","C","G","T","N"]]
-            union!(homopolymer_whitelist, listHDneighbors(str, i))
-        end
-    end
-    
-    UPseq = String31("TCTTCAGCGTTCCCGAGA")
-    UPseqHD1 = Set{String31}(listHDneighbors(UPseq, 1))
-    UPseqHD2 = Set{String31}(listHDneighbors(UPseq, 2))
-    UPseqLD1 = Set{String31}(listDEL1neighbors(UPseq))
-    GG_whitelist = Set{String31}(reduce(union, [listHDneighbors("G"^18, i) for i in 0:3]))
+
+    print("Creating matching dictionary... ") ; flush(stdout)
 
     SBtoindex = create_SBtoindex(sb_whitelist)
     
     println("done") ; flush(stdout) ; GC.gc()
-    
-    print("Reading FASTQs... ") ; flush(stdout)
+
+    println("Reading FASTQs... ") ; flush(stdout)
     
     for fastqpair in zip(R1s, R2s)
         println(fastqpair) ; flush(stdout)
@@ -280,22 +351,9 @@ function process_fastqs(R1s, R2s, sb_whitelist)
 
             # Load R2
             r2 = FASTQ.sequence(record[2], 1:32+n)
-            if r2[9:26] == UPseq # exact match
-                sb1=r2[1:8]; sb2=r2[27:32+n]; m["exact"]+=1
-            elseif in(r2[9:26], UPseqHD1) # one UP base flip (could be del at last base - could check cap seq)
-                sb1=r2[1:8]; sb2=r2[27:32+n]; m["-1X"]+=1
-            elseif in(r2[9:26], GG_whitelist) # discard
-                m["GG"]+=1; continue
-            elseif r2[8:25]==UPseq # deletion in sb1, exact UP match
-                sb1=r2[1:7]; sb2=r2[26:31+n]; m["1D-"]+=1
-            elseif in(r2[8:25], UPseqHD1) # deletion in sb1, one UP base flip
-                sb1=r2[1:7]; sb2=r2[26:31+n]; m["1D-1X"]+=1
-            elseif in(r2[9:25], UPseqLD1) # deletion in UP
-                sb1=r2[1:8]; sb2=r2[26:31+n]; m["-1D"]+=1
-            elseif in(r2[9:26], UPseqHD2) # two UP base flips
-                sb1=r2[1:8]; sb2=r2[27:32+n]; m["-2X"]+=1
-            else # No detectable UP sequence
-                m["none"]+=1; continue
+            sb1, sb2, m = load_R2[](r2, m)
+            if length(sb1) == 0 || length(sb2) == 0
+                continue
             end
 
             # match sb -> sb_i
@@ -370,7 +428,7 @@ h5open("SBcounts.h5", "w") do file
     create_group(file, "lists")
     file["lists/cb_list", compress=9] = cb_whitelist # Vector{String31}
     file["lists/sb_list", compress=9] = sb_whitelist # Vector{String15}
-    file["lists/puck_list"] = basename.(pucks)        # Vector{String}
+    file["lists/puck_list"] = basename.(pucks)       # Vector{String}
 
     create_group(file, "matrix")
     file["matrix/cb_index", compress=9] = df.cb_i # Vector{UInt32}
@@ -390,6 +448,7 @@ h5open("SBcounts.h5", "w") do file
     file["metadata/R2s"] = R2s
     file["metadata/switch"] = convert(Int8, switch)
     file["metadata/num_reads"] = reads
+    file["metadata/bead_type"] = bead
     file["metadata/num_lowQbeads"] = num_lowQbeads
 
     create_group(file, "metadata/UP_matching")
