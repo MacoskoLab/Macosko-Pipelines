@@ -13,8 +13,6 @@ from umap import UMAP
 import umap.plot
 from umap.umap_ import nearest_neighbors
 
-quit()
-
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
     parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default=".")
@@ -39,7 +37,7 @@ def get_args():
     return args
 
 args = get_args()
-in_dir = args.in_dir ; assert all(os.path.isfile(os.path.join(in_dir, file)) for file in ['matrix.csv.gz', 'sb1.txt.gz', 'sb2.txt.gz'])
+in_dir = args.in_dir ; assert all(os.path.isfile(os.path.join(in_dir, file)) for file in ['matrix.csv.gz', 'sb1.csv.gz', 'sb2.csv.gz'])
 c1 = args.cutoff1 ; print(f"R1 UMI cutoff = {c1}")
 c2 = args.cutoff2 ; print(f"R2 UMI cutoff = {c2}")
 
@@ -65,14 +63,12 @@ print("\nReading the matrix...")
 df = pd.read_csv(os.path.join(in_dir, 'matrix.csv.gz'), compression='gzip', header=None, names=['sb1', 'sb2', 'umi'])
 df.sb1 -= 1 # convert from 1- to 0-indexed
 df.sb2 -= 1 # convert from 1- to 0-indexed
-with gzip.open(os.path.join(in_dir, 'sb1.txt.gz'), 'rt') as f:
-    sb1 = [line.strip() for line in f.readlines()]
-with gzip.open(os.path.join(in_dir, 'sb2.txt.gz'), 'rt') as f:
-    sb2 = [line.strip() for line in f.readlines()]
-assert sorted(list(set(df.sb1))) == list(range(len(sb1)))
-assert sorted(list(set(df.sb2))) == list(range(len(sb2)))
-print(f"{len(sb1)} R1 barcodes")
-print(f"{len(sb2)} R2 barcodes")
+sb1 = pd.read_csv(os.path.join(in_dir, 'sb1.csv.gz'), compression='gzip', header=None, names=['sb1', 'umi'])
+sb2 = pd.read_csv(os.path.join(in_dir, 'sb2.csv.gz'), compression='gzip', header=None, names=['sb2', 'umi'])
+assert sorted(list(set(df.sb1))) == list(range(sb1.shape[0]))
+assert sorted(list(set(df.sb2))) == list(range(sb2.shape[0]))
+print(f"{sb1.shape[0]} R1 barcodes")
+print(f"{sb2.shape[0]} R2 barcodes")
 
 # Filter the matrix
 print("\nFiltering the beads...")
@@ -106,7 +102,7 @@ mat = coo_matrix((df['umi'], (df['sb2'], df['sb1'])))
 # Get the previous embeddings
 print("\nDownloading previous embeddings...")
 file_path = os.path.join(args.gspath, name, "embeddings.npz")
-print(f"\nSearching {file_path}...")
+print(f"Searching {file_path}...")
 try:
     import gcsfs
     with gcsfs.GCSFileSystem().open(file_path, 'rb') as f:
@@ -196,7 +192,7 @@ if algo == "umap":
     plt.close(fig)
 
     # Create the Puck file
-    sbs = [sb2[i] for i in uniques2] if (c1 > 0 or c2 > 0) else sb2
+    sbs = [sb2["sb2"][i] for i in uniques2] if (c1 > 0 or c2 > 0) else sb2["sb2"]
     assert embeddings[-1].shape[0] == len(sbs)
     with open(os.path.join(out_dir, "Puck.csv"), mode='w', newline='') as file:
         writer = csv.writer(file)
