@@ -97,7 +97,8 @@ assert sorted(list(set(df.sb2))) == list(range(len(set(df.sb2))))
 
 # Rows are the anchor beads I wish to recon
 # Columns are the features used for judging similarity
-mat = coo_matrix((df['umi'], (df['sb2'], df['sb1'])))
+mat = coo_matrix((df['umi'], (df['sb2'], df['sb1']))).tocsr()
+del df
 
 # Get the previous embeddings
 print("\nDownloading previous embeddings...")
