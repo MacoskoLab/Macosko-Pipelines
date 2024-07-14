@@ -13,6 +13,10 @@ from umap import UMAP
 import umap.plot
 from umap.umap_ import nearest_neighbors
 
+#os.chdir("/home/nsachdev/recon/data/609-3cm")
+#os.chdir("/home/nsachdev/recon/data/615-2cm")
+#os.chdir("/home/nsachdev/recon/data/609-6mm")
+
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
     parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default=".")
@@ -146,58 +150,59 @@ if algo == "umap":
                             angular=False,
                             random_state=None,
                             low_memory=True,
-                            use_pynndescent=True,
+                            use_pynndescent=False,
                             n_jobs=-1,
                             verbose=True
                            )
 
     print("\nRunning UMAP...")
-    if len(embeddings) == 0:
-        embeddings.append(my_umap(mat, n_epochs=10))
-        embeddings.append(my_umap(mat, n_epochs=90, init=embeddings[-1]))
-        embeddings.append(my_umap(mat, n_epochs=900, init=embeddings[-1]))
-    else:
-        embeddings.append(my_umap(mat, n_epochs=1000))
+    embeddings.append(my_umap(mat, n_epochs=n_epochs))
+    # if len(embeddings) == 0:
+    #     embeddings.append(my_umap(mat, n_epochs=10))
+    #     embeddings.append(my_umap(mat, n_epochs=90, init=embeddings[-1]))
+    #     embeddings.append(my_umap(mat, n_epochs=900, init=embeddings[-1]))
+    # else:
+    #     embeddings.append(my_umap(mat, n_epochs=1000))
     
-    for i in range(ceil(n_epochs/1000)-1):
-        # Upload intermediate embeddings
-        try:
-            import gcsfs
-            file_path = os.path.join(args.gspath, name, "embeddings.npz")
-            with gcsfs.GCSFileSystem().open(file_path, 'wb') as f:
-                np.savez(f, **{f"arr_{i}":e for i,e in enumerate(embeddings)})
-            print("Intermediate embeddings successfully uploaded")
-        except Exception as e:
-            print(f"Unable to upload intermediate embeddings: {str(e)}")
+    # for i in range(ceil(n_epochs/1000)-1):
+    #     # Upload intermediate embeddings
+    #     try:
+    #         import gcsfs
+    #         file_path = os.path.join(args.gspath, name, "embeddings.npz")
+    #         with gcsfs.GCSFileSystem().open(file_path, 'wb') as f:
+    #             np.savez(f, **{f"arr_{i}":e for i,e in enumerate(embeddings)})
+    #         print("Intermediate embeddings successfully uploaded")
+    #     except Exception as e:
+    #         print(f"Unable to upload intermediate embeddings: {str(e)}")
 
-        # Run more umap
-        print(i+2)
-        embeddings.append(my_umap(mat, init=embeddings[-1], n_epochs=1000))
-    
-    print("\nWriting results...")
+    #     # Run more umap
+    #     print(i+2)
+    #     embeddings.append(my_umap(mat, init=embeddings[-1], n_epochs=1000))
 
-    # Save the embeddings
-    np.savez(os.path.join(out_dir, "embeddings.npz"), *embeddings)
+print("\nWriting results...")
 
-    # Plot the final UMAP
-    fig, ax = plt.subplots(figsize=(10, 8))
-    x, y = embeddings[-1][:, 0], embeddings[-1][:, 1]
-    hb = ax.hexbin(x, y, cmap='viridis', linewidths=0.1)
-    cb = fig.colorbar(hb, ax=ax, shrink = 0.75)
-    ax.set_title(f'umap hexbin ({embeddings[-1].shape[0]:,} anchor beads) [{(len(embeddings)-2)*1000} epochs]')
-    ax.set_xlim(x.min(), x.max())
-    ax.set_ylim(y.min(), y.max())
-    ax.axis('equal')
-    plt.tight_layout()
-    fig.savefig(os.path.join(out_dir, "umap.png"), dpi=200)
-    plt.close(fig)
+# Save the embeddings
+np.savez(os.path.join(out_dir, "embeddings.npz"), *embeddings)
 
-    # Create the Puck file
-    sbs = [sb2["sb2"][i] for i in uniques2] if (c1 > 0 or c2 > 0) else sb2["sb2"]
-    assert embeddings[-1].shape[0] == len(sbs)
-    with open(os.path.join(out_dir, "Puck.csv"), mode='w', newline='') as file:
-        writer = csv.writer(file)
-        for i in range(len(sbs)):
-            writer.writerow([sbs[i], embeddings[-1][i,0], embeddings[-1][i,1]])
-    
-    print("\nDone!")
+# Plot the final UMAP
+fig, ax = plt.subplots(figsize=(10, 8))
+x, y = embeddings[-1][:, 0], embeddings[-1][:, 1]
+hb = ax.hexbin(x, y, cmap='viridis', linewidths=0.1)
+cb = fig.colorbar(hb, ax=ax, shrink = 0.75)
+ax.set_title(f'umap hexbin ({embeddings[-1].shape[0]:,} anchor beads) [{(len(embeddings)-2)*1000} epochs]')
+ax.set_xlim(x.min(), x.max())
+ax.set_ylim(y.min(), y.max())
+ax.axis('equal')
+plt.tight_layout()
+fig.savefig(os.path.join(out_dir, "umap.png"), dpi=200)
+plt.close(fig)
+
+# Create the Puck file
+sbs = [sb2["sb2"][i] for i in uniques2] if (c1 > 0 or c2 > 0) else sb2["sb2"]
+assert embeddings[-1].shape[0] == len(sbs)
+with open(os.path.join(out_dir, "Puck.csv"), mode='w', newline='') as file:
+    writer = csv.writer(file)
+    for i in range(len(sbs)):
+        writer.writerow([sbs[i], embeddings[-1][i,0], embeddings[-1][i,1]])
+
+print("\nDone!")
