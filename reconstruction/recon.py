@@ -78,11 +78,13 @@ print(f"{sb2.shape[0]} R2 barcodes")
 print("\nFiltering the beads...")
 umi_before = sum(df["umi"])
 if c1 > 0:
-    grouped = df.groupby('sb1')['umi'].sum()
+    # grouped = df.groupby('sb1')['umi'].sum()
+    grouped = df.groupby('sb1').size()
     sb1_keep = grouped[grouped <= c1].index
     print(f"{len(sb1)-len(sb1_keep)} R1 beads filtered ({round((len(sb1)-len(sb1_keep))/len(sb1)*100, 2)}%)")
 if c2 > 0:
-    grouped = df.groupby('sb2')['umi'].sum()
+    # grouped = df.groupby('sb2')['umi'].sum()
+    grouped = df.groupby('sb2').size()
     sb2_keep = grouped[grouped <= c2].index
     print(f"{len(sb2)-len(sb2_keep)} R2 beads filtered ({round((len(sb2)-len(sb2_keep))/len(sb2)*100, 2)}%)")
 if c1 > 0:
@@ -128,7 +130,7 @@ def my_umap(mat, n_epochs, init=init):
                    random_state = None,
                    low_memory = True,
                    verbose = True,
-                   precomputed_knn = knn,
+                   #precomputed_knn = knn,
                    
                    n_neighbors = n_neighbors,
                    min_dist = min_dist,
@@ -142,18 +144,18 @@ def my_umap(mat, n_epochs, init=init):
 
 if algo == "umap":
     
-    print("\nComputing the KNN...")
-    knn = nearest_neighbors(mat,
-                            n_neighbors=n_neighbors,
-                            metric=metric,
-                            metric_kwds=None,
-                            angular=False,
-                            random_state=None,
-                            low_memory=True,
-                            use_pynndescent=True,
-                            n_jobs=-1,
-                            verbose=True
-                           )
+    # print("\nComputing the KNN...")
+    # knn = nearest_neighbors(mat,
+    #                         n_neighbors=n_neighbors,
+    #                         metric=metric,
+    #                         metric_kwds=None,
+    #                         angular=False,
+    #                         random_state=None,
+    #                         low_memory=True,
+    #                         use_pynndescent=True,
+    #                         n_jobs=-1,
+    #                         verbose=True
+    #                        )
 
     print("\nRunning UMAP...")
     embeddings.append(my_umap(mat, n_epochs=n_epochs))
