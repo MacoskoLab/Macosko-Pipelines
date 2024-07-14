@@ -150,7 +150,7 @@ if algo == "umap":
                             angular=False,
                             random_state=None,
                             low_memory=True,
-                            use_pynndescent=False,
+                            use_pynndescent=True,
                             n_jobs=-1,
                             verbose=True
                            )
