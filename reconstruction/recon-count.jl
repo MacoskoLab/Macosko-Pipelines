@@ -27,6 +27,7 @@ Base.Filesystem.mkpath(out_path)
 
 # Load the FASTQ paths
 fastqs = readdir(fastq_path, join=true)
+fastqs = filter(fastq -> endswith(fastq, ".fastq.gz"), fastqs)
 R1s = filter(s -> occursin("_R1_", s), fastqs) ; println("R1s: ", basename.(R1s))
 R2s = filter(s -> occursin("_R2_", s), fastqs) ; println("R2s: ", basename.(R2s))
 @assert length(R1s) == length(R2s) > 0
@@ -66,6 +67,7 @@ function listHDneighbors(str, hd, charlist = ['A','C','G','T','N'])::Set{String}
     return(res)
 end
 const umi_homopolymer_whitelist = Set{String15}(reduce(union, [listHDneighbors(str, i) for str in [c^9 for c in ["A","C","G","T"]] for i in 0:2]))
+const sb_homopolymer_whitelist = Set{String15}(reduce(union, [listHDneighbors(str, i) for str in [c^15 for c in ["A","C","G","T"]] for i in 0:3]))
 
 function get_R2_V9(record::FASTX.FASTQ.Record)
     sb2_1 = FASTQ.sequence(record, 1:8)
@@ -100,19 +102,19 @@ end
 
 println("R1 bead type: V8/V10")
 const UP1 = "TCTTCAGCGTTCCCGAGA"
-const UP1_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP1, i) for i in 0:3]))
+const UP1_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP1, i) for i in 0:2]))
 
 println("Learning the R2 bead type")
 res_list = [learn_R2type(R2) for R2 in R2s]
 if all(x -> x == "V9", res_list)
     println("R2 bead type: V9")
     const UP2 = "TCTTCAGCGTTCCCGAGA"
-    const UP2_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP2, i) for i in 0:3]))
+    const UP2_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP2, i) for i in 0:2]))
     get_R2[] = get_R2_V9
 elseif all(x -> x == "V15", res_list)
     println("R2 bead type: V15")
     const UP2 = "CTGTTTCCTG"
-    const UP2_whitelist = Set{String15}(reduce(union, [listHDneighbors(UP2, i) for i in 0:2]))
+    const UP2_whitelist = Set{String15}(reduce(union, [listHDneighbors(UP2, i) for i in 0:1]))
     get_R2[] = get_R2_V15
 else
     error("Error: The R2 bead type is not consistent ($res_list)")
@@ -120,23 +122,24 @@ end
 
 ####################################################################################################
 
-print("Reading FASTQs... ") ; flush(stdout)
+println("Reading FASTQs...") ; flush(stdout)
 
 # Read the FASTQs
 function process_fastqs(R1s, R2s)
     sb1_dictionary = Dict{String15, UInt32}() # sb1 -> sb1_i
     sb2_dictionary = Dict{String15, UInt32}() # sb2 -> sb2_i
     mat = Dict{Tuple{UInt32, UInt32, UInt32, UInt32}, UInt32}() # (sb1_i, umi1_i, sb2_i, umi2_i) -> reads
-    metadata = Dict("reads"=>0, "R1_tooshort"=>0, "R2_tooshort"=>0, "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0, "R1_no_UP"=>0, "R2_no_UP"=>0, "reads_filtered"=>0)
+    metadata = Dict("reads"=>0, "R1_tooshort"=>0, "R2_tooshort"=>0, "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0, "R1_no_UP"=>0, "R2_no_UP"=>0, "R1_homopolymer_SB"=>0, "R2_homopolymer_SB"=>0, "reads_filtered"=>0)
 
     for fastqpair in zip(R1s, R2s)
+        println(fastqpair) ; flush(stdout)
         it1 = fastqpair[1] |> open |> GzipDecompressorStream |> FASTQ.Reader
         it2 = fastqpair[2] |> open |> GzipDecompressorStream |> FASTQ.Reader
         for record in zip(it1, it2)
             metadata["reads"] += 1
 
             skip = false
-            if length(FASTQ.sequence(record[1])) < 42
+            if length(FASTQ.sequence(record[1])) < 34
                 metadata["R1_tooshort"] += 1
                 skip = true
             end
@@ -184,9 +187,25 @@ function process_fastqs(R1s, R2s)
                 continue
             end
 
+            sb1 = sb1_1*sb1_2
+            sb2 = sb2_1*sb2_2
+
+            skip = false
+            if in(sb1, sb_homopolymer_whitelist)
+                metadata["R1_homopolymer_SB"] += 1
+                skip = true
+            end
+            if in(sb2, sb_homopolymer_whitelist)
+                metadata["R2_homopolymer_SB"] += 1
+                skip = true
+            end
+            if skip
+                continue
+            end
+
             # update counts
-            sb1_i = get!(sb1_dictionary, sb1_1*sb1_2, length(sb1_dictionary) + 1)
-            sb2_i = get!(sb2_dictionary, sb2_1*sb2_2, length(sb2_dictionary) + 1)
+            sb1_i = get!(sb1_dictionary, sb1, length(sb1_dictionary) + 1)
+            sb2_i = get!(sb2_dictionary, sb2, length(sb2_dictionary) + 1)
             umi1_i = UMItoindex(umi1)
             umi2_i = UMItoindex(umi2)
             key = (sb1_i, umi1_i, sb2_i, umi2_i)
@@ -207,7 +226,11 @@ function process_fastqs(R1s, R2s)
 end
 mat, sb1_whitelist, sb2_whitelist, metadata = process_fastqs(R1s, R2s)
 
-println("done") ; flush(stdout) ; GC.gc()
+# put a check here?
+
+println("...done") ; flush(stdout) ; GC.gc()
+
+# I added a homopolymer barcode check
 
 ####################################################################################################
 
