@@ -140,11 +140,11 @@ function process_fastqs(R1s, R2s)
             metadata["reads"] += 1
 
             skip = false
-            if length(FASTQ.sequence(record[1])) < 34
+            if length(FASTQ.sequence(record[1])) < 42
                 metadata["R1_tooshort"] += 1
                 skip = true
             end
-            if length(FASTQ.sequence(record[2])) < 34
+            if length(FASTQ.sequence(record[2])) < 42
                 metadata["R2_tooshort"] += 1
                 skip = true
             end
