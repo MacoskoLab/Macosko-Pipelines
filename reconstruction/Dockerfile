@@ -42,6 +42,7 @@ RUN /software/julia-1.8.5/bin/julia -e 'using Pkg;               \
                                         Pkg.add("IterTools");    \
                                         Pkg.add("StatsBase");    \
                                         Pkg.add("DataFrames");   \
+                                        Pkg.add("StatsPlots");   \
                                         Pkg.add("StringViews");  \
                                         Pkg.add("LinearAlgebra");\
                                         Pkg.add("Distributions");\
