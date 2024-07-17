@@ -13,6 +13,8 @@ from umap import UMAP
 import umap.plot
 from umap.umap_ import nearest_neighbors
 
+quit()
+
 #os.chdir("/home/nsachdev/recon/data/609-3cm")
 #os.chdir("/home/nsachdev/recon/data/615-2cm")
 #os.chdir("/home/nsachdev/recon/data/609-6mm")
