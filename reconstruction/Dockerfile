@@ -24,9 +24,9 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
 # Install additional python packges
 RUN pip install numpy pandas matplotlib scipy scikit-learn seaborn
 RUN pip install argparse gcsfs plotly editdistance mappy umi_tools
-RUN pip install umap-learn pydiffmap datafold MDAnalysis ivis[cpu] pacmap # dbmap
+RUN pip install umap-learn[tbb] pydiffmap datafold MDAnalysis ivis[cpu] pacmap # dbmap
 RUN pip install pynndescent scikit-image datashader bokeh holoviews colorcet
-RUN pip install tensorflow annoy tqdm
+RUN pip install tensorflow annoy tqdm rho-pysparnn
 
 # Install Julia
 RUN wget -P /software https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.5-linux-x86_64.tar.gz && \
