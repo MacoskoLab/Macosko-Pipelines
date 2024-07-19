@@ -136,6 +136,7 @@ print(f"Final matrix dimension: {mat.shape}")
 #     print(f"Embeddings load error: {str(e)}")
 #     print("No previous embeddings found, starting from scratch")
 
+embeddings = []
 sys.stdout.flush()
 
 ### UMAP TIME ##################################################################
@@ -209,7 +210,7 @@ fig.savefig(os.path.join(out_dir, "umap.png"), dpi=200)
 plt.close(fig)
 
 # Create the Puck file
-sbs = [sb2["sb2"][i] for i in uniques2] if (c1 > 0 or c2 > 0) else sb2["sb2"]
+sbs = [sb2["sb2"][i] for i in uniques2]
 assert embeddings[-1].shape[0] == len(sbs)
 with open(os.path.join(out_dir, "Puck.csv"), mode='w', newline='') as file:
     writer = csv.writer(file)
