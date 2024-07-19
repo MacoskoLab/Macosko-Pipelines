@@ -107,15 +107,15 @@ def beadplot(puck):
 def knn_descent(mat, n_neighbors):
     from umap.umap_ import nearest_neighbors
     knn_indices, knn_dists, _ = nearest_neighbors(mat,
-                                 n_neighbors = n_neighbors,
-                                 metric = "cosine",
-                                 metric_kwds = {},
-                                 angular = False,
-                                 random_state = None, # sklearn.utils.check_random_state(0)
-                                 low_memory = False,
-                                 use_pynndescent = True,
-                                 n_jobs = -1, # Lower?
-                                 verbose = True
+                                    n_neighbors = n_neighbors,
+                                    metric = "cosine",
+                                    metric_kwds = {},
+                                    angular = False, # Does nothing?
+                                    random_state = None, # sklearn.utils.check_random_state(0)
+                                    low_memory = True, # False?
+                                    use_pynndescent = True, # Does nothing?
+                                    n_jobs = -1, # Lower?
+                                    verbose = True
                                 )
     return knn_indices, knn_dists
 
@@ -124,7 +124,7 @@ def knn_sparse(mat, n_neighbors):
     snn = ci.MultiClusterIndex(mat, np.array(range(mat.shape[0])))
     results = snn.search(mat, k=n_neighbors)
     
-    knn_indices = np.array([[nn[0] for nn in row] for row in results], dtype=np.int32) # this was all 0
+    knn_indices = np.array([[nn[0] for nn in row] for row in results], dtype=np.int32) # this was all 0?
     knn_dists = np.array([[nn[1] for nn in row] for row in results])
     return knn_indices, knn_dists
 
@@ -210,65 +210,9 @@ def create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n
       label_mapping[labels[i]].extend(j_pos)
 
   return connected_mnn  
-  
-# Search to find adjacent neighbors 
-def find_new_nn_adjacent(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max):
-  new_knn_dists = [] 
-  new_knn_indices = []
-  
-  for i in range(len(knn_indices)): 
-    #print(i)
-    min_distances = []
-    min_indices = []
-    #Initialize vars
-    heap = [(0,0,i)]
-    mapping = {}
-          
-    seen = set()
-    heapq.heapify(heap) 
-    while(len(min_distances) < n_neighbors_max and len(heap) >0):
-      dist, hop, nn = heapq.heappop(heap)
-      if nn == -1:
-        continue
-      #For adjacent, only considering one hop away
-      if nn not in seen and hop <= 1:
-        min_distances.append(dist)
-        min_indices.append(nn)
-        seen.add(nn)
-        neighbor = connected_mnn[nn]
-        
-        for nn_nn in neighbor:
-          if nn_nn not in seen and hop <= 0:
-            distance = 0
-            if nn_nn in knn_indices_pos[nn]:
-              pos = knn_indices_pos[nn][nn_nn]
-              distance = knn_dists[nn][pos] 
-            else:
-              pos = knn_indices_pos[nn_nn][nn]
-              distance = knn_dists[nn_nn][pos] 
-            distance += dist
-            
-            if nn_nn not in mapping:
-              mapping[nn_nn] = distance
-              heapq.heappush(heap, (distance, hop+1, nn_nn))
-            elif mapping[nn_nn] > distance:
-              mapping[nn_nn] = distance
-              heapq.heappush(heap, (distance, hop+1, nn_nn))
-    
-    if len(min_distances) < n_neighbors_max:
-      for j in range(n_neighbors_max-len(min_distances)):
-        min_indices.append(-1)
-        min_distances.append(np.inf)
-    
-    new_knn_dists.append(min_distances)
-    new_knn_indices.append(min_indices)
-    
-    if i % int(len(knn_dists) / 10) == 0:
-      print("\tcompleted ", i, " / ", len(knn_dists), "epochs")
-  return new_knn_dists, new_knn_indices
 
 # Search to find path neighbors
-def find_new_nn_path(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max):
+def find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max):
   new_knn_dists = [] 
   new_knn_indices = []
   
@@ -345,11 +289,7 @@ def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, conn
         total_mutual_nn += 1
   
   connected_mnn = create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n_neighbors, connectivity)
-  if neighborhood == "adjacent":
-      new_knn_dists, new_knn_indices = find_new_nn_adjacent(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
-  elif neighborhood == "path":
-      new_knn_dists, new_knn_indices = find_new_nn_path(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
-  else:
-      assert False
+  new_knn_dists, new_knn_indices = find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
+ 
   
   return np.array(new_knn_indices), np.array(new_knn_dists)  
