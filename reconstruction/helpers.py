@@ -266,7 +266,7 @@ def find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighb
   return new_knn_dists, new_knn_indices
 
 # Calculate the connected mutual nn graph
-def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, connectivity, neighborhood):
+def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, connectivity):
   mutual_nn = {}
   nearest_n = {}
 
@@ -291,5 +291,4 @@ def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, conn
   connected_mnn = create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n_neighbors, connectivity)
   new_knn_dists, new_knn_indices = find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
  
-  
   return np.array(new_knn_indices), np.array(new_knn_dists)  
