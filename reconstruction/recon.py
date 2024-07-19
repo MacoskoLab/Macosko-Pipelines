@@ -10,14 +10,12 @@ import matplotlib.pyplot as plt
 from math import ceil
 from scipy.sparse import coo_matrix
 from umap import UMAP
-import umap.plot
-from umap.umap_ import nearest_neighbors
+from helpers import *
 
-quit()
-
-#os.chdir("/home/nsachdev/recon/data/609-3cm")
-#os.chdir("/home/nsachdev/recon/data/615-2cm")
-#os.chdir("/home/nsachdev/recon/data/609-6mm")
+# os.chdir("/home/nsachdev/recon/data/6mm")
+# os.chdir("/home/nsachdev/recon/data/1.2cm")
+# os.chdir("/home/nsachdev/recon/data/2cm")
+# os.chdir("/home/nsachdev/recon/data/3cm")
 
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
@@ -25,52 +23,71 @@ def get_args():
     parser.add_argument("-o", "--out_dir", help="output data folder", type=str, default=".")
     parser.add_argument("-gs", "--gspath", help="gcloud storage path to cache data output", type=str, default="")
     # parser.add_argument("-c", "--core", help="define core type to use (CPU or GPU)", type=str, default="CPU")
-    # bead type? tags or seq? "-e", "--exptype", help="define experiment type (seq or tags)", type=str, required=True,
-    parser.add_argument("-c1", "--cutoff1", help="R1 UMI cutoff", type=int, default=0)
-    parser.add_argument("-c2", "--cutoff2", help="R2 UMI cutoff", type=int, default=0)
-
-    parser.add_argument("-a", "--algorithm", help="dimensionality reduction algo", type=str, default="umap")
+    # tags or seq? "-e", "--exptype", help="define experiment type (seq or tags)", type=str, required=True,
     
-    parser.add_argument("-n", "--n_neighbors", help="the number of neighboring sample points used for manifold approximation", type=int, default=25)
-    parser.add_argument("-d", "--min_dist", help="the effective minimum distance between embedded points", type=float, default=0.99)
+    parser.add_argument("-l1", "--low1", help="R1 connection minimum", type=int, default=10)
+    parser.add_argument("-l2", "--low2", help="R2 connection minimum", type=int, default=10)
+    parser.add_argument("-h1", "--high1", help="R1 connection maximum", type=int, default=3000)
+    parser.add_argument("-h2", "--high2", help="R2 connection maximum", type=int, default=3000)
+    
+    parser.add_argument("-a", "--algorithm", help="dimensionality reduction algo", type=str, default="UMAP") # UMAP
+    
+    parser.add_argument("-n", "--n_neighbors", help="the number of neighboring points used for manifold approximation", type=int, default=45)
+    parser.add_argument("-d", "--min_dist", help="the effective minimum distance between embedded points", type=float, default=0.2)
     parser.add_argument("-s", "--spread", help="the effective scale of embedded points", type=float, default=1.0)
     parser.add_argument("-I", "--init", help="how to initialize the low dimensional embedding", type=str, default="spectral")
-    parser.add_argument("-m", "--metric", help="the metric to use to compute distances in high dimensional space", type=str, default="cosine")
-    parser.add_argument("-N", "--n_epochs", help="the number of training epochs to be used in optimizing the low dimensional embedding", type=int, default=10000)
+    parser.add_argument("-N", "--n_epochs", help="the number of epochs to be used in optimizing the embedding", type=int, default=5000)
+    parser.add_argument("-c", "--connectivity", help="'none', 'min_tree', or 'full_tree'", type=str, default="none")
+    parser.add_argument("-n2", "--n_neighbors2", help="the new NN to pick for MNN", type=int, default=45)
     
     args, unknown = parser.parse_known_args()
     [print(f"WARNING: unknown command-line argument {u}") for u in unknown]
     return args
 
 args = get_args()
-in_dir = args.in_dir ; assert all(os.path.isfile(os.path.join(in_dir, file)) for file in ['matrix.csv.gz', 'sb1.csv.gz', 'sb2.csv.gz'])
-c1 = args.cutoff1 ; print(f"R1 UMI cutoff = {c1}")
-c2 = args.cutoff2 ; print(f"R2 UMI cutoff = {c2}")
-
 algo = args.algorithm ; print(f"algorithm = {algo}")
-if algo == "umap":
+name = f"{algo}"
+
+if algo == "UMAP":
     n_neighbors = args.n_neighbors ; print(f"n_neighbors = {n_neighbors}")
     min_dist = args.min_dist       ; print(f"min_dist = {min_dist}")
     spread = args.spread           ; print(f"spread = {spread}")
-    n_epochs = args.n_epochs       ; print(f"n_epochs = {n_epochs}")
     init = args.init               ; print(f"init = {init}")
-    metric = args.metric           ; print(f"metric = {metric}")
-    name = os.path.join(f"ANCHOR_c1={c1}_c2={c2}_n={n_neighbors}_d={min_dist}_s={spread}_I={init}_m={metric}")
-else:
-    name = os.path.join(f"ANCHOR_c1={c1}_c2={c2}")
+    n_epochs = args.n_epochs       ; print(f"n_epochs = {n_epochs}")
+    name += f"_n={n_neighbors}_d={min_dist}_s={spread}_I={init}"
+    
+    connectivity = args.connectivity ; print(f"connectivity = {connectivity}")
+    assert connectivity in ["none", "nearest", "min_tree", "full_tree"]
+    if connectivity != "none":
+        n_neighbors2 = args.n_neighbors2 ; print(f"n_neighbors2 = {n_neighbors2}")
+        name += f"_{connectivity.replace('_', '')}{n_neighbors2}"
+
+l1 = args.low1  ; print(f"R1 connection minimum = {l1}")
+l2 = args.low2  ; print(f"R2 connection minimum = {l2}")
+h1 = args.high1 ; print(f"R1 connection maximum = {h1}")
+h2 = args.high2 ; print(f"R2 connection maximum = {h2}")
+name += f"_c1={l1}-{h1}_c2={l2}-{h2}"
+
 print(f"name = {name}")
+
+in_dir = args.in_dir
+assert all(os.path.isfile(os.path.join(in_dir, file)) for file in ['matrix.csv.gz', 'sb1.csv.gz', 'sb2.csv.gz'])
+print(f"input directory = {in_dir}")
 
 out_dir = os.path.join(args.out_dir, name)
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
+assert os.path.exists(out_dir)
 print(f"output directory = {out_dir}")
+
+### Load the data ##############################################################
 
 print("\nReading the matrix...")
 df = pd.read_csv(os.path.join(in_dir, 'matrix.csv.gz'), compression='gzip', header=None, names=['sb1', 'sb2', 'umi'])
 df.sb1 -= 1 # convert from 1- to 0-indexed
 df.sb2 -= 1 # convert from 1- to 0-indexed
-sb1 = pd.read_csv(os.path.join(in_dir, 'sb1.csv.gz'), compression='gzip', header=None, names=['sb1', 'umi'])
-sb2 = pd.read_csv(os.path.join(in_dir, 'sb2.csv.gz'), compression='gzip', header=None, names=['sb2', 'umi'])
+sb1 = pd.read_csv(os.path.join(in_dir, 'sb1.csv.gz'), compression='gzip', header=None, names=['sb1', 'umi', 'connections'])
+sb2 = pd.read_csv(os.path.join(in_dir, 'sb2.csv.gz'), compression='gzip', header=None, names=['sb2', 'umi', 'connections'])
 assert sorted(list(set(df.sb1))) == list(range(sb1.shape[0]))
 assert sorted(list(set(df.sb2))) == list(range(sb2.shape[0]))
 print(f"{sb1.shape[0]} R1 barcodes")
@@ -79,49 +96,45 @@ print(f"{sb2.shape[0]} R2 barcodes")
 # Filter the matrix
 print("\nFiltering the beads...")
 umi_before = sum(df["umi"])
-if c1 > 0:
-    # grouped = df.groupby('sb1')['umi'].sum()
-    grouped = df.groupby('sb1').size()
-    sb1_keep = grouped[grouped <= c1].index
-    print(f"{len(sb1)-len(sb1_keep)} R1 beads filtered ({round((len(sb1)-len(sb1_keep))/len(sb1)*100, 2)}%)")
-if c2 > 0:
-    # grouped = df.groupby('sb2')['umi'].sum()
-    grouped = df.groupby('sb2').size()
-    sb2_keep = grouped[grouped <= c2].index
-    print(f"{len(sb2)-len(sb2_keep)} R2 beads filtered ({round((len(sb2)-len(sb2_keep))/len(sb2)*100, 2)}%)")
-if c1 > 0:
-    df = df[df['sb1'].isin(sb1_keep)]
-if c2 > 0:
-    df = df[df['sb2'].isin(sb2_keep)]
-if c1 > 0 or c2 > 0:
-    codes1, uniques1 = pd.factorize(df['sb1'], sort=True)
-    df['sb1'] = codes1
-    codes2, uniques2 = pd.factorize(df['sb2'], sort=True)
-    df['sb2'] = codes2
+sb1_low  = np.where(sb1['connections'] <  l1)[0]
+sb2_low  = np.where(sb2['connections'] <  l2)[0]
+sb1_high = np.where(sb1['connections'] >= h1)[0]
+sb2_high = np.where(sb2['connections'] >= h2)[0]
+print(f"{len(sb1_low)} low R1 beads filtered ({len(sb1_low)/len(sb1)*100:.2f}%)")
+print(f"{len(sb2_low)} low R2 beads filtered ({len(sb2_low)/len(sb2)*100:.2f}%)")
+print(f"{len(sb1_high)} high R1 beads filtered ({len(sb1_high)/len(sb1)*100:.2f}%)")
+print(f"{len(sb2_high)} high R2 beads filtered ({len(sb2_high)/len(sb2)*100:.2f}%)")
+df = df[~df['sb1'].isin(sb1_low) & ~df['sb1'].isin(sb1_high) & ~df['sb2'].isin(sb2_low) & ~df['sb2'].isin(sb2_high)]
 umi_after = sum(df["umi"])
-print(f"{umi_before-umi_after} UMIs filtered ({round((umi_before-umi_after)/umi_before*100, 2)}%)")
+print(f"{umi_before-umi_after} UMIs filtered ({(umi_before-umi_after)/umi_before*100:.2f}%)")
+codes1, uniques1 = pd.factorize(df['sb1'], sort=True)
+df.loc[:, 'sb1'] = codes1
+codes2, uniques2 = pd.factorize(df['sb2'], sort=True)
+df.loc[:, 'sb2'] = codes2
 assert sorted(list(set(df.sb1))) == list(range(len(set(df.sb1))))
 assert sorted(list(set(df.sb2))) == list(range(len(set(df.sb2))))
 
-# Rows are the anchor beads I wish to recon
+# Rows are the beads you wish to recon
 # Columns are the features used for judging similarity
 mat = coo_matrix((df['umi'], (df['sb2'], df['sb1']))).tocsr()
 del df
+print(f"Final matrix size: {mat.data.nbytes/1024/1024:.2f} MiB")
+print(f"Final matrix dimension: {mat.shape}")
 
-# Get the previous embeddings
-print("\nDownloading previous embeddings...")
-file_path = os.path.join(args.gspath, name, "embeddings.npz")
-print(f"Searching {file_path}...")
-try:
-    import gcsfs
-    with gcsfs.GCSFileSystem().open(file_path, 'rb') as f:
-        data = np.load(f)
-        embeddings = [data[key] for key in data]
-    print(f"{len(embeddings)} previous embeddings found")
-except Exception as e:
-    embeddings = []
-    print(f"Embeddings load error: {str(e)}")
-    print("No previous embeddings found, starting from scratch")
+# # Get the previous embeddings
+# print("\nDownloading previous embeddings...")
+# file_path = os.path.join(args.gspath, name, "embeddings.npz")
+# print(f"Searching {file_path}...")
+# try:
+#     import gcsfs
+#     with gcsfs.GCSFileSystem().open(file_path, 'rb') as f:
+#         data = np.load(f)
+#         embeddings = [data[key] for key in data]
+#     print(f"{len(embeddings)} previous embeddings found")
+# except Exception as e:
+#     embeddings = []
+#     print(f"Embeddings load error: {str(e)}")
+#     print("No previous embeddings found, starting from scratch")
 
 sys.stdout.flush()
 
@@ -129,59 +142,53 @@ sys.stdout.flush()
 
 def my_umap(mat, n_epochs, init=init):
     reducer = UMAP(n_components = 2,
+                   metric = "cosine",
                    random_state = None,
                    low_memory = True,
                    verbose = True,
-                   #precomputed_knn = knn,
+                   precomputed_knn = (knn_indices, knn_dists),
                    
                    n_neighbors = n_neighbors,
                    min_dist = min_dist,
                    spread = spread,
                    n_epochs = n_epochs,
-                   init = init,
-                   metric = metric
+                   init = init
                   )
     embedding = reducer.fit_transform(np.log1p(mat))
     return(embedding)
 
-if algo == "umap":
+if algo == "UMAP":
     
-    # print("\nComputing the KNN...")
-    # knn = nearest_neighbors(mat,
-    #                         n_neighbors=n_neighbors,
-    #                         metric=metric,
-    #                         metric_kwds=None,
-    #                         angular=False,
-    #                         random_state=None,
-    #                         low_memory=True,
-    #                         use_pynndescent=True,
-    #                         n_jobs=-1,
-    #                         verbose=True
-    #                        )
+    print("\nComputing the KNN...")
+    knn_indices, knn_dists = knn_descent(np.log1p(mat), n_neighbors)
 
+    if connectivity != "none":
+        knn_indices, knn_dists = mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors2, connectivity)
+        assert np.all(np.isfinite(knn_indices))
+        assert np.all(np.isfinite(knn_dists))
+    
     print("\nRunning UMAP...")
-    embeddings.append(my_umap(mat, n_epochs=n_epochs))
-    # if len(embeddings) == 0:
-    #     embeddings.append(my_umap(mat, n_epochs=10))
-    #     embeddings.append(my_umap(mat, n_epochs=90, init=embeddings[-1]))
-    #     embeddings.append(my_umap(mat, n_epochs=900, init=embeddings[-1]))
-    # else:
-    #     embeddings.append(my_umap(mat, n_epochs=1000))
+    if len(embeddings) == 0:
+        embeddings.append(my_umap(mat, n_epochs=20))
+        embeddings.append(my_umap(mat, n_epochs=80, init=embeddings[-1]))
+        embeddings.append(my_umap(mat, n_epochs=900, init=embeddings[-1]))
+    else:
+        embeddings.append(my_umap(mat, n_epochs=1000))
     
-    # for i in range(ceil(n_epochs/1000)-1):
-    #     # Upload intermediate embeddings
-    #     try:
-    #         import gcsfs
-    #         file_path = os.path.join(args.gspath, name, "embeddings.npz")
-    #         with gcsfs.GCSFileSystem().open(file_path, 'wb') as f:
-    #             np.savez(f, **{f"arr_{i}":e for i,e in enumerate(embeddings)})
-    #         print("Intermediate embeddings successfully uploaded")
-    #     except Exception as e:
-    #         print(f"Unable to upload intermediate embeddings: {str(e)}")
+    for i in range(ceil(n_epochs/1000)-1):
+        # # Upload intermediate embeddings
+        # try:
+        #     import gcsfs
+        #     file_path = os.path.join(args.gspath, name, "embeddings.npz")
+        #     with gcsfs.GCSFileSystem().open(file_path, 'wb') as f:
+        #         np.savez(f, **{f"arr_{i}":e for i,e in enumerate(embeddings)})
+        #     print("Intermediate embeddings successfully uploaded")
+        # except Exception as e:
+        #     print(f"Unable to upload intermediate embeddings: {str(e)}")
 
-    #     # Run more umap
-    #     print(i+2)
-    #     embeddings.append(my_umap(mat, init=embeddings[-1], n_epochs=1000))
+        # Run more umap
+        print(i+2)
+        embeddings.append(my_umap(mat, init=embeddings[-1], n_epochs=1000))
 
 print("\nWriting results...")
 
