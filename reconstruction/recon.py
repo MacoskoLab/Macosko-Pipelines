@@ -167,6 +167,7 @@ if algo == "UMAP":
         knn_indices, knn_dists = mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors2, connectivity)
         assert np.all(np.isfinite(knn_indices))
         assert np.all(np.isfinite(knn_dists))
+        n_neighbors = n_neighbors2
     
     print("\nRunning UMAP...")
     if len(embeddings) == 0:
