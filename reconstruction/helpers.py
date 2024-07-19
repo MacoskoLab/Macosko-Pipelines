@@ -101,46 +101,57 @@ def beadplot(puck):
     plt.axis('square')
     plt.show()
 
-### KNN ########################################################################
-import scipy
-import heapq
+### KNN METHODS ################################################################
+### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
 
-def KNN(mat, n_neighbors, metric):
+def knn_descent(mat, n_neighbors):
     from umap.umap_ import nearest_neighbors
     knn_indices, knn_dists, _ = nearest_neighbors(mat,
                                  n_neighbors = n_neighbors,
-                                 metric = metric,
+                                 metric = "cosine",
                                  metric_kwds = {},
                                  angular = False,
-                                 random_state = None, # from sklearn.utils import check_random_state ; random_state = check_random_state(0)
-                                 low_memory = True,
+                                 random_state = None, # sklearn.utils.check_random_state(0)
+                                 low_memory = False,
                                  use_pynndescent = True,
                                  n_jobs = -1, # Lower?
                                  verbose = True
                                 )
     return knn_indices, knn_dists
 
+def knn_sparse(mat, n_neighbors):
+    import pysparnn.cluster_index as ci
+    snn = ci.MultiClusterIndex(mat, np.array(range(mat.shape[0])))
+    results = snn.search(mat, k=n_neighbors)
+    
+    knn_indices = np.array([[nn[0] for nn in row] for row in results], dtype=np.int32) # this was all 0
+    knn_dists = np.array([[nn[1] for nn in row] for row in results])
+    return knn_indices, knn_dists
+
+import scipy
+import heapq
+
 # Calculate min spanning tree
 def min_spanning_tree(knn_indices, knn_dists, n_neighbors, threshold):
-  rows = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
-  cols = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
-  vals = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.float32)
-  pos = 0
-  for i, indices in enumerate(knn_indices):
-    for j, index in enumerate(indices[:threshold]):
-      if index == -1:
-        continue
-      rows[pos] = i 
-      cols[pos] = index
-      vals[pos] = knn_dists[i][j]
-      pos += 1
-  
-  matrix = scipy.sparse.csr_matrix((vals, (rows, cols)), shape=(knn_indices.shape[0], knn_indices.shape[0]))
-  Tcsr = scipy.sparse.csgraph.minimum_spanning_tree(matrix)
-  Tcsr = scipy.sparse.coo_matrix(Tcsr)
-  weights_tuples = zip(Tcsr.row, Tcsr.col, Tcsr.data)
-  sorted_weights_tuples = sorted(weights_tuples, key=lambda tup: tup[2])
-  return sorted_weights_tuples 
+    rows = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
+    cols = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
+    vals = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.float32)
+    pos = 0
+    for i, indices in enumerate(knn_indices):
+        for j, index in enumerate(indices[:threshold]):
+            if index == -1:
+                continue
+            rows[pos] = i 
+            cols[pos] = index
+            vals[pos] = knn_dists[i][j]
+            pos += 1
+    
+    matrix = scipy.sparse.csr_matrix((vals, (rows, cols)), shape=(knn_indices.shape[0], knn_indices.shape[0]))
+    Tcsr = scipy.sparse.csgraph.minimum_spanning_tree(matrix)
+    Tcsr = scipy.sparse.coo_matrix(Tcsr)
+    weights_tuples = zip(Tcsr.row, Tcsr.col, Tcsr.data)
+    sorted_weights_tuples = sorted(weights_tuples, key=lambda tup: tup[2])
+    return sorted_weights_tuples 
 
 def create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n_neighbors, connectivity):
   import copy
