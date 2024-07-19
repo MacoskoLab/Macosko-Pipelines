@@ -60,7 +60,7 @@ if algo == "UMAP":
     assert connectivity in ["none", "nearest", "min_tree", "full_tree"]
     if connectivity != "none":
         n_neighbors2 = args.n_neighbors2 ; print(f"n_neighbors2 = {n_neighbors2}")
-        name += f"_{connectivity.replace('_', '')}{n_neighbors2}"
+        name += f"_c={connectivity.replace('_', '')}{n_neighbors2}"
 
 l1 = args.low1  ; print(f"R1 connection minimum = {l1}")
 l2 = args.low2  ; print(f"R2 connection minimum = {l2}")
@@ -162,7 +162,7 @@ if algo == "UMAP":
     
     print("\nComputing the KNN...")
     knn_indices, knn_dists = knn_descent(np.log1p(mat), n_neighbors)
-
+    
     if connectivity != "none":
         knn_indices, knn_dists = mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors2, connectivity)
         assert np.all(np.isfinite(knn_indices))
