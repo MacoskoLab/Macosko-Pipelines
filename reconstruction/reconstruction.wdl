@@ -21,6 +21,7 @@ task recon {
     # Download the scripts
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/recon-count.jl
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/recon.py
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/reconstruction/helpers.py
 
     # Assign the WDL variables to bash variables
     recon_output_path="~{recon_output_path}"
