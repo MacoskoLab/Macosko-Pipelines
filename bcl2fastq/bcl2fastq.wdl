@@ -173,8 +173,8 @@ task getdisksize {
         fi
 
         # Assert that the disksize is not too large
-        if [[ $(cat SIZE) -gt 6000 ]]; then
-            echo "ERROR: BCL size limit reached, increase cap ($(cat SIZE)/6000 GiB)"
+        if [[ $(cat SIZE) -gt 8000 ]]; then
+            echo "ERROR: BCL size limit reached, increase cap ($(cat SIZE)/8000 GiB)"
             rm -f SIZE
         fi
 
