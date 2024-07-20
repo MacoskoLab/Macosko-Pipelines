@@ -27,8 +27,8 @@ def get_args():
     
     parser.add_argument("-l1", "--low1", help="R1 connection minimum", type=int, default=10)
     parser.add_argument("-l2", "--low2", help="R2 connection minimum", type=int, default=10)
-    parser.add_argument("-h1", "--high1", help="R1 connection maximum", type=int, default=3000)
-    parser.add_argument("-h2", "--high2", help="R2 connection maximum", type=int, default=3000)
+    parser.add_argument("-h1", "--high1", help="R1 connection maximum", type=int, default=1000)
+    parser.add_argument("-h2", "--high2", help="R2 connection maximum", type=int, default=1000)
     
     parser.add_argument("-a", "--algorithm", help="dimensionality reduction algo", type=str, default="UMAP") # UMAP
     
