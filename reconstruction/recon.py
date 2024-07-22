@@ -121,20 +121,20 @@ del df
 print(f"Final matrix size: {mat.data.nbytes/1024/1024:.2f} MiB")
 print(f"Final matrix dimension: {mat.shape}")
 
-# # Get the previous embeddings
-# print("\nDownloading previous embeddings...")
-# file_path = os.path.join(args.gspath, name, "embeddings.npz")
-# print(f"Searching {file_path}...")
-# try:
-#     import gcsfs
-#     with gcsfs.GCSFileSystem().open(file_path, 'rb') as f:
-#         data = np.load(f)
-#         embeddings = [data[key] for key in data]
-#     print(f"{len(embeddings)} previous embeddings found")
-# except Exception as e:
-#     embeddings = []
-#     print(f"Embeddings load error: {str(e)}")
-#     print("No previous embeddings found, starting from scratch")
+# Get the previous embeddings
+print("\nDownloading previous embeddings...")
+file_path = os.path.join(args.gspath, name, "embeddings.npz")
+print(f"Searching {file_path}...")
+try:
+    import gcsfs
+    with gcsfs.GCSFileSystem().open(file_path, 'rb') as f:
+        data = np.load(f)
+        embeddings = [data[key] for key in data]
+    print(f"{len(embeddings)} previous embeddings found")
+except Exception as e:
+    embeddings = []
+    print(f"Embeddings load error: {str(e)}")
+    print("No previous embeddings found, starting from scratch")
 
 embeddings = []
 sys.stdout.flush()
