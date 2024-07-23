@@ -95,7 +95,7 @@ task recon {
     disks: "local-disk ~{disk_GiB} SSD"
     cpu: 20
     preemptible: 0
-    gpuType: "a3-highgpu-8g"
+    gpuType: "nvidia-h100-80gb"
     gpuCount: 1
     nvidiaDriverVersion: "535.129.03"
     zones: "us-central1-a us-central1-c"
