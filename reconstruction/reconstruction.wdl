@@ -13,7 +13,11 @@ task recon {
   command <<<
     echo "<< starting recon >>"
 
+    export LD_LIBRARY_PATH=/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
+    export PATH=/usr/local/nvidia/bin:${PATH}
+
     dstat --time --cpu --mem --disk --io --freespace --output recon.usage &> /dev/null &
+    nvidia-smi --query-gpu=timestamp,index,utilization.gpu,utilization.memory,memory.total,memory.used,memory.free --format=csv -l 1 &> recon.usage.gpu &
 
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
@@ -55,8 +59,8 @@ task recon {
     # Run recon.py
     if [[ -f matrix.csv.gz && -f sb1.csv.gz && -f sb2.csv.gz ]] ; then
         echo "Running recon.py"
-        time stdbuf -oL -eL /opt/conda/bin/python recon.py --gspath="$recon_output_path" ~{params}
-        gcloud storage cp -r UMAP_* "$recon_output_path"
+        # time stdbuf -oL -eL /opt/conda/bin/python recon.py --gspath="$recon_output_path" ~{params}
+        # gcloud storage cp -r UMAP_* "$recon_output_path"
     else
         echo "Cannot run recon.py, matrix.csv.gz or sb1.csv.gz or sb2.csv.gz not found" 
     fi
@@ -68,12 +72,17 @@ task recon {
 
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
+    kill $(ps aux | fgrep nvidia-smi | fgrep -v grep | awk '{print $2}')
     echo; echo "FREE SPACE:"; df -h
+    echo; echo "CPU INFO:"; lscpu
+    echo; echo "GPU INFO:"; nvidia-smi --query-gpu=name,index,pci.bus_id,driver_version,pstate,pcie.link.gen.max,pcie.link.gen.current,memory.total --format=csv
+    echo;
     
     echo "uploading logs"
     gcloud storage cp /cromwell_root/stdout "$log_output_path/recon.out"
     gcloud storage cp /cromwell_root/stderr "$log_output_path/recon.err"
     gcloud storage cp recon.usage "$log_output_path/recon.usage"
+    gcloud storage cp recon.usage.gpu "${log_output_path%/}/recon-~{id}.usage.gpu"
     
     echo "<< completed recon >>"
   >>>
@@ -84,8 +93,12 @@ task recon {
     docker: docker
     memory: "~{mem_GiB} GB"
     disks: "local-disk ~{disk_GiB} SSD"
-    cpu: 40
+    cpu: 20
     preemptible: 0
+    gpuType: "a3-highgpu-8g"
+    gpuCount: 1
+    nvidiaDriverVersion: "535.129.03"
+    zones: "us-central1-a us-central1-c"
   }
 }
 
