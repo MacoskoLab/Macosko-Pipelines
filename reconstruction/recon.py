@@ -136,7 +136,6 @@ except Exception as e:
     print(f"Embeddings load error: {str(e)}")
     print("No previous embeddings found, starting from scratch")
 
-embeddings = []
 sys.stdout.flush()
 
 ### UMAP TIME ##################################################################
