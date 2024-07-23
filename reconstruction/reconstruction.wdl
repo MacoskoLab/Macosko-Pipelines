@@ -82,7 +82,7 @@ task recon {
     gcloud storage cp /cromwell_root/stdout "$log_output_path/recon.out"
     gcloud storage cp /cromwell_root/stderr "$log_output_path/recon.err"
     gcloud storage cp recon.usage "$log_output_path/recon.usage"
-    gcloud storage cp recon.usage.gpu "${log_output_path%/}/recon-~{id}.usage.gpu"
+    gcloud storage cp recon.usage.gpu "$log_output_path/recon.usage.gpu"
     
     echo "<< completed recon >>"
   >>>
