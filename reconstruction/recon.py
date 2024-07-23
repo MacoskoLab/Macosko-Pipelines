@@ -13,7 +13,7 @@ from umap import UMAP
 from helpers import *
 
 # os.chdir("/home/nsachdev/recon/data/6mm")
-# os.chdir("/home/nsachdev/recon/data/1.2cm")
+# os.chdir("/home/nsachdev/recon/data/240411/H14_1/")
 # os.chdir("/home/nsachdev/recon/data/2cm")
 # os.chdir("/home/nsachdev/recon/data/3cm")
 
@@ -27,8 +27,8 @@ def get_args():
     
     parser.add_argument("-l1", "--low1", help="R1 connection minimum", type=int, default=10)
     parser.add_argument("-l2", "--low2", help="R2 connection minimum", type=int, default=10)
-    parser.add_argument("-h1", "--high1", help="R1 connection maximum", type=int, default=1000)
-    parser.add_argument("-h2", "--high2", help="R2 connection maximum", type=int, default=1000)
+    parser.add_argument("-h1", "--high1", help="R1 connection maximum", type=int, default=3000)
+    parser.add_argument("-h2", "--high2", help="R2 connection maximum", type=int, default=3000)
     
     parser.add_argument("-a", "--algorithm", help="dimensionality reduction algo", type=str, default="UMAP") # UMAP
     
@@ -144,7 +144,6 @@ def my_umap(mat, n_epochs, init=init):
     reducer = UMAP(n_components = 2,
                    metric = "cosine",
                    random_state = None,
-                   low_memory = True,
                    verbose = True,
                    precomputed_knn = (knn_indices, knn_dists),
                    
