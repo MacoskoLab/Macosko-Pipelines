@@ -58,7 +58,7 @@ task mkfastq {
     if [[ -s Indexes.csv ]]; then
         echo "Downloading BCL:"
         mkdir BCL
-        gcloud storage cp -r "$bcl_path/*" BCL |& ts
+        gsutil -m cp -r "$bcl_path/*" BCL |& ts
     else
         echo "ERROR: empty samplesheet"
         rm -f Indexes.csv
