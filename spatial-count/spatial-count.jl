@@ -36,13 +36,6 @@ R2s = filter(s -> occursin("_R2_", s), fastqs) ; println("R2s: ", basename.(R2s)
 @assert length(R1s) == length(R2s) > 0
 @assert [replace(R1, "_R1_"=>"", count=1) for R1 in R1s] == [replace(R2, "_R2_"=>"", count=1) for R2 in R2s]
 
-# Validate the FASTQ sequence lengths
-function fastq_seq_len(path)
-    return(path |> open |> GzipDecompressorStream |> FASTQ.Reader |> first |> FASTQ.sequence |> length)
-end
-@assert length(unique([fastq_seq_len(R1) for R1 in R1s])) == 1 "WARNING: R1s have different FASTQ sequence lengths - proceed only if you are sure they have the same read structure"
-@assert length(unique([fastq_seq_len(R2) for R2 in R2s])) == 1 "WARNING: R2s have different FASTQ sequence lengths - proceed only if you are sure they have the same read structure"
-
 # Switch R1 and R2 if needed
 # Scan the first 100k records of both fastqs and identify R2 as the FASTQ with more UP
 function learn_switch(R1, R2)
