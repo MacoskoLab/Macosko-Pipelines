@@ -33,7 +33,7 @@ def get_args():
     parser.add_argument("-a", "--algorithm", help="dimensionality reduction algo", type=str, default="UMAP") # UMAP
     
     parser.add_argument("-n", "--n_neighbors", help="the number of neighboring points used for manifold approximation", type=int, default=45)
-    parser.add_argument("-d", "--min_dist", help="the effective minimum distance between embedded points", type=float, default=0.2)
+    parser.add_argument("-d", "--min_dist", help="the effective minimum distance between embedded points", type=float, default=0.1)
     parser.add_argument("-s", "--spread", help="the effective scale of embedded points", type=float, default=1.0)
     parser.add_argument("-I", "--init", help="how to initialize the low dimensional embedding", type=str, default="spectral")
     parser.add_argument("-N", "--n_epochs", help="the number of epochs to be used in optimizing the embedding", type=int, default=5000)
