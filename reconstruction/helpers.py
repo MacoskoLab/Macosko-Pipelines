@@ -165,6 +165,7 @@ def min_spanning_tree(knn_indices, knn_dists, n_neighbors, threshold):
     rows = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
     cols = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
     vals = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.float32)
+    
     pos = 0
     for i, indices in enumerate(knn_indices):
         for j, index in enumerate(indices[:threshold]):
