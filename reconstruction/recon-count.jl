@@ -14,14 +14,18 @@ using Combinatorics: combinations
 using Distributions: pdf, Exponential
 
 # Load the command-line arguments
-if length(ARGS) != 2
-    error("Usage: julia recon-count.jl fastq_path out_path")
+if length(ARGS) == 2
+    fastq_path = ARGS[1]
+    out_path = ARGS[2]
+elseif length(ARGS) == 1
+    fastq_path = ARGS[1]
+    out_path = "."
+else 
+    error("Usage: julia recon-count.jl fastq_path [out_path]")
 end
-fastq_path = ARGS[1]
 println("FASTQ path: "*fastq_path)
 @assert isdir(fastq_path) "FASTQ path not found"
 @assert !isempty(readdir(fastq_path)) "FASTQ path is empty"
-out_path = ARGS[2]
 println("Output path: "*out_path)
 Base.Filesystem.mkpath(out_path)
 @assert isdir(out_path) "Output path not created"
@@ -63,6 +67,11 @@ end
 const umi_homopolymer_whitelist = Set{String15}(reduce(union, [listHDneighbors(str, i) for str in [c^9 for c in ["A","C","G","T"]] for i in 0:2]))
 const sb_homopolymer_whitelist = Set{String15}(reduce(union, [listHDneighbors(str, i) for str in [c^15 for c in ["A","C","G","T"]] for i in 0:3]))
 
+println("R1 bead type: V8/V10")
+const UP1 = "TCTTCAGCGTTCCCGAGA"
+const UP1_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP1, i) for i in 0:2]))
+const bead1_type = "V8/V10"
+
 function get_R2_V9(record::FASTX.FASTQ.Record)
     sb2_1 = FASTQ.sequence(record, 1:8)
     up2 = FASTQ.sequence(record, 9:26)
@@ -94,10 +103,6 @@ function learn_R2type(R2)
     return(s9 >= s15 ? "V9" : "V15")
 end
 
-println("R1 bead type: V8/V10")
-const UP1 = "TCTTCAGCGTTCCCGAGA"
-const UP1_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP1, i) for i in 0:2]))
-
 println("Learning the R2 bead type")
 res_list = [learn_R2type(R2) for R2 in R2s]
 if all(x -> x == "V9", res_list)
@@ -105,11 +110,13 @@ if all(x -> x == "V9", res_list)
     const UP2 = "TCTTCAGCGTTCCCGAGA"
     const UP2_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP2, i) for i in 0:2]))
     get_R2[] = get_R2_V9
+    const bead2_type = "V9"
 elseif all(x -> x == "V15", res_list)
     println("R2 bead type: V15")
     const UP2 = "CTGTTTCCTG"
     const UP2_whitelist = Set{String15}(reduce(union, [listHDneighbors(UP2, i) for i in 0:1]))
     get_R2[] = get_R2_V15
+    const bead2_type = "V15"
 else
     error("Error: The R2 bead type is not consistent ($res_list)")
 end
@@ -228,14 +235,17 @@ println("...done") ; flush(stdout) ; GC.gc()
 
 print("Computing barcode whitelist... ") ; flush(stdout)
 
-# Create plots and determine cutoff
+# Create elbow plots and determine bead UMI cutoff
+#     We use the elbow plot to determine which beads to use as our whitelist
+#     The cutoff is auto-detected using the flat part of the distribution
+#     To make finding it more consistent, we set a reasonable min/max UMI count
 function umi_density_plot(table, R)
     x = collect(keys(table))
     y = collect(values(table))
     perm = sortperm(x)
     x = x[perm]
     y = y[perm]
-
+    
     # Compute the KDE
     lx_s = 0:0.001:ceil(maximum(log10.(x)), digits=3)
     ly_s = []
@@ -245,14 +255,18 @@ function umi_density_plot(table, R)
         push!(ly_s, kde)
     end
 
+    min_umis = 10     
+    min_beads = 10_000
+    max_umis = x[end-findfirst(cumsum(reverse(y)) .>= min_beads)]
+    
     # Find the flattest point
     mins = lx_s[findminima(ly_s).indices] |> sort
-    filter!(x -> x > 1, mins)
+    filter!(m -> min_umis <= 10^m <= max_umis, mins)
     if length(mins) > 0
         uc = round(10^mins[1])
     else
-        println("WARNING: no local min found for $R, selecting flattest point along curve")
-        i = argmin(abs.(diff(ly_s[1000:min(3000,length(lx_s))])))
+        println("\nWARNING: no local min found for $R, selecting flattest point along curve")
+        i = argmin(abs.(diff(ly_s[1000:round(Int,log10(max_umis)*1000)])))
         uc = round(10^lx_s[1000-1+i])
     end
 
@@ -454,6 +468,7 @@ end
 function plot_umi_distributions(df, col::Symbol)
     gdf = combine(groupby(df, col), :umi => sum => :umi,
                                     :umi => length => :count,
+                                    :umi => maximum => :max,
                                     :umi => sum_top5 => :top5,
                                     :umi => sum_top20 => :top20,
                                     :umi => sum_top50 => :top50,
@@ -472,13 +487,13 @@ function plot_umi_distributions(df, col::Symbol)
     end
 
     m = max(log10(maximum(gdf.umi)),log10(maximum(gdf.count)))
-    p2 = histogram2d(log10.(gdf.umi), log10.(gdf.count), show_empty_bins=true, color=cgrad(:plasma, scale = :exp),
+    p2 = histogram2d(log10.(gdf.umi), log10.(gdf.count), show_empty_bins=true, color=cgrad(:plasma, scale = x -> exp(exp(x))),
             xlabel="log10 UMIs (mean: $(round(log10(mean(gdf.umi)),digits=2)), median: $(round(log10(median(gdf.umi)),digits=2)))",
             ylabel="log10 connections (mean: $(round(log10(mean(gdf.count)),digits=2)), median: $(round(log10(median(gdf.count)),digits=2)))",
             title="R$(string(col)[3]) UMI Distribution", titlefont = 10, guidefont = 8, xlims=(0, m), ylims=(0, m))
     plot!(p2, [0, m], [0, m], color=:black, linewidth=1, legend = false)
 
-    select!(gdf, [col, :umi, :count])
+    select!(gdf, [col, :umi, :count, :max])
     rename!(gdf, :count => :connections)
     sort!(gdf, col)
     @assert gdf[!, col] == collect(1:nrow(gdf))
@@ -516,8 +531,8 @@ end
 m = metadata
 mm = matching_metadata
 data = [
-("", "Total reads", ""),
-("", f(m["reads"]), ""),
+("R1 bead type", "Total reads", "R2 bead type"),
+(bead1_type, f(m["reads"]), bead2_type),
 ("R1 too short", "", "R2 too short"),
 (d(m["R1_tooshort"],m["reads"]), "", d(m["R2_tooshort"],m["reads"])),
 ("R1 degen UMI", "", "R2 degen UMI"),
@@ -568,22 +583,26 @@ merge_pdfs([joinpath(out_path,"elbows.pdf"),
 @assert isempty(intersect(keys(metadata), keys(matching_metadata)))
 meta_df = DataFrame([Dict(:key => k, :value => v) for (k,v) in merge(metadata, matching_metadata)])
 sort!(meta_df, :key) ; meta_df = select(meta_df, :key, :value)
+
 CSV.write(joinpath(out_path,"metadata.csv"), meta_df, writeheader=false)
 
 @assert length(df1.umi) == length(sb1_whitelist_short)
 open(GzipCompressorStream, joinpath(out_path,"sb1.csv.gz"), "w") do file
-    for line in zip(sb1_whitelist_short, df1.umi, df1.connections)
-        write(file, line[1] * "," * string(line[2]) * "," * string(line[3]) * "\n")
+    write(file, "sb1,umi,connections,max\n")
+    for line in zip(sb1_whitelist_short, df1.umi, df1.connections, df1.max)
+        write(file, join(line, ",") * "\n")
     end
 end
 @assert length(df2.umi) == length(sb2_whitelist_short)
 open(GzipCompressorStream, joinpath(out_path,"sb2.csv.gz"), "w") do file
-    for line in zip(sb2_whitelist_short, df2.umi, df2.connections)
-        write(file, line[1] * "," * string(line[2]) * "," * string(line[3]) * "\n")
+    write(file, "sb2,umi,connections,max\n")
+    for line in zip(sb2_whitelist_short, df2.umi, df2.connections, df2.max)
+        write(file, join(line, ",") * "\n")
     end
 end
+rename!(df, Dict(:sb1_i => :sb1_index, :sb2_i => :sb2_index, :umi => :umi))
 open(GzipCompressorStream, joinpath(out_path,"matrix.csv.gz"), "w") do file
-    CSV.write(file, df, writeheader=false)
+    CSV.write(file, df, writeheader=true)
 end
 
 println("done!") ; flush(stdout) ; GC.gc()
