@@ -6,6 +6,7 @@ task count {
         String sample
         String reference
         String technique
+        String params
         Int mem_GiB
         Int disk_GiB
         String count_output_path
@@ -73,14 +74,14 @@ task count {
         --sample=~{sample}                    \
         --create-bam=true                     \
         --include-introns=true                \
-        --nosecondary --disable-ui |& ts
+        ~{params} --nosecondary --disable-ui |& ts
     elif [[ ~{technique} == "cellranger-atac" ]]; then
         echo; echo "Running cellranger-atac count"
         time stdbuf -oL -eL cellranger-atac count \
         --id=~{sample}                            \
         --reference=reference                     \
         --fastqs=fastqs                           \
-        --disable-ui |& ts
+        ~{params} --disable-ui |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
@@ -133,6 +134,7 @@ workflow cellranger_count {
         String sample
         String reference
         String technique
+        String params = ""
         Int mem_GiB = 64
         Int disk_GiB = 128
         String count_output_path = "gs://"+bucket+"/cellranger-count/"+id
@@ -146,6 +148,7 @@ workflow cellranger_count {
             sample = sample,
             reference = reference,
             technique = technique,
+            params = params,
             mem_GiB = mem_GiB,
             disk_GiB = disk_GiB,
             count_output_path = count_output_path,
