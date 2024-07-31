@@ -12,6 +12,11 @@ from scipy.sparse import coo_matrix
 from umap import UMAP
 from helpers import *
 
+exit()
+quit()
+error()
+do not continue
+
 # os.chdir("/home/nsachdev/recon/data/6mm")
 # os.chdir("/home/nsachdev/recon/data/240411/H14_1/")
 # os.chdir("/home/nsachdev/recon/data/2cm")
