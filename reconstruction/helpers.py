@@ -131,30 +131,47 @@ def ICP_distance(points1, points2):
 
 ### KNN METHODS ################################################################
 
-def knn_descent(mat, n_neighbors):
+def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
     from umap.umap_ import nearest_neighbors
     knn_indices, knn_dists, _ = nearest_neighbors(mat,
                                     n_neighbors = n_neighbors,
-                                    metric = "cosine",
+                                    metric = metric,
                                     metric_kwds = {},
                                     angular = False, # Does nothing?
                                     random_state = None, # sklearn.utils.check_random_state(0)
                                     low_memory = True, # False?
                                     use_pynndescent = True, # Does nothing?
-                                    n_jobs = -1, # Lower?
+                                    n_jobs = n_cores,
                                     verbose = True
                                 )
     return knn_indices, knn_dists
 
-def knn_sparse(mat, n_neighbors):
-    import multiprocessing
+def knn_sparse(mat, n_neighbors, n_cores=-1):
     import pysparnn.cluster_index as ci
-    snn = ci.MultiClusterIndex(mat, np.array(range(mat.shape[0])))
-    results = snn.search(mat, k=n_neighbors)
+    import concurrent.futures
+    if n_cores == -1:
+        import multiprocessing
+        n_cores = multiprocessing.cpu_count()
+    assert n_cores > 0
+
+    print("Creating Search Index...")
+    snn = ci.MultiClusterIndex(mat, np.array(range(mat.shape[0])), num_indexes=2)
+
+    print("Finding Nearest Neighbors...")
+    splits = [mat[indices, :] for indices in np.array_split(np.arange(mat.shape[0]), n_cores)]
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = [executor.submit(search, snn, split, n_neighbors) for split in splits]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
     
-    knn_indices = np.array([[nn[0] for nn in row] for row in results], dtype=np.int32) # this was all 0?
-    knn_dists = np.array([[nn[1] for nn in row] for row in results])
+    knn_dists = np.vstack([np.array([[nn[0] for nn in row] for row in result]) for result in results])
+    knn_indices = np.vstack([np.array([[nn[1] for nn in row] for row in result], dtype=np.int32) for result in results])
+
+    print("Done")
+    assert knn_indices.shape == knn_dists.shape == (mat.shape[0], n_neighbors)
     return knn_indices, knn_dists
+
+def search(snn, data, k):
+    return snn.search(data, k=k, k_clusters=1, return_distance=True, num_indexes=2)
 
 ### MNN METHODS ################################################################
 ### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
