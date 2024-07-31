@@ -24,7 +24,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
 # Install additional python packges
 RUN pip install numpy pandas matplotlib scipy scikit-learn seaborn
 RUN pip install argparse gcsfs plotly editdistance mappy umi_tools
-RUN pip install umap-learn[tbb] pydiffmap datafold MDAnalysis ivis[cpu] pacmap # dbmap
+RUN pip install umap-learn[tbb] pydiffmap datafold MDAnalysis # dbmap
 RUN pip install pynndescent scikit-image datashader bokeh holoviews colorcet
 RUN pip install tensorflow annoy tqdm rho-pysparnn
 
