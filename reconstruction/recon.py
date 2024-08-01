@@ -12,15 +12,10 @@ from scipy.sparse import coo_matrix
 from umap import UMAP
 from helpers import *
 
-exit()
-quit()
-error()
-do not continue
-
-# os.chdir("/home/nsachdev/recon/data/6mm")
-# os.chdir("/home/nsachdev/recon/data/240411/H14_1/")
-# os.chdir("/home/nsachdev/recon/data/2cm")
-# os.chdir("/home/nsachdev/recon/data/3cm")
+# os.chdir("/home/nsachdev/recon/data/240609_SL-EXC_0308_A22KHFYLT3/D707-1234")
+# os.chdir("/home/nsachdev/recon/data/240411/H14_1")
+# os.chdir("/home/nsachdev/recon/data/240615_SL-EXG_0144_A22KH5WLT3/D703_D704_D705_D706")
+# os.chdir("/home/nsachdev/recon/data/240609_SL-EXC_0308_A22KHFYLT3/D702-1234_D703_D706_D707-5")
 
 def get_args():
     parser = argparse.ArgumentParser(description='process recon seq data')
@@ -28,18 +23,16 @@ def get_args():
     parser.add_argument("-o", "--out_dir", help="output data folder", type=str, default=".")
     parser.add_argument("-gs", "--gspath", help="gcloud storage path to cache data output", type=str, default="")
     # parser.add_argument("-c", "--core", help="define core type to use (CPU or GPU)", type=str, default="CPU")
-    # tags or seq? "-e", "--exptype", help="define experiment type (seq or tags)", type=str, required=True,
     
     parser.add_argument("-l1", "--low1", help="R1 connection minimum", type=int, default=10)
     parser.add_argument("-l2", "--low2", help="R2 connection minimum", type=int, default=10)
     parser.add_argument("-h1", "--high1", help="R1 connection maximum", type=int, default=3000)
     parser.add_argument("-h2", "--high2", help="R2 connection maximum", type=int, default=3000)
     
-    parser.add_argument("-a", "--algorithm", help="dimensionality reduction algo", type=str, default="UMAP") # UMAP
+    parser.add_argument("-a", "--algorithm", help="dimensionality reduction algo", type=str, default="UMAP")
     
     parser.add_argument("-n", "--n_neighbors", help="the number of neighboring points used for manifold approximation", type=int, default=45)
     parser.add_argument("-d", "--min_dist", help="the effective minimum distance between embedded points", type=float, default=0.1)
-    parser.add_argument("-s", "--spread", help="the effective scale of embedded points", type=float, default=1.0)
     parser.add_argument("-I", "--init", help="how to initialize the low dimensional embedding", type=str, default="spectral")
     parser.add_argument("-N", "--n_epochs", help="the number of epochs to be used in optimizing the embedding", type=int, default=5000)
     parser.add_argument("-c", "--connectivity", help="'none', 'min_tree', or 'full_tree'", type=str, default="none")
@@ -56,16 +49,16 @@ name = f"{algo}"
 if algo == "UMAP":
     n_neighbors = args.n_neighbors ; print(f"n_neighbors = {n_neighbors}")
     min_dist = args.min_dist       ; print(f"min_dist = {min_dist}")
-    spread = args.spread           ; print(f"spread = {spread}")
     init = args.init               ; print(f"init = {init}")
     n_epochs = args.n_epochs       ; print(f"n_epochs = {n_epochs}")
-    name += f"_n={n_neighbors}_d={min_dist}_s={spread}_I={init}"
+    name += f"_n={n_neighbors}_d={min_dist}_I={init}"
     
     connectivity = args.connectivity ; print(f"connectivity = {connectivity}")
     assert connectivity in ["none", "nearest", "min_tree", "full_tree"]
     if connectivity != "none":
         n_neighbors2 = args.n_neighbors2 ; print(f"n_neighbors2 = {n_neighbors2}")
         name += f"_c={connectivity.replace('_', '')}{n_neighbors2}"
+        assert n_neighbors2 <= n_neighbors
 
 l1 = args.low1  ; print(f"R1 connection minimum = {l1}")
 l2 = args.low2  ; print(f"R2 connection minimum = {l2}")
@@ -88,13 +81,13 @@ print(f"output directory = {out_dir}")
 ### Load the data ##############################################################
 
 print("\nReading the matrix...")
-df = pd.read_csv(os.path.join(in_dir, 'matrix.csv.gz'), compression='gzip', header=None, names=['sb1', 'sb2', 'umi'])
-df.sb1 -= 1 # convert from 1- to 0-indexed
-df.sb2 -= 1 # convert from 1- to 0-indexed
-sb1 = pd.read_csv(os.path.join(in_dir, 'sb1.csv.gz'), compression='gzip', header=None, names=['sb1', 'umi', 'connections'])
-sb2 = pd.read_csv(os.path.join(in_dir, 'sb2.csv.gz'), compression='gzip', header=None, names=['sb2', 'umi', 'connections'])
-assert sorted(list(set(df.sb1))) == list(range(sb1.shape[0]))
-assert sorted(list(set(df.sb2))) == list(range(sb2.shape[0]))
+df = pd.read_csv(os.path.join(in_dir, 'matrix.csv.gz'), compression='gzip')
+df.sb1_index -= 1 # convert from 1- to 0-indexed
+df.sb2_index -= 1 # convert from 1- to 0-indexed
+sb1 = pd.read_csv(os.path.join(in_dir, 'sb1.csv.gz'), compression='gzip')
+sb2 = pd.read_csv(os.path.join(in_dir, 'sb2.csv.gz'), compression='gzip')
+assert sorted(list(set(df.sb1_index))) == list(range(sb1.shape[0]))
+assert sorted(list(set(df.sb2_index))) == list(range(sb2.shape[0]))
 print(f"{sb1.shape[0]} R1 barcodes")
 print(f"{sb2.shape[0]} R2 barcodes")
 
@@ -109,19 +102,19 @@ print(f"{len(sb1_low)} low R1 beads filtered ({len(sb1_low)/len(sb1)*100:.2f}%)"
 print(f"{len(sb2_low)} low R2 beads filtered ({len(sb2_low)/len(sb2)*100:.2f}%)")
 print(f"{len(sb1_high)} high R1 beads filtered ({len(sb1_high)/len(sb1)*100:.2f}%)")
 print(f"{len(sb2_high)} high R2 beads filtered ({len(sb2_high)/len(sb2)*100:.2f}%)")
-df = df[~df['sb1'].isin(sb1_low) & ~df['sb1'].isin(sb1_high) & ~df['sb2'].isin(sb2_low) & ~df['sb2'].isin(sb2_high)]
+df = df[~df['sb1_index'].isin(sb1_low) & ~df['sb1_index'].isin(sb1_high) & ~df['sb2_index'].isin(sb2_low) & ~df['sb2_index'].isin(sb2_high)]
 umi_after = sum(df["umi"])
 print(f"{umi_before-umi_after} UMIs filtered ({(umi_before-umi_after)/umi_before*100:.2f}%)")
-codes1, uniques1 = pd.factorize(df['sb1'], sort=True)
-df.loc[:, 'sb1'] = codes1
-codes2, uniques2 = pd.factorize(df['sb2'], sort=True)
-df.loc[:, 'sb2'] = codes2
-assert sorted(list(set(df.sb1))) == list(range(len(set(df.sb1))))
-assert sorted(list(set(df.sb2))) == list(range(len(set(df.sb2))))
+codes1, uniques1 = pd.factorize(df['sb1_index'], sort=True)
+df.loc[:, 'sb1_index'] = codes1
+codes2, uniques2 = pd.factorize(df['sb2_index'], sort=True)
+df.loc[:, 'sb2_index'] = codes2
+assert sorted(list(set(df.sb1_index))) == list(range(len(set(df.sb1_index))))
+assert sorted(list(set(df.sb2_index))) == list(range(len(set(df.sb2_index))))
 
 # Rows are the beads you wish to recon
 # Columns are the features used for judging similarity
-mat = coo_matrix((df['umi'], (df['sb2'], df['sb1']))).tocsr()
+mat = coo_matrix((df['umi'], (df['sb2_index'], df['sb1_index']))).tocsr()
 del df
 print(f"Final matrix size: {mat.data.nbytes/1024/1024:.2f} MiB")
 print(f"Final matrix dimension: {mat.shape}")
@@ -148,13 +141,13 @@ sys.stdout.flush()
 def my_umap(mat, n_epochs, init=init):
     reducer = UMAP(n_components = 2,
                    metric = "cosine",
+                   spread = 1.0,
                    random_state = None,
                    verbose = True,
                    precomputed_knn = (knn_indices, knn_dists),
                    
                    n_neighbors = n_neighbors,
                    min_dist = min_dist,
-                   spread = spread,
                    n_epochs = n_epochs,
                    init = init
                   )
