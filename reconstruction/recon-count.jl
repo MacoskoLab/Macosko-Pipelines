@@ -413,6 +413,7 @@ function count_umis(mat, metadata)
     filter!(row -> row.bnd, df)
     select!(df, Not(:bnd))
     df.umi = umis
+    metadata["umis_final"] = sum(df.umi)
         
     return df, metadata
 end
@@ -562,7 +563,7 @@ data = [
 ("R1 chimeras", "", "R2 chimeras"),
 (d(m["umis_chimeric_R1"],m["umis_matched"]), "", d(m["umis_chimeric_R2"],m["umis_matched"])),
 ("", "Final UMIs", ""),
-("", d(sum(df.umi), m["umis_filtered"]), ""),
+("", d(m["umis_final"],m["umis_filtered"]), ""),
 ]
 p = plot(xlim=(0, 4), ylim=(0, 32+1), framestyle=:none, size=(7*100, 8*100),
          legend=false, xticks=:none, yticks=:none)
