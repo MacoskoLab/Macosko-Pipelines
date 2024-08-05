@@ -13,6 +13,13 @@ using LinearAlgebra: dot
 using Combinatorics: combinations
 using Distributions: pdf, Exponential
 
+# R1 recognized bead types:
+# JJJJJJJJ  TCTTCAGCGTTCCCGAGA JJJJJJJ  NNNNNNNVV (V10)
+# JJJJJJJJJ TCTTCAGCGTTCCCGAGA JJJJJJJJ NNNNNNNNN (V17)
+# R2 recognized bead types:
+# JJJJJJJJJJJJJJJ   CTGTTTCCTG NNNNNNNNN          (V15)
+# JJJJJJJJJJJJJJJJJ CTGTTTCCTG NNNNNNNNN          (V16)
+
 # Load the command-line arguments
 if length(ARGS) == 2
     fastq_path = ARGS[1]
