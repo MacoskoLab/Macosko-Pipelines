@@ -79,8 +79,10 @@ def uvc(df):
     plt.show()
 
 # (x, y, color)
-def beadplot(puck):
+def beadplot(puck, cmap='viridis'):
     if isinstance(puck, np.ndarray):
+        if puck.shape[1] == 2:
+            puck = np.hstack((puck, np.zeros((puck.shape[0], 1))))
         puck = puck[puck[:, 2].argsort()]
         x = puck[:,0]
         y = puck[:,1]
@@ -93,8 +95,8 @@ def beadplot(puck):
     else:
         raise TypeError("Input must be a NumPy ndarray or a pandas DataFrame")
 
-    plt.figure(figsize=(8, 8))
-    plt.scatter(x, y, c=umi, cmap='viridis', s=0.1)
+    plt.figure(figsize=(12, 12))
+    plt.scatter(x, y, c=umi, cmap=cmap, s=0.1)
     plt.colorbar()
     plt.xlabel('xcoord')
     plt.ylabel('ycoord')
@@ -210,6 +212,7 @@ def create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n
         label_mapping[component].append(index)
     
     # Find the min spanning tree with KNN
+    print("Creating minimum spanning tree...")
     sorted_weights_tuples = min_spanning_tree(knn_indices, knn_dists, n_neighbors, n_neighbors)
     
     # Add edges until graph is connected
@@ -292,9 +295,6 @@ def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, conn
     nearest_n = {}
     
     knn_indices_pos = [None] * len(knn_indices)
-    
-    total = 0
-    
     for i, top_vals in enumerate(knn_indices):
         nearest_n[i] = set(top_vals)
         knn_indices_pos[i] = {}
@@ -308,8 +308,11 @@ def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, conn
              if nn != -1 and (i in nearest_n[nn] and i != nn):
                  mutual_nn[i].add(nn)
                  total_mutual_nn += 1
-    
+
+    print("Creating connected graph...")
     connected_mnn = create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n_neighbors, connectivity)
+    
+    print("Finding new nearest neighbors...")
     new_knn_dists, new_knn_indices = find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
     
-    return np.array(new_knn_indices), np.array(new_knn_dists)  
+    return np.array(new_knn_indices), np.array(new_knn_dists)
