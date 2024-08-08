@@ -4,15 +4,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # (x, y)
-def hexmap(embedding):
-    fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+def hexmap(embedding, title=""):
+    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
     x, y = embedding[:, 0], embedding[:, 1]
-    hb = ax.hexbin(x, y, cmap='viridis')
+    hb = ax.hexbin(x, y, cmap='viridis', linewidths=0.5)
     ax.axis('equal')
     ax.set_xticks([])
     ax.set_yticks([])
+    ax.set_title(f'{title}')
     for spine in ax.spines.values():
         spine.set_visible(False)
+    plt.tight_layout()
+    return fig, ax
 
 # [(x, y)]
 def hexmaps(embeddings, titles = [], fontsize=10):
@@ -27,13 +30,14 @@ def hexmaps(embeddings, titles = [], fontsize=10):
     
     for ax, embedding, title in zip(axes, embeddings, titles):
         x, y = embedding[:, 0], embedding[:, 1]
-        hb = ax.hexbin(x, y, cmap='viridis')
+        hb = ax.hexbin(x, y, cmap='viridis', linewidths=0.5)
         ax.axis('equal')
         ax.set_xticks([])
         ax.set_yticks([])
+        ax.set_title(f'{title}', fontsize=fontsize)
         for spine in ax.spines.values():
             spine.set_visible(False)
-        ax.set_title(f'{title}', fontsize=fontsize)
+        
     for ax in axes[len(embeddings):]:
         ax.set_visible(False)
 
@@ -148,19 +152,23 @@ def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
                                 )
     return knn_indices, knn_dists
 
+def knn_summary(knn_indices, knn_dists):
+    pass
+
 ### MNN METHODS ################################################################
 ### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
 import scipy
 
-# Calculate min spanning tree
-def min_spanning_tree(knn_indices, knn_dists, n_neighbors, threshold):
+def create_knn_matrix(knn_indices, knn_dists, n_neighbors):
+    assert knn_indices.shape == knn_dists.shape
+    assert n_neighbors <= knn_indices.shape[1]
     rows = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
     cols = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
     vals = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.float32)
     
     pos = 0
     for i, indices in enumerate(knn_indices):
-        for j, index in enumerate(indices[:threshold]):
+        for j, index in enumerate(indices[:n_neighbors]):
             if index == -1:
                 continue
             rows[pos] = i 
@@ -168,8 +176,11 @@ def min_spanning_tree(knn_indices, knn_dists, n_neighbors, threshold):
             vals[pos] = knn_dists[i][j]
             pos += 1
     
-    matrix = scipy.sparse.csr_matrix((vals, (rows, cols)), shape=(knn_indices.shape[0], knn_indices.shape[0]))
-    Tcsr = scipy.sparse.csgraph.minimum_spanning_tree(matrix)
+    knn_matrix = scipy.sparse.csr_matrix((vals, (rows, cols)), shape=(knn_indices.shape[0], knn_indices.shape[0]))
+    return knn_matrix
+    
+def min_spanning_tree(knn_matrix):
+    Tcsr = scipy.sparse.csgraph.minimum_spanning_tree(knn_matrix)
     Tcsr = scipy.sparse.coo_matrix(Tcsr)
     weights_tuples = zip(Tcsr.row, Tcsr.col, Tcsr.data)
     sorted_weights_tuples = sorted(weights_tuples, key=lambda tup: tup[2])
@@ -212,8 +223,7 @@ def create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n
         label_mapping[component].append(index)
     
     # Find the min spanning tree with KNN
-    print("Creating minimum spanning tree...")
-    sorted_weights_tuples = min_spanning_tree(knn_indices, knn_dists, n_neighbors, n_neighbors)
+    sorted_weights_tuples = min_spanning_tree(create_knn_matrix(knn_indices, knn_dists, n_neighbors))
     
     # Add edges until graph is connected
     for pos,(i,j,v) in enumerate(sorted_weights_tuples):
@@ -315,4 +325,4 @@ def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, conn
     print("Finding new nearest neighbors...")
     new_knn_dists, new_knn_indices = find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
     
-    return np.array(new_knn_indices), np.array(new_knn_dists)
+    return np.array(new_knn_indices, dtype=np.int32), np.array(new_knn_dists)
