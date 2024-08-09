@@ -45,6 +45,87 @@ R2s = filter(s -> occursin("_R2_", s), fastqs) ; println("R2s: ", basename.(R2s)
 @assert length(R1s) == length(R2s) > 0
 @assert [replace(R1, "_R1_"=>"", count=1) for R1 in R1s] == [replace(R2, "_R2_"=>"", count=1) for R2 in R2s]
 
+const UP1 = String31("TCTTCAGCGTTCCCGAGA")
+const UP2 = String15("CTGTTTCCTG")
+
+# Read structure methods
+@inline function get_V10(record::FASTX.FASTQ.Record)
+    sb_1 = FASTQ.sequence(record, 1:8)
+    up = FASTQ.sequence(record, 9:26)
+    sb_2 = FASTQ.sequence(record, 27:33)
+    umi = FASTQ.sequence(record, 34:42)
+    return sb_1, sb_2, up, umi
+end
+@inline function get_V17(record::FASTX.FASTQ.Record)
+    sb_1 = FASTQ.sequence(record, 1:9)
+    up = FASTQ.sequence(record, 10:27)
+    sb_2 = FASTQ.sequence(record, 28:35)
+    umi = FASTQ.sequence(record, 36:44)
+    return sb_1, sb_2, up, umi
+end
+@inline function get_V15(record::FASTX.FASTQ.Record)
+    sb_1 = FASTQ.sequence(record, 1:8)
+    sb_2 = FASTQ.sequence(record, 9:15)
+    up = FASTQ.sequence(record, 16:25)
+    umi = FASTQ.sequence(record, 26:34)
+    return sb_1, sb_2, up, umi
+end
+@inline function get_V16(record::FASTX.FASTQ.Record)
+    sb_1 = FASTQ.sequence(record, 1:9)
+    sb_2 = FASTQ.sequence(record, 10:17)
+    up = FASTQ.sequence(record, 18:27)
+    umi = FASTQ.sequence(record, 28:36)
+    return sb_1, sb_2, up, umi
+end
+
+# Determine the bead types
+function learn_R1type(R1)
+    iter = R1 |> open |> GzipDecompressorStream |> FASTQ.Reader
+    s10 = 0 ; s17 = 0
+    for (i, record) in enumerate(iter)
+        i > 100000 ? break : nothing
+        s10 += FASTQ.sequence(record, 9:26)  == UP1
+        s17 += FASTQ.sequence(record, 10:27) == UP1
+    end
+    println("V10: ", s10, " V17: ", s17)
+    return(s10 >= s17 ? "V10" : "V17")
+end
+function learn_R2type(R2)
+    iter = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
+    s15 = 0 ; s16 = 0
+    for (i, record) in enumerate(iter)
+        i > 100000 ? break : nothing
+        s15 += FASTQ.sequence(record, 16:25) == UP2
+        s16 += FASTQ.sequence(record, 18:27) == UP2
+    end
+    println("V15: ", s15, " V16: ", s16)
+    return(s15 >= s16 ? "V15" : "V16")
+end
+
+R1_types = [learn_R1type(R1) for R1 in R1s]
+if all(x -> x == "V10", R1_types)
+    const bead1_type = "V10"
+    get_R1 = get_V10
+elseif all(x -> x == "V17", R1_types)
+    const bead1_type = "V17"
+    get_R1 = get_V17
+else
+    error("Error: The R1 bead type is not consistent ($R1_types)")
+end
+println("R1 bead type: $bead1_type")
+
+R2_types = [learn_R2type(R2) for R2 in R2s]
+if all(x -> x == "V15", R2_types)
+    const bead2_type = "V15"
+    get_R2 = get_V15
+elseif all(x -> x == "V16", R2_types)
+    const bead2_type = "V16"
+    get_R2 = get_V16
+else
+    error("Error: The R2 bead type is not consistent ($R2_types)")
+end
+println("R2 bead type: $bead2_type")
+
 # UMI matching+compressing methods
 const px = [convert(UInt32, 4^i) for i in 0:(9-1)]
 function UMItoindex(UMI::StringView{SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}})::UInt32
@@ -71,62 +152,11 @@ function listHDneighbors(str, hd, charlist = ['A','C','G','T','N'])::Set{String}
     end
     return(res)
 end
-const umi_homopolymer_whitelist = Set{String15}(reduce(union, [listHDneighbors(str, i) for str in [c^9 for c in ["A","C","G","T"]] for i in 0:2]))
-const sb_homopolymer_whitelist = Set{String15}(reduce(union, [listHDneighbors(str, i) for str in [c^15 for c in ["A","C","G","T"]] for i in 0:3]))
 
-println("R1 bead type: V8/V10")
-const UP1 = "TCTTCAGCGTTCCCGAGA"
-const UP1_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP1, i) for i in 0:2]))
-const bead1_type = "V8/V10"
-
-function get_R2_V9(record::FASTX.FASTQ.Record)
-    sb2_1 = FASTQ.sequence(record, 1:8)
-    up2 = FASTQ.sequence(record, 9:26)
-    sb2_2 = FASTQ.sequence(record, 27:33)
-    umi2 = FASTQ.sequence(record, 34:42)
-    return sb2_1, sb2_2, up2, umi2
-end
-function get_R2_V15(record::FASTX.FASTQ.Record)
-    sb2_1 = FASTQ.sequence(record, 1:8)
-    sb2_2 = FASTQ.sequence(record, 9:15)
-    up2 = FASTQ.sequence(record, 16:25)
-    umi2 = FASTQ.sequence(record, 26:34)
-    return sb2_1, sb2_2, up2, umi2
-end
-const get_R2 = Ref{Function}()
-
-# Determine the R2 bead type
-function learn_R2type(R2)
-    iter = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
-    UPseq9 = String31("TCTTCAGCGTTCCCGAGA")
-    UPseq15 = String15("CTGTTTCCTG")
-    s9 = 0 ; s15 = 0
-    for (i, record) in enumerate(iter)
-        i > 100000 ? break : nothing
-        s9  += FASTQ.sequence(record, 9:26)  == UPseq9
-        s15 += FASTQ.sequence(record, 16:25) == UPseq15
-    end
-    println("V9: ", s9, " V15: ", s15)
-    return(s9 >= s15 ? "V9" : "V15")
-end
-
-println("Learning the R2 bead type")
-res_list = [learn_R2type(R2) for R2 in R2s]
-if all(x -> x == "V9", res_list)
-    println("R2 bead type: V9")
-    const UP2 = "TCTTCAGCGTTCCCGAGA"
-    const UP2_whitelist = Set{String31}(reduce(union, [listHDneighbors(UP2, i) for i in 0:2]))
-    get_R2[] = get_R2_V9
-    const bead2_type = "V9"
-elseif all(x -> x == "V15", res_list)
-    println("R2 bead type: V15")
-    const UP2 = "CTGTTTCCTG"
-    const UP2_whitelist = Set{String15}(reduce(union, [listHDneighbors(UP2, i) for i in 0:1]))
-    get_R2[] = get_R2_V15
-    const bead2_type = "V15"
-else
-    error("Error: The R2 bead type is not consistent ($res_list)")
-end
+const umi_homopolymer_whitelist = reduce(union, [listHDneighbors(c^9, i) for c in ["A","C","G","T"] for i in 0:2])
+const sb_homopolymer_whitelist = reduce(union, [listHDneighbors(c^15, i) for c in ["A","C","G","T"] for i in 0:3])
+const UP1_whitelist = reduce(union, [listHDneighbors(UP1, i) for i in 0:2])
+const UP2_whitelist = reduce(union, [listHDneighbors(UP2, i) for i in 0:1])
 
 ####################################################################################################
 
@@ -134,8 +164,8 @@ println("Reading FASTQs...") ; flush(stdout)
 
 # Read the FASTQs
 function process_fastqs(R1s, R2s)
-    sb1_dictionary = Dict{String15, UInt32}() # sb1 -> sb1_i
-    sb2_dictionary = Dict{String15, UInt32}() # sb2 -> sb2_i
+    sb1_dictionary = Dict{String, UInt32}() # sb1 -> sb1_i
+    sb2_dictionary = Dict{String, UInt32}() # sb2 -> sb2_i
     mat = Dict{Tuple{UInt32, UInt32, UInt32, UInt32}, UInt32}() # (sb1_i, umi1_i, sb2_i, umi2_i) -> reads
     metadata = Dict("reads"=>0, "R1_tooshort"=>0, "R2_tooshort"=>0, "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0, "R1_no_UP"=>0, "R2_no_UP"=>0, "R1_homopolymer_SB"=>0, "R2_homopolymer_SB"=>0, "reads_filtered"=>0)
 
@@ -147,11 +177,11 @@ function process_fastqs(R1s, R2s)
             metadata["reads"] += 1
 
             skip = false
-            if length(FASTQ.sequence(record[1])) < 42
+            if length(FASTQ.sequence(record[1])) < 44
                 metadata["R1_tooshort"] += 1
                 skip = true
             end
-            if length(FASTQ.sequence(record[2])) < 42
+            if length(FASTQ.sequence(record[2])) < 44
                 metadata["R2_tooshort"] += 1
                 skip = true
             end
@@ -159,12 +189,8 @@ function process_fastqs(R1s, R2s)
                 continue
             end
 
-            sb1_1 = FASTQ.sequence(record[1], 1:8)
-            up1 = FASTQ.sequence(record[1], 9:26)
-            sb1_2 = FASTQ.sequence(record[1], 27:33)
-            umi1 = FASTQ.sequence(record[1], 34:42)
-
-            sb2_1, sb2_2, up2, umi2 = get_R2[](record[2])
+            sb1_1, sb1_2, up1, umi1 = get_R1(record[1])
+            sb2_1, sb2_2, up2, umi2 = get_R2(record[2])
 
             skip = false
             if occursin('N', umi1)
@@ -199,11 +225,11 @@ function process_fastqs(R1s, R2s)
             sb2 = sb2_1*sb2_2
 
             skip = false
-            if in(sb1, sb_homopolymer_whitelist)
+            if in(sb1[1:15], sb_homopolymer_whitelist)
                 metadata["R1_homopolymer_SB"] += 1
                 skip = true
             end
-            if in(sb2, sb_homopolymer_whitelist)
+            if in(sb2[1:15], sb_homopolymer_whitelist)
                 metadata["R2_homopolymer_SB"] += 1
                 skip = true
             end
@@ -222,8 +248,8 @@ function process_fastqs(R1s, R2s)
         end
     end
 
-    sb1_whitelist = DataFrame(sb1 = collect(String15, keys(sb1_dictionary)), sb1_i = collect(UInt32, values(sb1_dictionary)))
-    sb2_whitelist = DataFrame(sb2 = collect(String15, keys(sb2_dictionary)), sb2_i = collect(UInt32, values(sb2_dictionary)))
+    sb1_whitelist = DataFrame(sb1 = collect(String, keys(sb1_dictionary)), sb1_i = collect(UInt32, values(sb1_dictionary)))
+    sb2_whitelist = DataFrame(sb2 = collect(String, keys(sb2_dictionary)), sb2_i = collect(UInt32, values(sb2_dictionary)))
     sort!(sb1_whitelist, :sb1_i)
     sort!(sb2_whitelist, :sb2_i)
     @assert sb1_whitelist.sb1_i == 1:size(sb1_whitelist, 1)
