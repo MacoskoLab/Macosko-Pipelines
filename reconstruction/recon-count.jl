@@ -48,6 +48,8 @@ R2s = filter(s -> occursin("_R2_", s), fastqs) ; println("R2s: ", basename.(R2s)
 const UP1 = String31("TCTTCAGCGTTCCCGAGA")
 const UP2 = String15("CTGTTTCCTG")
 
+####################################################################################################
+
 # Read structure methods
 @inline function get_V10(record::FASTX.FASTQ.Record)
     sb_1 = FASTQ.sequence(record, 1:8)
@@ -288,7 +290,7 @@ function umi_density_plot(table, R)
         push!(ly_s, kde)
     end
 
-    min_umis = 10     
+    min_umis = 5     
     min_beads = 10_000
     max_umis = x[end-findfirst(cumsum(reverse(y)) .>= min_beads)]
     
@@ -362,8 +364,7 @@ wl1 = Set{UInt32}([k for (k, v) in tab1 if v >= uc1]) ; @assert length(wl1) == b
 wl2 = Set{UInt32}([k for (k, v) in tab2 if v >= uc2]) ; @assert length(wl2) == bc2
 
 function match_barcode(mat, wl1, wl2)
-    matching_metadata = Dict("R1_exact"=>0, "R1_none"=>0,
-                             "R2_exact"=>0, "R2_none"=>0)
+    matching_metadata = Dict("R1_exact"=>0, "R1_none"=>0, "R2_exact"=>0, "R2_none"=>0)
     
     for key in keys(mat)
         if key[1] in wl1
@@ -639,6 +640,6 @@ open(GzipCompressorStream, joinpath(out_path,"matrix.csv.gz"), "w") do file
     CSV.write(file, df, writeheader=true)
 end
 
-println("done!") ; flush(stdout) ; GC.gc()
+println("done") ; flush(stdout) ; GC.gc()
 
 @assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.csv.gz", "sb2.csv.gz", "metadata.csv", "QC.pdf"])
