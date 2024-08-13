@@ -1,7 +1,10 @@
 import math
 import numpy as np
 import pandas as pd
+import networkx as nx
 import matplotlib.pyplot as plt
+from functools import reduce
+from collections import Counter
 
 # (x, y)
 def hexmap(embedding, title=""):
@@ -135,6 +138,40 @@ def ICP_distance(points1, points2):
     total_distance = np.sum(distances)
     return(total_distance)
 
+### BEAD FILTERING METHODS #####################################################
+
+def filter_beads(df):
+    def select(df, i, z=3):
+        sb = df.groupby(f'sb{i}_index').agg(umi=('umi', 'sum'), connections=('umi', 'size'), max=('umi', 'max')).reset_index()
+        sb = sb.sort_values(by=f'sb{i}_index')
+        logcon = np.log10(sb['connections'])
+        mean = np.mean(logcon) ; std = np.std(logcon)
+        low = np.where(logcon <= mean - z*std)[0]  # remove beads with connection z-score below 3
+        high = np.where(logcon >= mean + z*std)[0] # remove beads with connection z-score above 3
+        noise = np.where(sb['max'] <= 1)[0]        # remove beads where the max umi of a connection is 1
+        print(f"{len(low)} low R{i} beads filtered ({len(low)/len(sb)*100:.2f}%)")
+        print(f"{len(high)} high R{i} beads filtered ({len(high)/len(sb)*100:.2f}%)")
+        print(f"{len(noise)} noise R{i} beads filtered ({len(noise)/len(sb)*100:.2f}%)")
+        return reduce(np.union1d, [low, high, noise])
+    
+    sb1_remove = select(df, 1)
+    sb2_remove = select(df, 2)
+
+    umi_before = sum(df["umi"])
+    df = df[~df['sb1_index'].isin(sb1_remove) & ~df['sb2_index'].isin(sb2_remove)]
+    umi_after = sum(df["umi"])
+    print(f"{umi_before-umi_after} UMIs filtered ({(umi_before-umi_after)/umi_before*100:.2f}%)")
+
+    codes1, uniques1 = pd.factorize(df['sb1_index'], sort=True)
+    df.loc[:, 'sb1_index'] = codes1
+    codes2, uniques2 = pd.factorize(df['sb2_index'], sort=True)
+    df.loc[:, 'sb2_index'] = codes2
+
+    # assert sorted(list(set(df.sb1_index))) == list(range(len(set(df.sb1_index))))
+    # assert sorted(list(set(df.sb2_index))) == list(range(len(set(df.sb2_index))))
+    
+    return df, uniques1, uniques2 #, metadata
+
 ### KNN METHODS ################################################################
 
 def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
@@ -152,7 +189,7 @@ def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
                                 )
     return knn_indices, knn_dists
 
-def knn_summary(knn_indices, knn_dists):
+def knn_summary(knn_indices, knn_dists, title="KNN"):
     pass
 
 ### MNN METHODS ################################################################
