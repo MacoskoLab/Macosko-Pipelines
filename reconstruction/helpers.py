@@ -140,28 +140,76 @@ def ICP_distance(points1, points2):
 
 ### BEAD FILTERING METHODS #####################################################
 
-def filter_beads(df):
-    def select(df, i, z=3):
-        sb = df.groupby(f'sb{i}_index').agg(umi=('umi', 'sum'), connections=('umi', 'size'), max=('umi', 'max')).reset_index()
-        sb = sb.sort_values(by=f'sb{i}_index')
-        logcon = np.log10(sb['connections'])
-        mean = np.mean(logcon) ; std = np.std(logcon)
-        low = np.where(logcon <= mean - z*std)[0]  # remove beads with connection z-score below 3
-        high = np.where(logcon >= mean + z*std)[0] # remove beads with connection z-score above 3
-        noise = np.where(sb['max'] <= 1)[0]        # remove beads where the max umi of a connection is 1
-        print(f"{len(low)} low R{i} beads filtered ({len(low)/len(sb)*100:.2f}%)")
-        print(f"{len(high)} high R{i} beads filtered ({len(high)/len(sb)*100:.2f}%)")
-        print(f"{len(noise)} noise R{i} beads filtered ({len(noise)/len(sb)*100:.2f}%)")
-        return reduce(np.union1d, [low, high, noise])
+def hist_z(ax, data, z_high=None, z_low=None):
+    ax.hist(data, bins=100)
+    ax.set_ylabel('Count')
+
+    meanval = np.mean(data)
+    ax.axvline(meanval, color='black', linestyle='dashed')
+    ax.text(meanval, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='center')
+
+    if z_high:
+        zval = meanval + np.std(data) * z_high
+        ax.axvline(zval, color='red', linestyle='dashed')
+        ax.text(zval+0.1, ax.get_ylim()[1]*0.9, f'{z_high}z: {10**zval:.2f}', color='red', ha='left')
+
+    if z_low:
+        zval = meanval + np.std(data) * z_low
+        ax.axvline(zval, color='red', linestyle='dashed')
+        ax.text(zval-0.1, ax.get_ylim()[1]*0.9, f'{z_low}z: {10**zval:.2f}', color='red', ha='right')
+
+def filter_beads(df, z1=3, z2=3):
+    assert all(df.columns == ["sb1_index", "sb2_index", "umi"])
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    meta = {"umi_init": sum(df["umi"])}
     
-    sb1_remove = select(df, 1)
-    sb2_remove = select(df, 2)
+    # Remove sb1 beads
+    sb1 = df.groupby(f'sb1_index').agg(umi=('umi', 'sum'), connections=('umi', 'size'), max=('umi', 'max')).reset_index()
+    hist_z(axes[0,0], np.log10(sb1['connections']), z1)
+    axes[0,0].set_xlabel('Connections')
+    axes[0,0].set_title('sb1 connections')
+    hist_z(axes[0,1], np.log10(sb1['max']))
+    axes[0,1].set_xlabel('Max')
+    axes[0,1].set_title('sb1 max')
 
-    umi_before = sum(df["umi"])
-    df = df[~df['sb1_index'].isin(sb1_remove) & ~df['sb2_index'].isin(sb2_remove)]
-    umi_after = sum(df["umi"])
-    print(f"{umi_before-umi_after} UMIs filtered ({(umi_before-umi_after)/umi_before*100:.2f}%)")
+    logcon = np.log10(sb1['connections'])
+    high = np.where(logcon >= np.mean(logcon) + np.std(logcon) * z1)[0]
+    sb1_remove = reduce(np.union1d, [high])
+    df = df[~df['sb1_index'].isin(sb1_remove)]
+    
+    meta["sb1_high"] = len(high)
+    meta["sb1_removed"] = len(sb1_remove)
+    meta["umi_half"] = sum(df["umi"])
+    print(f"{len(high)} high R1 beads ({len(high)/len(sb1)*100:.2f}%)")
+    diff = meta['umi_init']-meta['umi_half'] ; print(f"{diff} R1 UMIs filtered ({diff/meta['umi_init']*100:.2f}%)")
 
+    # Remove sb2 beads
+    sb2 = df.groupby(f'sb2_index').agg(umi=('umi', 'sum'), connections=('umi', 'size'), max=('umi', 'max')).reset_index()
+    hist_z(axes[1,0], np.log10(sb2['connections']), z2, -3)
+    axes[1,0].set_xlabel('Connections')
+    axes[1,0].set_title('sb2 connections')
+    hist_z(axes[1,1], np.log10(sb2['max']))
+    axes[1,1].set_xlabel('Max')
+    axes[1,1].set_title('sb2 max')
+
+    logcon = np.log10(sb2['connections'])
+    high = np.where(logcon >= np.mean(logcon) + np.std(logcon) * z2)[0]
+    low = np.where(logcon <= np.mean(logcon) + np.std(logcon) * -3)[0]
+    noise = np.where(sb2['max'] <= 1)[0]
+    sb2_remove = reduce(np.union1d, [high, low, noise])
+    df = df[~df['sb2_index'].isin(sb2_remove)]
+    
+    meta["sb2_high"] = len(high)
+    meta["sb2_low"] = len(low)
+    meta["sb2_noise"] = len(noise)
+    meta["sb2_removed"] = len(sb2_remove)
+    meta["umi_final"] = sum(df["umi"])
+    print(f"{len(high)} high R2 beads ({len(high)/len(sb2)*100:.2f}%)")
+    print(f"{len(low)} low R2 beads ({len(low)/len(sb2)*100:.2f}%)")
+    print(f"{len(noise)} noise R2 beads ({len(noise)/len(sb2)*100:.2f}%)")
+    diff = meta['umi_half']-meta['umi_final'] ; print(f"{diff} R2 UMIs filtered ({diff/meta['umi_half']*100:.2f}%)")
+    
+    # Factorize the new dataframe
     codes1, uniques1 = pd.factorize(df['sb1_index'], sort=True)
     df.loc[:, 'sb1_index'] = codes1
     codes2, uniques2 = pd.factorize(df['sb2_index'], sort=True)
@@ -170,7 +218,8 @@ def filter_beads(df):
     # assert sorted(list(set(df.sb1_index))) == list(range(len(set(df.sb1_index))))
     # assert sorted(list(set(df.sb2_index))) == list(range(len(set(df.sb2_index))))
     
-    return df, uniques1, uniques2 #, metadata
+    fig.tight_layout()
+    return df, uniques1, uniques2, fig, meta
 
 ### KNN METHODS ################################################################
 
