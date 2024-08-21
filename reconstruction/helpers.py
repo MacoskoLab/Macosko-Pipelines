@@ -140,32 +140,33 @@ def ICP_distance(points1, points2):
 
 ### BEAD FILTERING METHODS #####################################################
 
-def hist_z(ax, data, z_high=None, z_low=None):
-    ax.hist(data, bins=100)
-    ax.set_ylabel('Count')
-
-    meanval = np.mean(data)
-    ax.axvline(meanval, color='black', linestyle='dashed')
-    ax.text(meanval, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='center')
-
-    if z_high:
-        zval = meanval + np.std(data) * z_high
-        ax.axvline(zval, color='red', linestyle='dashed')
-        ax.text(zval+0.1, ax.get_ylim()[1]*0.9, f'{z_high}z: {10**zval:.2f}', color='red', ha='left')
-
-    if z_low:
-        zval = meanval + np.std(data) * z_low
-        ax.axvline(zval, color='red', linestyle='dashed')
-        ax.text(zval-0.1, ax.get_ylim()[1]*0.9, f'{z_low}z: {10**zval:.2f}', color='red', ha='right')
-
-def filter_beads(df, z1=3, z2=3):
+def connection_filter(df):
     assert all(df.columns == ["sb1_index", "sb2_index", "umi"])
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     meta = {"umi_init": sum(df["umi"])}
+
+    def hist_z(ax, data, z_high=None, z_low=None):
+        ax.hist(data, bins=100)
+        ax.set_ylabel('Count')
+    
+        meanval = np.mean(data)
+        ax.axvline(meanval, color='black', linestyle='dashed')
+        ax.text(meanval, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='center')
+    
+        if z_high:
+            zval = meanval + np.std(data) * z_high
+            ax.axvline(zval, color='red', linestyle='dashed')
+            ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_high}z: {10**zval:.2f}', color='red', ha='left')
+    
+        if z_low:
+            zval = meanval + np.std(data) * z_low
+            ax.axvline(zval, color='red', linestyle='dashed')
+            ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_low}z: {10**zval:.2f}', color='red', ha='right')
     
     # Remove sb1 beads
+    z_high = 3
     sb1 = df.groupby(f'sb1_index').agg(umi=('umi', 'sum'), connections=('umi', 'size'), max=('umi', 'max')).reset_index()
-    hist_z(axes[0,0], np.log10(sb1['connections']), z1)
+    hist_z(axes[0,0], np.log10(sb1['connections']), z_high)
     axes[0,0].set_xlabel('Connections')
     axes[0,0].set_title('sb1 connections')
     hist_z(axes[0,1], np.log10(sb1['max']))
@@ -173,7 +174,7 @@ def filter_beads(df, z1=3, z2=3):
     axes[0,1].set_title('sb1 max')
 
     logcon = np.log10(sb1['connections'])
-    high = np.where(logcon >= np.mean(logcon) + np.std(logcon) * z1)[0]
+    high = np.where(logcon >= np.mean(logcon) + np.std(logcon) * z_high)[0]
     sb1_remove = reduce(np.union1d, [high])
     df = df[~df['sb1_index'].isin(sb1_remove)]
     
@@ -184,17 +185,18 @@ def filter_beads(df, z1=3, z2=3):
     diff = meta['umi_init']-meta['umi_half'] ; print(f"{diff} R1 UMIs filtered ({diff/meta['umi_init']*100:.2f}%)")
 
     # Remove sb2 beads
+    z_high = 3 ; z_low = -3
     sb2 = df.groupby(f'sb2_index').agg(umi=('umi', 'sum'), connections=('umi', 'size'), max=('umi', 'max')).reset_index()
-    hist_z(axes[1,0], np.log10(sb2['connections']), z2, -3)
+    hist_z(axes[1,0], np.log10(sb2['connections']), z_high, z_low)
     axes[1,0].set_xlabel('Connections')
     axes[1,0].set_title('sb2 connections')
     hist_z(axes[1,1], np.log10(sb2['max']))
     axes[1,1].set_xlabel('Max')
     axes[1,1].set_title('sb2 max')
-
+    
     logcon = np.log10(sb2['connections'])
-    high = np.where(logcon >= np.mean(logcon) + np.std(logcon) * z2)[0]
-    low = np.where(logcon <= np.mean(logcon) + np.std(logcon) * -3)[0]
+    high = np.where(logcon >= np.mean(logcon) + np.std(logcon) * z_high)[0]
+    low = np.where(logcon <= np.mean(logcon) + np.std(logcon) * z_low)[0]
     noise = np.where(sb2['max'] <= 1)[0]
     sb2_remove = reduce(np.union1d, [high, low, noise])
     df = df[~df['sb2_index'].isin(sb2_remove)]
@@ -221,6 +223,19 @@ def filter_beads(df, z1=3, z2=3):
     fig.tight_layout()
     return df, uniques1, uniques2, fig, meta
 
+def mask_filter(mat, uniques2, knn_indices, knn_dists, m):
+    assert mat.shape[0] == len(uniques2) == len(knn_indices) == len(knn_dists) == len(m)
+    assert np.issubdtype(m.dtype, np.bool_) # mask must be boolean
+    index_map = dict(zip(np.arange(len(m))[m], np.arange(sum(m))))
+    
+    mat = mat[m,:]
+    uniques2 = uniques2[m]
+    knn_indices = np.vectorize(lambda x: index_map[x])(knn_indices[m,:])
+    knn_dists = knn_dists[m,:]
+
+    assert mat.shape[0] == len(uniques2) == len(knn_indices) == len(knn_dists) == sum(m)
+    return mat, uniques2, knn_indices, knn_dists
+
 ### KNN METHODS ################################################################
 
 def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
@@ -238,8 +253,7 @@ def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
                                 )
     return knn_indices, knn_dists
 
-def knn_summary(knn_indices, knn_dists, title="KNN"):
-    pass
+
 
 ### MNN METHODS ################################################################
 ### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
