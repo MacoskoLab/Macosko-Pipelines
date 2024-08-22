@@ -44,6 +44,8 @@ def hexmaps(embeddings, titles = [], fontsize=10):
     for ax in axes[len(embeddings):]:
         ax.set_visible(False)
 
+    return fig, axes
+
 # (sb1, sb2, umi)
 def uvc(df):
     assert df.shape[1] == 3
@@ -223,9 +225,92 @@ def connection_filter(df):
     fig.tight_layout()
     return df, uniques1, uniques2, fig, meta
 
+
+def knn_filter(knn_indices, knn_dists):
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    filter_indexes = set()
+    meta = dict()
+
+    def hist_z(ax, data, z_high=None, z_low=None, bins=100):
+        ax.hist(data, bins=bins)
+        ax.set_ylabel('Count')
+    
+        meanval = np.mean(data)
+        ax.axvline(meanval, color='black', linestyle='dashed')
+        ax.text(meanval, ax.get_ylim()[1] * 0.95, f'Mean: {meanval:.2f}', color='black', ha='center')
+    
+        if z_high:
+            zval = meanval + np.std(data) * z_high
+            ax.axvline(zval, color='red', linestyle='dashed')
+            ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_high}z: {zval:.2f}', color='red', ha='left')
+    
+        if z_low:
+            zval = meanval + np.std(data) * z_low
+            ax.axvline(zval, color='red', linestyle='dashed')
+            ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_low}z: {zval:.2f}', color='red', ha='right')
+    
+    # Filter beads with far nearest neighbors
+    z_high = 3
+    hist_z(axes[0,0], knn_dists[:,1], z_high)
+    axes[0,0].set_xlabel(f'Distance')
+    axes[0,0].set_title(f'Nearest neighbor distance')
+
+    hist_z(axes[0,1], knn_dists[:,-1])
+    axes[0,1].set_xlabel(f'Distance')
+    axes[0,1].set_title(f'Furthest neighbor distance ({knn_dists.shape[1]})')
+
+    data = knn_dists[:,1]
+    high = knn_indices[data >= np.mean(data) + np.std(data) * z_high, 0]
+    filter_indexes.update(high)
+    print(f"{len(high)} far-NN beads removed")
+    meta["far-NN"] = len(high)
+    
+    # Filter too-high or too-low in-edges
+    z_high = 3 ; z_low = -3
+    indexes, data = np.unique(knn_indices, return_counts=True)
+    hist_z(axes[1,0], data, z_high, z_low, bins=np.arange(0, data.max()+1))
+    axes[1,0].set_xlabel('In-edges')
+    axes[1,0].set_title('Number of in-edges')
+    
+    high = indexes[data >= np.mean(data) + np.std(data) * z_high]
+    filter_indexes.update(high)
+    print(f"{len(high)} in-high beads removed")
+    meta["in-high"] = len(high)
+    
+    low = indexes[data <= np.mean(data) + np.std(data) * z_low]
+    filter_indexes.update(low)
+    print(f"{len(low)} in-low beads removed")
+    meta["in-low"] = len(low)
+
+    # Filter low clustering coefficients
+    z_low = -3
+    knn_matrix = create_knn_matrix(knn_indices, knn_dists, knn_indices.shape[1])
+    G = nx.from_scipy_sparse_array(knn_matrix, create_using=nx.Graph, edge_attribute=None)
+    clustering = nx.clustering(G, nodes=None, weight=None)
+    data = [clustering[key] for key in sorted(clustering.keys())]
+    hist_z(axes[1,1], data, z_low=z_low)
+    axes[1,1].set_xlabel('Clustering coefficient')
+    axes[1,1].set_title('Local clustering coefficient')
+    
+    low = knn_indices[data <= np.mean(data) + np.std(data) * z_low, 0]
+    filter_indexes.update(low)
+    print(f"{len(low)} cluster-low beads removed")
+    meta["cluster-low"] = len(low)
+
+    # Filter weakly-connected components
+    n_components, labels = scipy.sparse.csgraph.connected_components(csgraph=knn_matrix, directed=True, connection='strong')
+    wcc = np.where(labels != np.bincount(labels).argmax())[0]
+    filter_indexes.update(wcc)
+    print(f"{len(wcc)} WCC beads removed")
+    meta["wcc"] = len(wcc)
+     
+    fig.tight_layout()
+    return filter_indexes, fig, meta
+
+
 def mask_filter(mat, uniques2, knn_indices, knn_dists, m):
     assert mat.shape[0] == len(uniques2) == len(knn_indices) == len(knn_dists) == len(m)
-    assert np.issubdtype(m.dtype, np.bool_) # mask must be boolean
+    assert np.issubdtype(m.dtype, np.bool_) 
     index_map = dict(zip(np.arange(len(m))[m], np.arange(sum(m))))
     
     mat = mat[m,:]
@@ -236,6 +321,7 @@ def mask_filter(mat, uniques2, knn_indices, knn_dists, m):
     assert mat.shape[0] == len(uniques2) == len(knn_indices) == len(knn_dists) == sum(m)
     return mat, uniques2, knn_indices, knn_dists
 
+    
 ### KNN METHODS ################################################################
 
 def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
@@ -253,7 +339,35 @@ def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
                                 )
     return knn_indices, knn_dists
 
+# knn_indices1 is row-sliced, knn_indices2 is original
+def knn_merge(knn_indices1, knn_dists1, knn_indices2, knn_dists2):
+    assert knn_indices1.shape == knn_dists1.shape
+    assert knn_indices2.shape == knn_dists2.shape
+    assert knn_indices1.shape[0] == knn_dists1.shape[0] == knn_indices2.shape[0] == knn_dists2.shape[0]
 
+    assert all(knn_indices2[:,0] == np.arange(knn_indices2.shape[0]))
+    assert np.all(knn_indices2 >= 0) and np.all(knn_dists2 >= 0)
+    index_map = dict(zip(knn_indices1[:,0], knn_indices2[:,0]))
+    knn_indices1 = np.vectorize(lambda i: index_map.get(i,-1))(knn_indices1)
+    assert all(knn_indices1[:,0] == knn_indices2[:,0])
+    # assert np.all(knn_dists1[np.where(knn_indices1==knn_indices2)] == knn_dists2[np.where(knn_indices1==knn_indices2)])
+    
+    k = max(knn_indices1.shape[1], knn_indices2.shape[1])
+    knn_indices = np.zeros((knn_indices1.shape[0], k), dtype=np.int32)
+    knn_dists = np.zeros((knn_indices1.shape[0], k), dtype=np.float64)
+    
+    for i in range(knn_indices1.shape[0]):
+        d1 = {i:d for i,d in zip(knn_indices1[i], knn_dists1[i]) if i >= 0}
+        d2 = {i:d for i,d in zip(knn_indices2[i], knn_dists2[i]) if i >= 0}
+        d = d1 | d2
+
+        row = sorted(d.items(), key=lambda item: item[1])[:k]
+        inds, dists = zip(*row)
+        
+        knn_indices[i,:] = inds
+        knn_dists[i,:] = dists
+
+    return knn_indices, knn_dists
 
 ### MNN METHODS ################################################################
 ### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
