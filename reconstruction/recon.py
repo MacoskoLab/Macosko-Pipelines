@@ -2,6 +2,7 @@ import os
 import gc
 import sys
 import csv
+import json
 import argparse
 import numpy as np
 import pandas as pd
@@ -24,7 +25,6 @@ def get_args():
 
     parser.add_argument("-n", "--n_neighbors", help="the number of neighboring points used for manifold approximation", type=int, default=45)
     parser.add_argument("-d", "--min_dist", help="the effective minimum distance between embedded points", type=float, default=0.1)
-    parser.add_argument("-I", "--init", help="how to initialize the low dimensional embedding", type=str, default="spectral")
     parser.add_argument("-N", "--n_epochs", help="the number of epochs to be used in optimizing the embedding", type=int, default=5000)
     parser.add_argument("-c", "--connectivity", help="'none', 'min_tree', or 'full_tree'", type=str, default="full_tree")
     parser.add_argument("-n2", "--n_neighbors2", help="the new NN to pick for MNN", type=int, default=45)
@@ -42,12 +42,11 @@ unit = args.unit                 ; print(f"processing unit = {unit}")
 
 n_neighbors = args.n_neighbors   ; print(f"n_neighbors = {n_neighbors}")
 min_dist = args.min_dist         ; print(f"min_dist = {min_dist}")
-init = args.init                 ; print(f"init = {init}")
 n_epochs = args.n_epochs         ; print(f"n_epochs = {n_epochs}")
 connectivity = args.connectivity ; print(f"connectivity = {connectivity}")
 n_neighbors2 = args.n_neighbors2 ; print(f"n_neighbors2 = {n_neighbors2}")
 
-name = f"UMAP_n={n_neighbors}_d={min_dist}_I={init}"
+name = f"UMAP_n={n_neighbors}_d={min_dist}"
 
 if connectivity != "none":
     assert connectivity in ["min_tree", "full_tree"]
@@ -128,6 +127,7 @@ np.savez_compressed(os.path.join(out_dir, "knn.npz"), indices=knn_indices, dists
 knn = (knn_indices, knn_dists)
 
 if connectivity != "none":
+    print("\Creating the MNN...")
     mnn_indices, mnn_dists = mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors2, connectivity)
     np.savez_compressed(os.path.join(out_dir, "mnn.npz"), indices=mnn_indices, dists=mnn_dists)
     assert np.all(np.isfinite(mnn_indices))
@@ -147,16 +147,14 @@ elif unit.upper() == "GPU":
 else:
     exit(f"Unrecognized --unit flag {unit}")
 
-
-
-def cpu_umap(mat, knn, n_epochs, init=init):
+def my_umap(mat, knn, n_epochs, init="spectral"):
     reducer = UMAP(n_components = 2,
                    metric = "cosine",
                    spread = 1.0,
                    random_state = None,
                    verbose = True,
-                   precomputed_knn = knn,
                    
+                   precomputed_knn = knn,
                    n_neighbors = n_neighbors,
                    min_dist = min_dist,
                    n_epochs = n_epochs,
@@ -166,19 +164,14 @@ def cpu_umap(mat, knn, n_epochs, init=init):
     return(embedding)
 
 print("\nRunning UMAP...")
-embeddings.append(my_umap(mat, knn, n_epochs=1000))    
-for i in range(int(np.ceil(n_epochs/1000))-1):
-    print(i+2)
-    # # Upload intermediate embeddings
-    # try:
-    #     import gcsfs
-    #     file_path = os.path.join(gspath, name, "embeddings.npz")
-    #     with gcsfs.GCSFileSystem().open(file_path, 'wb') as f:
-    #         np.savez(f, **{f"arr_{i}":e for i,e in enumerate(embeddings)})
-    #     print("Intermediate embeddings successfully uploaded")
-    # except Exception as e:
-    #     print(f"Unable to upload intermediate embeddings: {str(e)}")
-    embeddings.append(my_umap(mat, knn, init=embeddings[-1], n_epochs=1000))
+if unit.upper() == "CPU":
+    embeddings.append(my_umap(mat, knn, n_epochs=1000))
+    for i in range(int(np.ceil(n_epochs/1000))-1):
+        embeddings.append(my_umap(mat, knn, init=embeddings[-1], n_epochs=1000))
+elif unit.upper() == "GPU":
+    embeddings.append(my_umap(mat, knn, n_epochs=n_epochs))
+
+### WRITE RESULTS ##############################################################
 
 print("\nWriting results...")
 embedding = embeddings[-1]
@@ -197,16 +190,16 @@ with open(os.path.join(out_dir, "Puck.csv"), mode='w', newline='') as file:
 # Plot the umap
 title = f"umap hexbin ({embedding.shape[0]:} anchor beads) [{(len(embeddings))*1000} epochs]"
 fig, ax = hexmap(embedding, title)
-fig.savefig(os.path.join(out_dir, "umap.pdf"), dpi=200) ; del fig
+fig.savefig(os.path.join(out_dir, "umap.pdf"), dpi=200)
 
 # Plot the intermediate embeddings
 fig, axes = hexmaps(embeddings, titles=[(i+1)*1000 for i in range(len(embeddings))])
-fig.savefig(os.path.join(out_dir, "umaps.pdf"), dpi=200) ; del fig
+fig.savefig(os.path.join(out_dir, "umaps.pdf"), dpi=200)
 
 # Plot the convergence
 if len(embeddings) > 1:
+    fig, axes = convergence_plot(embeddings)
     fig.savefig(os.path.join(out_dir, "convergence.pdf"), dpi=200) ; del fig
-embeddings
 
 # Make summary pdf
 names = ["umap", "connections", "knn", "uvc", "convergence", "umaps"]
@@ -221,5 +214,9 @@ if len(files) > 0:
     merger.write(os.path.join(out_dir, "summary.pdf"))
     merger.close()
     [os.remove(file) for file in files]
+
+# Write the metadata
+with open(os.path.join(out_dir, "metadata.json"), 'w') as file:
+    json.dump(metadata, file)
 
 print("\nDone!")
