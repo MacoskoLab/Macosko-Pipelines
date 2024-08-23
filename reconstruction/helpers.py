@@ -7,23 +7,23 @@ from functools import reduce
 from collections import Counter
 
 # (x, y)
-def hexmap(embedding, title=""):
+def hexmap(embedding, title="", fontsize=12):
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
     x, y = embedding[:, 0], embedding[:, 1]
     hb = ax.hexbin(x, y, cmap='viridis', linewidths=0.5)
     ax.axis('equal')
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title(f'{title}')
+    ax.set_title(f'{title}', fontsize=fontsize)
     for spine in ax.spines.values():
         spine.set_visible(False)
     plt.tight_layout()
     return fig, ax
 
 # [(x, y)]
-def hexmaps(embeddings, titles = [], fontsize=10):
+def hexmaps(embeddings, titles=[], fontsize=10):
     n = math.ceil(len(embeddings)**0.5)
-    fig, axes = plt.subplots(n, n, figsize=(2*n, 2*n))
+    fig, axes = plt.subplots(n, n, figsize=(8, 8))
     axes = axes.flatten()
 
     if len(titles) == 0:
@@ -49,43 +49,34 @@ def hexmaps(embeddings, titles = [], fontsize=10):
 # (sb1, sb2, umi)
 def uvc(df):
     assert df.shape[1] == 3
-    df.columns = ['sb1', 'sb2', 'umi']
+    df.columns = ['sb1_index', 'sb2_index', 'umi']
     
-    df1 = df.groupby('sb1').agg(umi=('umi', 'sum'), size=('sb1', 'size')).reset_index()
+    df1 = df.groupby('sb1_index').agg(umi=('umi', 'sum'), size=('sb1_index', 'size')).reset_index()
     df1[['umi', 'size']] = np.log10(df1[['umi', 'size']])
     
-    df2 = df.groupby('sb2').agg(umi=('umi', 'sum'), size=('sb2', 'size')).reset_index()
+    df2 = df.groupby('sb2_index').agg(umi=('umi', 'sum'), size=('sb2_index', 'size')).reset_index()
     df2[['umi', 'size']] = np.log10(df2[['umi', 'size']])
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 8))
-    m = 1
+    def plot(ax, df, title):
+        hb = ax.hexbin(df['umi'], df['size'], gridsize=100, bins='log', cmap='plasma')
+        ax.set_xlabel(f'umi (mean: {np.mean(df["umi"]):.2f}, median: {np.median(df["umi"]):.2f})')
+        ax.set_ylabel(f'connections (mean: {np.mean(df["size"]):.2f}, median: {np.median(df["size"]):.2f})')
+        ax.set_title(title)
 
-    hb = ax1.hexbin(df1['umi'], df1['size'], gridsize=100, bins='log', cmap='plasma')
-    ax1.set_xlabel(f'umi (mean: {np.mean(df1["umi"]):.2f}, median: {np.median(df1["umi"]):.2f})')
-    ax1.set_ylabel(f'connections (mean: {np.mean(df1["size"]):.2f}, median: {np.median(df1["size"]):.2f})')
-    ax1.set_title('sb1')
+        x1, x2 = ax.get_xlim()
+        y1, y2 = ax.get_ylim()
+        pts = np.linspace(max(x1,y1), min(x2,y2), 100)
+        ax.plot(pts, pts, color='black', linewidth=0.5)
+        ax.set_xlim((x1, x2))
+        ax.set_ylim((y1, y2))
+        ax.axis('equal')
 
-    xlim1 = ax1.get_xlim()
-    ylim1 = ax1.get_ylim()
-    x_vals1 = np.linspace(xlim1[0], xlim1[1], 100)
-    ax1.plot(x_vals1, x_vals1 * m, color='black', linewidth=0.5, label=f'y = {m}x')
-    ax1.set_xlim(xlim1)
-    ax1.set_ylim(ylim1)
-    
-    hb = ax2.hexbin(df2['umi'], df2['size'], gridsize=100, bins='log', cmap='plasma')
-    ax2.set_xlabel(f'umi (mean: {np.mean(df2["umi"]):.2f}, median: {np.median(df2["umi"]):.2f})')
-    ax2.set_ylabel(f'connections (mean: {np.mean(df2["size"]):.2f}, median: {np.median(df2["size"]):.2f})')
-    ax2.set_title('sb2')
-
-    xlim2 = ax2.get_xlim()
-    ylim2 = ax2.get_ylim()
-    x_vals2 = np.linspace(xlim2[0], xlim2[1], 100)
-    ax2.plot(x_vals2, x_vals2 * m, color='black', linewidth=0.5, label=f'y = {m}x')
-    ax2.set_xlim(xlim2)
-    ax2.set_ylim(ylim2)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
+    plot(ax1, df1, "sb1")
+    plot(ax2, df2, "sb2")
     
     plt.tight_layout()
-    plt.show()
+    return fig
 
 # (x, y, color)
 def beadplot(puck, cmap='viridis'):
@@ -97,6 +88,8 @@ def beadplot(puck, cmap='viridis'):
         y = puck[:,1]
         umi = puck[:,2]
     elif isinstance(puck, pd.DataFrame):
+        if puck.shape[1] == 2:
+            puck.loc[:,"color"] = 0
         puck = puck.sort_values(by=puck.columns[2])
         x = puck.iloc[:,0]
         y = puck.iloc[:,1]
@@ -104,22 +97,24 @@ def beadplot(puck, cmap='viridis'):
     else:
         raise TypeError("Input must be a NumPy ndarray or a pandas DataFrame")
 
-    plt.figure(figsize=(12, 12))
+    plt.figure(figsize=(8, 8))
     plt.scatter(x, y, c=umi, cmap=cmap, s=0.1)
     plt.colorbar()
     plt.xlabel('xcoord')
     plt.ylabel('ycoord')
     plt.axis('square')
-    plt.show()
+    return plt
 
 # embedding1, embedding2
 def L2_distance(p1, p2):
-    dists = np.linalg.norm(p1 - p2, axis=1)
-    return np.sum(dists)
+    assert p1.shape == p2.shape
+    dists = np.sqrt(np.sum(np.square(p1 - p2), axis=1))
+    return np.sum(dists) / p1.shape[0]
 
 # embedding1, embedding2
 def ICP_distance(points1, points2):
     import open3d as o3d
+    assert points1.shape == points2.shape
     points1_3d = np.hstack((points1, np.zeros((points1.shape[0], 1))))
     points2_3d = np.hstack((points2, np.zeros((points2.shape[0], 1))))
     
@@ -137,14 +132,28 @@ def ICP_distance(points1, points2):
     
     pc2.transform(transformation)
     distances = np.asarray(pc1.compute_point_cloud_distance(pc2))
-    total_distance = np.sum(distances)
-    return(total_distance)
+    avg_distance = np.sum(distances) / points1.shape[0]
+    print(avg_distance)
+    
+    return(avg_distance)
 
+def convergence_plot(embeddings):
+    assert len(embeddings) > 1
+    x = [(i+2)*1000 for i in range(len(embeddings)-1)]
+    y = [ICP_distance(embeddings[i], embeddings[i+1]) for i in range(len(embeddings)-1)]
+
+    plt.figure(figsize=(8, 6))
+    plt.scatter(x, y, color='blue')
+    plt.plot(x, y, color='red')
+    plt.xlabel('Epochs')
+    plt.ylabel('ICP Distance')
+    plt.title('Convergence plot')
+    
 ### BEAD FILTERING METHODS #####################################################
 
 def connection_filter(df):
     assert all(df.columns == ["sb1_index", "sb2_index", "umi"])
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
     meta = {"umi_init": sum(df["umi"])}
 
     def hist_z(ax, data, z_high=None, z_low=None):
@@ -227,7 +236,7 @@ def connection_filter(df):
 
 
 def knn_filter(knn_indices, knn_dists):
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
     filter_indexes = set()
     meta = dict()
 
