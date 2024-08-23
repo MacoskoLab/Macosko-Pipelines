@@ -10,9 +10,8 @@ from scipy.sparse import coo_matrix
 from PyPDF2 import PdfMerger
 from helpers import *
 
-#os.chdir("/home/nsachdev/recon/data/240609_SL-EXC_0308_A22KHFYLT3__240716_SL-EXG_0167_B22CG3TLT4/D702-1234_D703_D706_D707-5__D702-8_D703-2_D706-2_D707-8/")
 # os.chdir("/home/nsachdev/recon/data/240609_SL-EXC_0308_A22KHFYLT3/D707-1234")
-os.chdir("/home/nsachdev/recon/data/240411/H14_1")
+# os.chdir("/home/nsachdev/recon/data/240411/H14_1")
 # os.chdir("/home/nsachdev/recon/data/240615_SL-EXG_0144_A22KH5WLT3/D703_D704_D705_D706")
 # os.chdir("/home/nsachdev/recon/data/240609_SL-EXC_0308_A22KHFYLT3/D702-1234_D703_D706_D707-5")
 
