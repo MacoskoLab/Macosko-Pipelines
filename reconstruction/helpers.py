@@ -71,12 +71,12 @@ def uvc(df):
         ax.set_ylim((y1, y2))
         ax.axis('equal')
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
-    plot(ax1, df1, "sb1")
-    plot(ax2, df2, "sb2")
-    
+    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    plot(axes[0], df1, "sb1")
+    plot(axes[1], df2, "sb2")
     plt.tight_layout()
-    return fig
+    
+    return fig, axes
 
 # (x, y, color)
 def beadplot(puck, cmap='viridis'):
@@ -111,43 +111,35 @@ def L2_distance(p1, p2):
     dists = np.sqrt(np.sum(np.square(p1 - p2), axis=1))
     return np.sum(dists) / p1.shape[0]
 
-# embedding1, embedding2
-def ICP_distance(points1, points2):
-    import open3d as o3d
-    assert points1.shape == points2.shape
-    points1_3d = np.hstack((points1, np.zeros((points1.shape[0], 1))))
-    points2_3d = np.hstack((points2, np.zeros((points2.shape[0], 1))))
-    
-    pc1 = o3d.geometry.PointCloud()
-    pc1.points = o3d.utility.Vector3dVector(points1_3d)
-    pc2 = o3d.geometry.PointCloud()
-    pc2.points = o3d.utility.Vector3dVector(points2_3d)
-    
-    threshold = 0.01
-    trans_init = np.eye(4)
-    transformation = o3d.pipelines.registration.registration_icp(
-        pc1, pc2, threshold, trans_init,
-        o3d.pipelines.registration.TransformationEstimationPointToPoint()
-    ).transformation
-    
-    pc2.transform(transformation)
-    distances = np.asarray(pc1.compute_point_cloud_distance(pc2))
-    avg_distance = np.sum(distances) / points1.shape[0]
-    print(avg_distance)
-    
-    return(avg_distance)
+def procrustes_distance(p1, p2):
+    from scipy.spatial import procrustes
+    assert p1.shape == p2.shape
+    _, _, disparity = procrustes(p1, p2)
+    return disparity
 
 def convergence_plot(embeddings):
     assert len(embeddings) > 1
     x = [(i+2)*1000 for i in range(len(embeddings)-1)]
-    y = [ICP_distance(embeddings[i], embeddings[i+1]) for i in range(len(embeddings)-1)]
+    y1 = [L2_distance(embeddings[i], embeddings[i+1]) for i in range(len(embeddings)-1)]
+    y2 = [procrustes_distance(embeddings[i], embeddings[i+1]) for i in range(len(embeddings)-1)]
 
-    plt.figure(figsize=(8, 6))
-    plt.scatter(x, y, color='blue')
-    plt.plot(x, y, color='red')
-    plt.xlabel('Epochs')
-    plt.ylabel('ICP Distance')
-    plt.title('Convergence plot')
+    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+
+    axes[0].scatter(x, y1, color='blue')
+    axes[0].plot(x, y1, color='red')
+    axes[0].set_xlabel('Epochs')
+    axes[0].set_ylabel('Mean UMAP Distance')
+    axes[0].set_title('Average L2 Displacement')
+    
+    axes[1].scatter(x, y2, color='blue')
+    axes[1].plot(x, y2, color='red')
+    axes[1].set_xlabel('Epochs')
+    axes[1].set_ylabel('Disparity')
+    axes[1].set_title('Procrustes Disparity')
+    
+    plt.tight_layout()
+    
+    return fig, axes
     
 ### BEAD FILTERING METHODS #####################################################
 
