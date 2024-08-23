@@ -157,11 +157,13 @@ def connection_filter(df):
         ax.text(meanval, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='center')
     
         if z_high:
+            assert z_high > 0
             zval = meanval + np.std(data) * z_high
             ax.axvline(zval, color='red', linestyle='dashed')
             ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_high}z: {10**zval:.2f}', color='red', ha='left')
     
         if z_low:
+            assert z_low < 0
             zval = meanval + np.std(data) * z_low
             ax.axvline(zval, color='red', linestyle='dashed')
             ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_low}z: {10**zval:.2f}', color='red', ha='right')
@@ -220,8 +222,8 @@ def connection_filter(df):
     codes2, uniques2 = pd.factorize(df['sb2_index'], sort=True)
     df.loc[:, 'sb2_index'] = codes2
 
-    # assert sorted(list(set(df.sb1_index))) == list(range(len(set(df.sb1_index))))
-    # assert sorted(list(set(df.sb2_index))) == list(range(len(set(df.sb2_index))))
+    # assert set(df.sb1_index) == set(range(max(df.sb1_index)+1))
+    # assert set(df.sb2_index) == set(range(max(df.sb2_index)+1))
     
     fig.tight_layout()
     return df, uniques1, uniques2, fig, meta
@@ -241,30 +243,33 @@ def knn_filter(knn_indices, knn_dists):
         ax.text(meanval, ax.get_ylim()[1] * 0.95, f'Mean: {meanval:.2f}', color='black', ha='center')
     
         if z_high:
+            assert z_high > 0
             zval = meanval + np.std(data) * z_high
             ax.axvline(zval, color='red', linestyle='dashed')
             ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_high}z: {zval:.2f}', color='red', ha='left')
     
         if z_low:
+            assert z_low < 0
             zval = meanval + np.std(data) * z_low
             ax.axvline(zval, color='red', linestyle='dashed')
             ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_low}z: {zval:.2f}', color='red', ha='right')
     
     # Filter beads with far nearest neighbors
     z_high = 3
-    hist_z(axes[0,0], knn_dists[:,1], z_high)
+    data = knn_dists[:,1]
+    hist_z(axes[0,0], data, z_high)
     axes[0,0].set_xlabel(f'Distance')
     axes[0,0].set_title(f'Nearest neighbor distance')
 
-    hist_z(axes[0,1], knn_dists[:,-1])
-    axes[0,1].set_xlabel(f'Distance')
-    axes[0,1].set_title(f'Furthest neighbor distance ({knn_dists.shape[1]})')
-
-    data = knn_dists[:,1]
     high = knn_indices[data >= np.mean(data) + np.std(data) * z_high, 0]
     filter_indexes.update(high)
     print(f"{len(high)} far-NN beads removed")
     meta["far-NN"] = len(high)
+
+    # Plot furthest neighbor distance
+    hist_z(axes[0,1], knn_dists[:,-1])
+    axes[0,1].set_xlabel(f'Distance')
+    axes[0,1].set_title(f'Furthest neighbor distance ({knn_dists.shape[1]})')
     
     # Filter too-high or too-low in-edges
     z_high = 3 ; z_low = -3
@@ -286,7 +291,7 @@ def knn_filter(knn_indices, knn_dists):
     # Filter low clustering coefficients
     z_low = -3
     knn_matrix = create_knn_matrix(knn_indices, knn_dists, knn_indices.shape[1])
-    G = nx.from_scipy_sparse_array(knn_matrix, create_using=nx.Graph, edge_attribute=None)
+    G = nx.from_scipy_sparse_array(knn_matrix, create_using=nx.Graph, edge_attribute=None) # undirected, unweighted
     clustering = nx.clustering(G, nodes=None, weight=None)
     data = [clustering[key] for key in sorted(clustering.keys())]
     hist_z(axes[1,1], data, z_low=z_low)
@@ -308,21 +313,6 @@ def knn_filter(knn_indices, knn_dists):
     fig.tight_layout()
     return filter_indexes, fig, meta
 
-
-def mask_filter(mat, uniques2, knn_indices, knn_dists, m):
-    assert mat.shape[0] == len(uniques2) == len(knn_indices) == len(knn_dists) == len(m)
-    assert np.issubdtype(m.dtype, np.bool_) 
-    index_map = dict(zip(np.arange(len(m))[m], np.arange(sum(m))))
-    
-    mat = mat[m,:]
-    uniques2 = uniques2[m]
-    knn_indices = np.vectorize(lambda x: index_map[x])(knn_indices[m,:])
-    knn_dists = knn_dists[m,:]
-
-    assert mat.shape[0] == len(uniques2) == len(knn_indices) == len(knn_dists) == sum(m)
-    return mat, uniques2, knn_indices, knn_dists
-
-    
 ### KNN METHODS ################################################################
 
 def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
@@ -332,15 +322,15 @@ def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
                                     metric = metric,
                                     metric_kwds = {},
                                     angular = False, # Does nothing?
-                                    random_state = None, # sklearn.utils.check_random_state(0)
-                                    low_memory = True, # False?
+                                    random_state = None,
+                                    low_memory = False, # True?
                                     use_pynndescent = True, # Does nothing?
                                     n_jobs = n_cores,
                                     verbose = True
                                 )
     return knn_indices, knn_dists
 
-# knn_indices1 is row-sliced, knn_indices2 is original
+# knn_indices1 can be row-sliced, knn_indices2 is original
 def knn_merge(knn_indices1, knn_dists1, knn_indices2, knn_dists2):
     assert knn_indices1.shape == knn_dists1.shape
     assert knn_indices2.shape == knn_dists2.shape
