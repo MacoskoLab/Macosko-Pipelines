@@ -89,9 +89,11 @@ df.sb1_index -= 1 # convert from 1- to 0-indexed
 df.sb2_index -= 1 # convert from 1- to 0-indexed
 sb1 = pd.read_csv(os.path.join(in_dir, 'sb1.csv.gz'), compression='gzip')
 sb2 = pd.read_csv(os.path.join(in_dir, 'sb2.csv.gz'), compression='gzip')
-metadata["init"] = {"sb1": sb1.shape[0], "sb2": sb2.shape[0], "umi": sum(df["umi"])}
 assert sorted(list(set(df.sb1_index))) == list(range(sb1.shape[0]))
 assert sorted(list(set(df.sb2_index))) == list(range(sb2.shape[0]))
+
+metadata["init"] = {"sb1": sb1.shape[0], "sb2": sb2.shape[0], "umi": sum(df["umi"])}
+fig, axes = uvc(df) ; fig.savefig(os.path.join(out_dir,'uvc.pdf'), format='pdf') ; del fig, axes
 print(f"{sb1.shape[0]} R1 barcodes")
 print(f"{sb2.shape[0]} R2 barcodes")
 
@@ -130,7 +132,6 @@ if connectivity != "none":
     np.savez_compressed(os.path.join(out_dir, "mnn.npz"), indices=mnn_indices, dists=mnn_dists)
     assert np.all(np.isfinite(mnn_indices))
     assert np.all(np.isfinite(mnn_dists))
-    
     n_neighbors = n_neighbors2
     knn = (mnn_indices, mnn_dists)
 
@@ -146,7 +147,9 @@ elif unit.upper() == "GPU":
 else:
     exit(f"Unrecognized --unit flag {unit}")
 
-def my_umap(mat, knn, n_epochs, init=init):
+
+
+def cpu_umap(mat, knn, n_epochs, init=init):
     reducer = UMAP(n_components = 2,
                    metric = "cosine",
                    spread = 1.0,
@@ -196,12 +199,17 @@ title = f"umap hexbin ({embedding.shape[0]:} anchor beads) [{(len(embeddings))*1
 fig, ax = hexmap(embedding, title)
 fig.savefig(os.path.join(out_dir, "umap.pdf"), dpi=200) ; del fig
 
-# Plot the training
+# Plot the intermediate embeddings
 fig, axes = hexmaps(embeddings, titles=[(i+1)*1000 for i in range(len(embeddings))])
 fig.savefig(os.path.join(out_dir, "umaps.pdf"), dpi=200) ; del fig
 
+# Plot the convergence
+if len(embeddings) > 1:
+    fig.savefig(os.path.join(out_dir, "convergence.pdf"), dpi=200) ; del fig
+embeddings
+
 # Make summary pdf
-names = ["umap", "connections", "knn", "umaps"]
+names = ["umap", "connections", "knn", "uvc", "convergence", "umaps"]
 paths = [os.path.join(out_dir, n+".pdf") for n in names]
 files = [p for p in paths if os.path.isfile(p)]
 if len(files) > 0:
@@ -212,5 +220,6 @@ if len(files) > 0:
 
     merger.write(os.path.join(out_dir, "summary.pdf"))
     merger.close()
+    [os.remove(file) for file in files]
 
 print("\nDone!")
