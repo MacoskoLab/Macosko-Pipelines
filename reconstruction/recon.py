@@ -71,9 +71,9 @@ try:
         embeddings = [data[key] for key in data]
     print(f"{len(embeddings)} previous embeddings found")
 except Exception as e:
-    embeddings = []
     print(f"Embeddings load error: {str(e)}")
     print("No previous embeddings found, starting from scratch")
+    embeddings = []
 
 metadata = {}
 
