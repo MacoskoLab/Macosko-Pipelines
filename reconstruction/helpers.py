@@ -323,7 +323,7 @@ def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
                                     metric_kwds = {},
                                     angular = False, # Does nothing?
                                     random_state = None,
-                                    low_memory = False, # True?
+                                    low_memory = True, # False?
                                     use_pynndescent = True, # Does nothing?
                                     n_jobs = n_cores,
                                     verbose = True
