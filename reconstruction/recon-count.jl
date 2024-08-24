@@ -21,14 +21,20 @@ using Distributions: pdf, Exponential
 # JJJJJJJJJJJJJJJJJ CTGTTTCCTG NNNNNNNNN          (V16)
 
 # Load the command-line arguments
-if length(ARGS) == 2
+if length(ARGS) == 3
     fastq_path = ARGS[1]
     out_path = ARGS[2]
+    downsampling_level = ARGS[3]
+elseif length(ARGS) == 2
+    fastq_path = ARGS[1]
+    out_path = ARGS[2]
+    downsampling_level = "1"
 elseif length(ARGS) == 1
     fastq_path = ARGS[1]
     out_path = "."
+    downsampling_level = "1"
 else 
-    error("Usage: julia recon-count.jl fastq_path [out_path]")
+    error("Usage: julia recon-count.jl fastq_path [out_path] [downsampling_level]")
 end
 println("FASTQ path: "*fastq_path)
 @assert isdir(fastq_path) "FASTQ path not found"
@@ -36,6 +42,9 @@ println("FASTQ path: "*fastq_path)
 println("Output path: "*out_path)
 Base.Filesystem.mkpath(out_path)
 @assert isdir(out_path) "Output path not created"
+const prob = parse(Float64, downsampling_level)
+@assert 0 < prob <= 1 "Invalid downsampling level $prob"
+prob < 1 && println("Downsampling level: $prob")
 
 # Load the FASTQ paths
 fastqs = readdir(fastq_path, join=true)
@@ -159,6 +168,8 @@ const umi_homopolymer_whitelist = reduce(union, [listHDneighbors(c^9, i) for c i
 const sb_homopolymer_whitelist = reduce(union, [listHDneighbors(c^15, i) for c in ["A","C","G","T"] for i in 0:3])
 const UP1_whitelist = reduce(union, [listHDneighbors(UP1, i) for i in 0:2])
 const UP2_whitelist = reduce(union, [listHDneighbors(UP2, i) for i in 0:1])
+const UP1_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP1), i) for i in 0:3])
+const UP2_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP2), i) for i in 0:2])
 
 ####################################################################################################
 
@@ -169,7 +180,11 @@ function process_fastqs(R1s, R2s)
     sb1_dictionary = Dict{String, UInt32}() # sb1 -> sb1_i
     sb2_dictionary = Dict{String, UInt32}() # sb2 -> sb2_i
     mat = Dict{Tuple{UInt32, UInt32, UInt32, UInt32}, UInt32}() # (sb1_i, umi1_i, sb2_i, umi2_i) -> reads
-    metadata = Dict("reads"=>0, "R1_tooshort"=>0, "R2_tooshort"=>0, "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0, "R1_no_UP"=>0, "R2_no_UP"=>0, "R1_homopolymer_SB"=>0, "R2_homopolymer_SB"=>0, "reads_filtered"=>0)
+    metadata = Dict("reads"=>0, "reads_filtered"=>0,
+                    "R1_tooshort"=>0, "R2_tooshort"=>0,
+                    "R1_no_UP"=>0, "R2_no_UP"=>0, "R1_GG_UP"=>0, "R2_GG_UP"=>0,
+                    "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0,
+                    "R1_homopolymer_SB"=>0, "R2_homopolymer_SB"=>0)
 
     for fastqpair in zip(R1s, R2s)
         println(fastqpair) ; flush(stdout)
@@ -178,6 +193,10 @@ function process_fastqs(R1s, R2s)
         for record in zip(it1, it2)
             metadata["reads"] += 1
 
+            # Random dropout for downsampling
+            prob < 1 && rand() > prob && continue
+
+            # Validate the sequence length
             skip = false
             if length(FASTQ.sequence(record[1])) < 44
                 metadata["R1_tooshort"] += 1
@@ -191,9 +210,33 @@ function process_fastqs(R1s, R2s)
                 continue
             end
 
+            # Parse the read structure
             sb1_1, sb1_2, up1, umi1 = get_R1(record[1])
             sb2_1, sb2_2, up2, umi2 = get_R2(record[2])
 
+            # Validate the UP
+            skip = false
+            if !in(up1, UP1_whitelist)
+                metadata["R1_no_UP"] += 1
+                skip = true
+            end
+            if !in(up2, UP2_whitelist)
+                metadata["R2_no_UP"] += 1
+                skip = true
+            end
+            if in(up1, UP1_GG_whitelist)
+                metadata["R1_GG_UP"] += 1
+                skip = true
+            end
+            if in(up2, UP2_GG_whitelist)
+                metadata["R2_GG_UP"] += 1
+                skip = true
+            end
+            if skip
+                continue
+            end
+
+            # Validate the UMI
             skip = false
             if occursin('N', umi1)
                 metadata["R1_N_UMI"] += 1
@@ -211,14 +254,6 @@ function process_fastqs(R1s, R2s)
                 metadata["R2_homopolymer_UMI"] += 1
                 skip = true
             end
-            if !in(up1, UP1_whitelist)
-                metadata["R1_no_UP"] += 1
-                skip = true
-            end
-            if !in(up2, UP2_whitelist)
-                metadata["R2_no_UP"] += 1
-                skip = true
-            end
             if skip
                 continue
             end
@@ -226,6 +261,7 @@ function process_fastqs(R1s, R2s)
             sb1 = sb1_1*sb1_2
             sb2 = sb2_1*sb2_2
 
+            # Validate the SB
             skip = false
             if in(sb1[1:15], sb_homopolymer_whitelist)
                 metadata["R1_homopolymer_SB"] += 1
@@ -239,7 +275,7 @@ function process_fastqs(R1s, R2s)
                 continue
             end
 
-            # update counts
+            # Update counts
             sb1_i = get!(sb1_dictionary, sb1, length(sb1_dictionary) + 1)
             sb2_i = get!(sb2_dictionary, sb2, length(sb2_dictionary) + 1)
             umi1_i = UMItoindex(umi1)
@@ -290,7 +326,7 @@ function umi_density_plot(table, R)
         push!(ly_s, kde)
     end
 
-    min_umis = 5     
+    min_umis = 5
     min_beads = 10_000
     max_umis = x[end-findfirst(cumsum(reverse(y)) .>= min_beads)]
     
@@ -301,8 +337,9 @@ function umi_density_plot(table, R)
         uc = round(10^mins[1])
     else
         println("\nWARNING: no local min found for $R, selecting flattest point along curve")
-        i = argmin(abs.(diff(ly_s[1000:round(Int,log10(max_umis)*1000)])))
-        uc = round(10^lx_s[1000-1+i])
+        l = round(Int,log10(min_umis)*1000) ; r = round(Int,log10(max_umis)*1000)
+        i = argmin(abs.(diff(ly_s[l:r])))
+        uc = round(10^lx_s[l-1+i])
     end
 
     # Create an elbow plot
@@ -354,7 +391,7 @@ metadata["R2_umicutoff"] = uc2
 metadata["R1_barcodes"] = bc1
 metadata["R2_barcodes"] = bc2
 
-println("done") ; flush(stdout) ; GC.gc()
+println("...done") ; flush(stdout) ; GC.gc()
 
 ####################################################################################################
 
@@ -568,14 +605,16 @@ mm = matching_metadata
 data = [
 ("R1 bead type", "Total reads", "R2 bead type"),
 (bead1_type, f(m["reads"]), bead2_type),
-("R1 too short", "", "R2 too short"),
-(d(m["R1_tooshort"],m["reads"]), "", d(m["R2_tooshort"],m["reads"])),
-("R1 degen UMI", "", "R2 degen UMI"),
-(d(m["R1_homopolymer_UMI"],m["reads"]), "", d(m["R2_homopolymer_UMI"],m["reads"])),
-("R1 LQ UMI" , "", "R2 LQ UMI"),
-(d(m["R1_N_UMI"],m["reads"]), "", d(m["R2_N_UMI"],m["reads"])),
+("R1 too short", prob<1 ? "Downsampling level" : "", "R2 too short"),
+(d(m["R1_tooshort"],m["reads"]), prob<1 ? "$prob" : "", d(m["R2_tooshort"],m["reads"])),
+("R1 GG UP", "", "R2 GG UP"),
+(d(m["R1_GG_UP"],m["reads"]), "", d(m["R2_GG_UP"],m["reads"])),
 ("R1 no UP", "", "R2 no UP"),
 (d(m["R1_no_UP"],m["reads"]), "", d(m["R2_no_UP"],m["reads"])),
+("R1 LQ UMI" , "", "R2 LQ UMI"),
+(d(m["R1_N_UMI"],m["reads"]), "", d(m["R2_N_UMI"],m["reads"])),
+("R1 degen UMI", "", "R2 degen UMI"),
+(d(m["R1_homopolymer_UMI"],m["reads"]), "", d(m["R2_homopolymer_UMI"],m["reads"])),
 ("R1 degen SB", "", "R2 degen SB"),
 (d(m["R1_homopolymer_SB"],m["reads"]), "", d(m["R2_homopolymer_SB"],m["reads"])),
 ("", "Filtered reads", ""),
@@ -590,8 +629,6 @@ data = [
 (f(m["R1_barcodes"]), string(round(m["R2_barcodes"]/m["R1_barcodes"],digits=2)), f(m["R2_barcodes"])),
 ("R1 exact matches", "", "R2 exact matches"),
 (d(mm["R1_exact"],m["umis_filtered"]), "", d(mm["R2_exact"],m["umis_filtered"])),
-("R1 none matches", "", "R2 none matches"),
-(d(mm["R1_none"],m["umis_filtered"]), "", d(mm["R2_none"],m["umis_filtered"])),
 ("", "Matched UMIs", ""),
 ("", d(m["umis_matched"], m["umis_filtered"]), ""),
 ("R1 chimeras", "", "R2 chimeras"),
@@ -606,7 +643,7 @@ for (i, (str1, str2, str3)) in enumerate(data)
     annotate!(p, 2, 32 - i + 1, text(str2, :center, 12))
     annotate!(p, 3, 32 - i + 1, text(str3, :center, 12))
 end
-hline!(p, [16.5], linestyle = :solid, color = :black)
+hline!(p, [14.5], linestyle = :solid, color = :black)
 savefig(p, joinpath(out_path, "metadata.pdf"))
 
 merge_pdfs([joinpath(out_path,"elbows.pdf"),
@@ -615,12 +652,16 @@ merge_pdfs([joinpath(out_path,"elbows.pdf"),
             joinpath(out_path,"histograms.pdf")],
             joinpath(out_path,"QC.pdf"), cleanup=true)
 
+# Save the metadata
+metadata["R1_beadtype"] = parse(Int, join(filter(isdigit, bead1_type)))
+metadata["R2_beadtype"] = parse(Int, join(filter(isdigit, bead2_type)))
+metadata["downsampling_pct"] = round(Int, prob*100)
 @assert isempty(intersect(keys(metadata), keys(matching_metadata)))
 meta_df = DataFrame([Dict(:key => k, :value => v) for (k,v) in merge(metadata, matching_metadata)])
 sort!(meta_df, :key) ; meta_df = select(meta_df, :key, :value)
-
 CSV.write(joinpath(out_path,"metadata.csv"), meta_df, writeheader=false)
 
+# Save the matrix
 @assert length(df1.umi) == length(sb1_whitelist_short)
 open(GzipCompressorStream, joinpath(out_path,"sb1.csv.gz"), "w") do file
     write(file, "sb1,umi,connections,max\n")
