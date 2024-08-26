@@ -277,6 +277,7 @@ def knn_filter(knn_indices, knn_dists):
     hist_z(axes[1,0], data, z_high, z_low, bins=np.arange(0, data.max()+1))
     axes[1,0].set_xlabel('In-edges')
     axes[1,0].set_title('Number of in-edges')
+    axes[1,0].set_xlim(0, 4*knn_indices.shape[1])
     
     high = indexes[data >= np.mean(data) + np.std(data) * z_high]
     filter_indexes.update(high)
