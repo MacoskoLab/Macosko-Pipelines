@@ -317,18 +317,45 @@ def knn_filter(knn_indices, knn_dists):
 ### KNN METHODS ################################################################
 
 def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
-    from umap.umap_ import nearest_neighbors
-    knn_indices, knn_dists, _ = nearest_neighbors(mat,
-                                    n_neighbors = n_neighbors,
-                                    metric = metric,
-                                    metric_kwds = {},
-                                    angular = False, # Does nothing?
-                                    random_state = None,
-                                    low_memory = True, # False?
-                                    use_pynndescent = True, # Does nothing?
-                                    n_jobs = n_cores,
-                                    verbose = True
-                                )
+    # from umap.umap_ import nearest_neighbors
+    # knn_indices, knn_dists, _ = nearest_neighbors(mat,
+    #                                 n_neighbors = n_neighbors,
+    #                                 metric = metric,
+    #                                 metric_kwds = {},
+    #                                 angular = False, # Does nothing?
+    #                                 random_state = None,
+    #                                 low_memory = True, # False?
+    #                                 use_pynndescent = True, # Does nothing?
+    #                                 n_jobs = n_cores,
+    #                                 verbose = True
+    #                             )
+    
+    from pynndescent import NNDescent
+    knn_search_index = NNDescent(
+        data=mat,
+        metric=metric,
+        metric_kwds={},
+        n_neighbors=n_neighbors,
+        n_trees=64, # use theirs? nah bigger?
+        leaf_size=None, # bigger?
+        pruning_degree_multiplier=1.5, # 3.0
+        diversify_prob=1.0, # 0.0
+        # tree_init=True,
+        # init_graph=None,
+        # init_dist=None,
+        random_state=None,
+        low_memory=True, # False?
+        max_candidates=None, # no touchy
+        max_rptree_depth=200, # 100?
+        n_iters=100, # make bigger? use theirs?
+        delta=0.001, # don't touch? or make smaller?
+        n_jobs=-1,
+        compressed=True, # True?
+        parallel_batch_queries=False, # True?
+        verbose=True
+    )
+    knn_indices, knn_dists = knn_search_index.neighbor_graph
+
     return knn_indices, knn_dists
 
 # knn_indices1 can be row-sliced, knn_indices2 is original
