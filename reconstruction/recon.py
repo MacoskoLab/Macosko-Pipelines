@@ -110,18 +110,18 @@ sys.stdout.flush()
 ### Compute the KNN ############################################################
 
 print("\nComputing the KNN...")
-knn_indices1, knn_dists1 = knn_descent(np.log1p(mat), n_neighbors)
+knn_indices, knn_dists = knn_descent(np.log1p(mat), n_neighbors)
 
-print("\nFiltering the KNN...")
-filter_indexes, fig, meta = knn_filter(knn_indices1, knn_dists1)
-fig.savefig(os.path.join(out_dir,'knn.pdf'), format='pdf') ; del fig
-metadata["knn_filter"] = meta ; del meta
-m = np.array([i not in filter_indexes for i in np.arange(mat.shape[0])], dtype=bool)
-mat = mat[m,:] ; uniques2 = uniques2[m]
+# print("\nFiltering the KNN...")
+# filter_indexes, fig, meta = knn_filter(knn_indices1, knn_dists1)
+# fig.savefig(os.path.join(out_dir,'knn.pdf'), format='pdf') ; del fig
+# metadata["knn_filter"] = meta ; del meta
+# m = np.array([i not in filter_indexes for i in np.arange(mat.shape[0])], dtype=bool)
+# mat = mat[m,:] ; uniques2 = uniques2[m]
 
-print("\nRe-computing the KNN...")
-knn_indices2, knn_dists2 = knn_descent(np.log1p(mat), n_neighbors)
-knn_indices, knn_dists = knn_merge(knn_indices1[m,:], knn_dists1[m,:], knn_indices2, knn_dists2)
+# print("\nRe-computing the KNN...")
+# knn_indices2, knn_dists2 = knn_descent(np.log1p(mat), n_neighbors)
+# knn_indices, knn_dists = knn_merge(knn_indices1[m,:], knn_dists1[m,:], knn_indices2, knn_dists2)
 np.savez_compressed(os.path.join(out_dir, "knn.npz"), indices=knn_indices, dists=knn_dists)
 knn = (knn_indices, knn_dists)
 
