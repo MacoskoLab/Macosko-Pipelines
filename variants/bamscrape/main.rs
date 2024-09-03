@@ -1,6 +1,9 @@
 use std::fs::File;
 use itertools::izip;
 use std::str::from_utf8; //  return &str from &[u8]
+// for .fai
+use csv::ReaderBuilder;
+use std::collections::HashMap;
 // for bam
 use rust_htslib::bam::{self,Read};
 use rust_htslib::bam::record::Cigar; // enum
@@ -11,9 +14,18 @@ use hdf5;
 mod helpers;
 use helpers::*;
 
+// Set data sizes
 type ReadNum = u32; // BAM line number
 type SeqPos = usize;  // fasta byte position (must keep at usize)
 type WLi = u32; // whitelist index (number of possible whitelist strings)
+
+// Set bam tags
+const CB: &[u8] = b"CB";
+const UB: &[u8] = b"UB";
+const XF: &[u8] = b"xf";
+const RE: &[u8] = b"RE";
+const TS: &[u8] = b"ts";
+const PA: &[u8] = b"pa";
 
 fn main() {
     // Read the BAM and FASTA path from the command line
@@ -23,6 +35,7 @@ fn main() {
     }
     let bam_path = &args[1];
     let fasta_path = &args[2];
+    let index_path = [&fasta_path, ".fai"].join("");
     
     // Load the BAM
     let mut bam = bam::Reader::from_path(&bam_path).expect("ERROR: BAM loading failed");
@@ -36,9 +49,17 @@ fn main() {
     let fasta = File::open(&fasta_path).expect("ERROR: FASTA loading failed");
     let mmap = unsafe { memmap2::Mmap::map(&fasta).expect("ERROR: Mmap failed") };
     
-    // Load the FASTA index file
-    let index_path = [&fasta_path, ".fai"].join("");
-    let map = load_fai(&index_path);
+    // create a (RNAME -> fasta byte offset) map from the .fai file
+    let mut index_file = ReaderBuilder::new().delimiter(b'\t').has_headers(false)
+                                             .from_reader(File::open(&index_path)
+                                             .expect("ERROR: could not open .fai file"));
+    let mut map: HashMap<String, usize> = HashMap::new();
+    for result in index_file.records() {
+        let record = result.expect("ERROR: could not parse index file");
+        if let (Some(key), Some(value)) = (record.get(0), record.get(2)) { // col 1 is RNAME, col 3 is fasta byte offset
+            map.insert(key.to_string(), value.parse::<usize>().expect("ERROR: .fai column 3 could not be read as usize"));
+        } else { panic!("ERROR: .fai file missing column data"); }
+    }
     
     // Summary of loaded data:
     // - bam is a rust_htslib::bam::Reader
@@ -105,19 +126,19 @@ fn main() {
         /* load the bam tags */
         
         // get the CB tag
-        let cb: &str = match record.aux(b"CB") {
+        let cb: &str = match record.aux(CB) {
             Ok(value) => if let bam::record::Aux::String(s) = value { s } else {panic!("CB tag is not a String")},
             Err(_) => {no_cb+=1 ; ""}, // empty string, if CB tag does not exist
         };
         
         // get the UB (UMI) tag
-        let ub: &str = match record.aux(b"UB") {
+        let ub: &str = match record.aux(UB) {
             Ok(value) => if let bam::record::Aux::String(s) = value { s } else {panic!("UB tag is not a String")},
             Err(_) => {no_ub+=1 ; ""}, // empty string, if UB tag does not exist
         };
         
         // get the xf tag (extra alignment flags)
-        let xf: u8 = match record.aux(b"xf") {
+        let xf: u8 = match record.aux(XF) {
             Ok(value) => match value {
                 bam::record::Aux::I32(s) => s as u8,
                 bam::record::Aux::U8(s) => s,
@@ -127,13 +148,13 @@ fn main() {
         };
       
         // get the RE tag (alignment region type)
-        let re: u8 = match record.aux(b"RE") {
+        let re: u8 = match record.aux(RE) {
             Ok(value) => if let bam::record::Aux::Char(s) = value { s } else {panic!("RE tag is not a Char")},
             Err(_) => 'X' as u8, // RE is either E/N/I, so assign X if blank
         };
         
         // get the ts tag (number of trimmed TSO nucleotides)
-        let ts: usize = match record.aux(b"ts") {
+        let ts: usize = match record.aux(TS) {
             Ok(value) => match value {
                 bam::record::Aux::I32(s) => s as usize,
                 bam::record::Aux::U8(s) => s as usize,
@@ -143,7 +164,7 @@ fn main() {
         };
         
         // get the pa tag (number of trimmed poly-A nucleotides)
-        let pa: usize = match record.aux(b"pa") {
+        let pa: usize = match record.aux(PA) {
             Ok(value) => match value {
                 bam::record::Aux::I32(s) => s as usize,
                 bam::record::Aux::U8(s) => s as usize,
