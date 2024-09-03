@@ -1,24 +1,7 @@
 use std::collections::HashMap;
 use num_traits::int::PrimInt;
 use hdf5::types::VarLenAscii;
-use csv::ReaderBuilder;
-use std::fs::File;
 use crate::WLi;
-
-// create a (RNAME -> fasta byte offset) map from the .fai file
-pub fn load_fai(index_path: &str) -> HashMap<String, usize> {
-    let mut index_file = ReaderBuilder::new().delimiter(b'\t').has_headers(false)
-                                             .from_reader(File::open(&index_path).expect("ERROR: could not open .fai file"));
-    // loop through each record and save the fasta byte offset for each RNAME
-    let mut map: HashMap<String, usize> = HashMap::new();
-    for result in index_file.records() {
-        let record = result.expect("ERROR: could not parse index file");
-        if let (Some(key), Some(value)) = (record.get(0), record.get(2)) { // col 1 is RNAME, col 3 is fasta byte offset
-            map.insert(key.to_string(), value.parse::<usize>().expect("ERROR: .fai column 3 could not be read as usize"));
-        } else { panic!("ERROR: .fai file missing column data"); }
-    }
-    return map;
-}
 
 // helper method to assert that all elements of a vector are the same
 pub fn assert_all_same(vec: &[usize]) {
@@ -72,20 +55,9 @@ impl<T: PrimInt> WriteVector for [T] {
         };
     }
 }
-impl WriteVector for Vec<String> {
+impl<T: AsRef<[u8]>> WriteVector for Vec<T> {
     fn write_vector(&self, group: &hdf5::Group, name: &str) {
         let vec: Vec<VarLenAscii> = self.into_iter().map(|s| VarLenAscii::from_ascii(s).expect("ERROR: non-ascii character")).collect();
         group.new_dataset_builder().with_data(&vec).create(name).expect(".h5 error");
     }
 }
-impl WriteVector for Vec<&str> {
-    fn write_vector(&self, group: &hdf5::Group, name: &str) {
-        let vec: Vec<VarLenAscii> = self.into_iter().map(|s| VarLenAscii::from_ascii(s).expect("ERROR: non-ascii character")).collect();
-        group.new_dataset_builder().with_data(&vec).create(name).expect(".h5 error");
-    }
-}
-
-// assumptions:
-// 2^64 is large enough to store any dataset
-// xf only goes up to 63
-// all stored values are UNSIGNED
