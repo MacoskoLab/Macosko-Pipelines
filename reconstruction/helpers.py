@@ -22,8 +22,11 @@ def hexmap(embedding, title="", fontsize=12):
 
 # [(x, y)]
 def hexmaps(embeddings, titles=[], fontsize=10):
+    assert type(embeddings) == type(titles) == list
     n = math.ceil(len(embeddings)**0.5)
     fig, axes = plt.subplots(n, n, figsize=(8, 8))
+    if type(axes) != np.ndarray:
+        axes = np.array([axes])
     axes = axes.flatten()
 
     if len(titles) == 0:
@@ -111,26 +114,30 @@ def L2_distance(p1, p2):
     dists = np.sqrt(np.sum(np.square(p1 - p2), axis=1))
     return np.sum(dists) / p1.shape[0]
 
+# embedding1, embedding2
 def procrustes_distance(p1, p2):
-    from scipy.spatial import procrustes
     assert p1.shape == p2.shape
+    from scipy.spatial import procrustes
     _, _, disparity = procrustes(p1, p2)
     return disparity
 
+# [embedding]
 def convergence_plot(embeddings):
-    assert len(embeddings) > 1
-    x = [(i+2)*1000 for i in range(len(embeddings)-1)]
-    y1 = [L2_distance(embeddings[i], embeddings[i+1]) for i in range(len(embeddings)-1)]
-    y2 = [procrustes_distance(embeddings[i], embeddings[i+1]) for i in range(len(embeddings)-1)]
-
     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    x = [(i+2)*1000 for i in range(len(embeddings)-1)]
 
+    assert type(embeddings) == list
+    if len(embeddings) < 2:
+        return fig, axes
+
+    y1 = [L2_distance(embeddings[i], embeddings[i+1]) for i in range(len(embeddings)-1)]
     axes[0].scatter(x, y1, color='blue')
     axes[0].plot(x, y1, color='red')
     axes[0].set_xlabel('Epochs')
     axes[0].set_ylabel('Mean UMAP Distance')
     axes[0].set_title('Average L2 Displacement')
-    
+
+    y2 = [procrustes_distance(embeddings[i], embeddings[i+1]) for i in range(len(embeddings)-1)]
     axes[1].scatter(x, y2, color='blue')
     axes[1].plot(x, y2, color='red')
     axes[1].set_xlabel('Epochs')
@@ -138,7 +145,6 @@ def convergence_plot(embeddings):
     axes[1].set_title('Procrustes Disparity')
     
     plt.tight_layout()
-    
     return fig, axes
     
 ### BEAD FILTERING METHODS #####################################################
@@ -190,9 +196,9 @@ def connection_filter(df):
     diff = meta['umi_init']-meta['umi_half'] ; print(f"{diff} R1 UMIs filtered ({diff/meta['umi_init']*100:.2f}%)")
 
     # Remove sb2 beads
-    z_high = 3 ; z_low = -3
+    z_high = 3 #; z_low = -3
     sb2 = df.groupby(f'sb2_index').agg(umi=('umi', 'sum'), connections=('umi', 'size'), max=('umi', 'max')).reset_index()
-    hist_z(axes[1,0], np.log10(sb2['connections']), z_high, z_low)
+    hist_z(axes[1,0], np.log10(sb2['connections']), z_high) #, z_low)
     axes[1,0].set_xlabel('Connections')
     axes[1,0].set_title('sb2 connections')
     hist_z(axes[1,1], np.log10(sb2['max']))
@@ -201,19 +207,19 @@ def connection_filter(df):
     
     logcon = np.log10(sb2['connections'])
     high = np.where(logcon >= np.mean(logcon) + np.std(logcon) * z_high)[0]
-    low = np.where(logcon <= np.mean(logcon) + np.std(logcon) * z_low)[0]
-    noise = np.where(sb2['max'] <= 1)[0]
-    sb2_remove = reduce(np.union1d, [high, low, noise])
+    # low = np.where(logcon <= np.mean(logcon) + np.std(logcon) * z_low)[0]
+    # noise = np.where(sb2['max'] <= 1)[0]
+    sb2_remove = reduce(np.union1d, [high]) # [high, low, noise]
     df = df[~df['sb2_index'].isin(sb2_remove)]
     
     meta["sb2_high"] = len(high)
-    meta["sb2_low"] = len(low)
-    meta["sb2_noise"] = len(noise)
+    # meta["sb2_low"] = len(low)
+    # meta["sb2_noise"] = len(noise)
     meta["sb2_removed"] = len(sb2_remove)
     meta["umi_final"] = sum(df["umi"])
     print(f"{len(high)} high R2 beads ({len(high)/len(sb2)*100:.2f}%)")
-    print(f"{len(low)} low R2 beads ({len(low)/len(sb2)*100:.2f}%)")
-    print(f"{len(noise)} noise R2 beads ({len(noise)/len(sb2)*100:.2f}%)")
+    # print(f"{len(low)} low R2 beads ({len(low)/len(sb2)*100:.2f}%)")
+    # print(f"{len(noise)} noise R2 beads ({len(noise)/len(sb2)*100:.2f}%)")
     diff = meta['umi_half']-meta['umi_final'] ; print(f"{diff} R2 UMIs filtered ({diff/meta['umi_half']*100:.2f}%)")
     
     # Factorize the new dataframe
@@ -316,46 +322,49 @@ def knn_filter(knn_indices, knn_dists):
 
 ### KNN METHODS ################################################################
 
-def knn_descent(mat, n_neighbors, metric="cosine", n_cores=-1):
-    # from umap.umap_ import nearest_neighbors
-    # knn_indices, knn_dists, _ = nearest_neighbors(mat,
-    #                                 n_neighbors = n_neighbors,
-    #                                 metric = metric,
-    #                                 metric_kwds = {},
-    #                                 angular = False, # Does nothing?
-    #                                 random_state = None,
-    #                                 low_memory = True, # False?
-    #                                 use_pynndescent = True, # Does nothing?
-    #                                 n_jobs = n_cores,
-    #                                 verbose = True
-    #                             )
-    
+# Compute the KNN using NNDescent
+def knn_descent(mat, n_neighbors, metric="cosine", n_jobs=-1):    
     from pynndescent import NNDescent
     knn_search_index = NNDescent(
         data=mat,
         metric=metric,
         metric_kwds={},
         n_neighbors=n_neighbors,
-        n_trees=64, # use theirs? nah bigger?
-        leaf_size=None, # bigger?
-        pruning_degree_multiplier=1.5, # 3.0
-        diversify_prob=1.0, # 0.0
+        n_trees=64, # originally None
+        # leaf_size=None,
+        pruning_degree_multiplier=3.0, # originally 1.5
+        diversify_prob=0.0, # originally 1.0
         # tree_init=True,
         # init_graph=None,
         # init_dist=None,
         random_state=None,
-        low_memory=True, # False?
-        max_candidates=None, # no touchy
-        max_rptree_depth=200, # 100?
-        n_iters=100, # make bigger? use theirs?
-        delta=0.001, # don't touch? or make smaller?
-        n_jobs=-1,
-        compressed=True, # True?
-        parallel_batch_queries=False, # True?
-        verbose=True
+        low_memory=True, # originally False
+        max_candidates=60, # originally None
+        max_rptree_depth=999999, # originally 200
+        n_iters=512, # originally None
+        delta=0.0001, # originally 0.001
+        n_jobs=n_jobs,
+        # compressed=False,
+        # parallel_batch_queries=False,
+        verbose=True # originally False
     )
     knn_indices, knn_dists = knn_search_index.neighbor_graph
+    return knn_indices, knn_dists
 
+# UMAP NNDescent wrapper
+def nearest_neighbors(mat, n_neighbors, metric="cosine", n_jobs=-1):
+    from umap.umap_ import nearest_neighbors
+    knn_indices, knn_dists, _ = nearest_neighbors(mat,
+                                    n_neighbors = n_neighbors,
+                                    metric = metric,
+                                    metric_kwds = {},
+                                    angular = False, # Does nothing?
+                                    random_state = None,
+                                    low_memory = True, # False?
+                                    use_pynndescent = True, # Does nothing?
+                                    n_jobs = n_jobs,
+                                    verbose = True
+                                )
     return knn_indices, knn_dists
 
 # knn_indices1 can be row-sliced, knn_indices2 is original
