@@ -33,8 +33,8 @@ fn main() {
     if args.len() != 3 {
         panic!("Usage: bam_path fasta_path");
     }
-    let bam_path = &args[1];
-    let fasta_path = &args[2];
+    let bam_path = &args[1]; eprintln!("BAM path: {}", &bam_path);
+    let fasta_path = &args[2]; eprintln!("FASTA path: {}", &fasta_path);
     let index_path = [&fasta_path, ".fai"].join("");
     
     // Load the BAM
@@ -68,6 +68,7 @@ fn main() {
     // - mmap is a Mmap containing the fasta
     assert!(sq.len() == map.len()); // techincally don't need
     assert!(mmap.len() <= SeqPos::MAX as usize);
+    assert_eq!(mmap[0..10000].iter().filter(|&&b| b == b'\n').count(), 1, "ERROR: remove newlines from fasta sequences!");
     
     // Create string whitelists
     let mut cb_whitelist = Whitelist::new();
@@ -113,6 +114,9 @@ fn main() {
     let mut sc_pos:  Vec<SeqPos> = Vec::new();
     let mut sc_str:  Vec<WLi> = Vec::new();
     
+    // READ THE BAM //
+    eprintln!("Reading BAM...");
+    
     // Loop through the BAM records
     let mut read: ReadNum = 0;
     let mut no_cb: ReadNum = 0;
@@ -122,8 +126,6 @@ fn main() {
     while let Some(r) = bam.read(&mut record) {
         r.expect("Failed to parse record");
         read = read.checked_add(1).expect("ERROR: BAM too long, must increase ReadNum");
-        
-        /* load the bam tags */
         
         // get the CB tag
         let cb: &str = match record.aux(CB) {
@@ -154,26 +156,24 @@ fn main() {
         };
         
         // get the ts tag (number of trimmed TSO nucleotides)
-        let ts: usize = match record.aux(TS) {
+        let ts: SeqPos = match record.aux(TS) {
             Ok(value) => match value {
-                bam::record::Aux::I32(s) => s as usize,
-                bam::record::Aux::U8(s) => s as usize,
+                bam::record::Aux::I32(s) => s as SeqPos,
+                bam::record::Aux::U8(s) => s as SeqPos,
                 _ => panic!("ts tag is not an I32 or U8"),
             },
-            Err(_) => 0 as usize, // 0 trimmed by default
+            Err(_) => 0 as SeqPos, // 0 trimmed by default
         };
         
         // get the pa tag (number of trimmed poly-A nucleotides)
-        let pa: usize = match record.aux(PA) {
+        let pa: SeqPos = match record.aux(PA) {
             Ok(value) => match value {
-                bam::record::Aux::I32(s) => s as usize,
-                bam::record::Aux::U8(s) => s as usize,
+                bam::record::Aux::I32(s) => s as SeqPos,
+                bam::record::Aux::U8(s) => s as SeqPos,
                 _ => panic!("pa tag is not an I32 or U8"),
             },
-            Err(_) => 0 as usize, // 0 trimmed by default
+            Err(_) => 0 as SeqPos, // 0 trimmed by default
         };
-        
-        /* load the alignment section */
         
         // get the RNAME [3]
         let tid: i32 = record.tid();
@@ -267,7 +267,8 @@ fn main() {
         }
     }
     
-    // panic!("skipping writing output");
+    // SAVE RESULTS //
+    eprintln!("Saving results...");
     
     // write string whitelists to an .h5 file
     let file = hdf5::File::create("whitelists.h5").expect("Could not create .h5 output file");
@@ -275,7 +276,7 @@ fn main() {
     ub_whitelist.into_vector().write_vector(&file, "ub");   // list of all observed UMI barcodes
     ins_whitelist.into_vector().write_vector(&file, "ins"); // list of all inserted strings
     sc_whitelist.into_vector().write_vector(&file, "sc");   // list of all soft-clipped sequences
-    sq.write_vector(&file,"rname");                         // list of all RNAME
+    sq.write_vector(&file,"rname");                         // list of all observed RNAME
     
     // write reads data to an .h5 file
     let file = hdf5::File::create("reads.h5").expect("Could not create .h5 output file");
@@ -284,7 +285,7 @@ fn main() {
     assert_all_same(&[data_read.len(), data_flag.len(), data_rname_i.len(), data_pos.len(), data_mapq.len(), data_cb.len(), data_ub.len(),data_xf.len(),data_re.len(),data_ts.len(),data_pa.len()]);
     data_read.write_vector(&data_group, "read");       // bam line number (1-indexed)
     data_flag.write_vector(&data_group, "flag");       // FLAG
-    data_rname_i.write_vector(&data_group, "rname_i"); // RNAME index
+    data_rname_i.write_vector(&data_group, "rname_i"); // RNAME index (0-indexed)
     data_pos.write_vector(&data_group, "pos");         // POS
     data_mapq.write_vector(&data_group, "mapq");       // MAPQ
     data_cb.write_vector(&data_group, "cb_i");         // cb whitelist index (0-indexed)
@@ -329,7 +330,7 @@ fn main() {
     let sc_group = file.create_group("softclip").expect(".h5 error");
     assert_all_same(&[sc_read.len(), sc_pos.len(), sc_str.len()]);
     sc_read.write_vector(&sc_group, "read");           // bam line number (1-indexed)
-    sc_pos.write_vector(&sc_group, "pos");             // 0-indexed position of reference base after skip
+    sc_pos.write_vector(&sc_group, "pos");             // 0-indexed position of reference base after sc seq
     sc_str.write_vector(&sc_group, "str_i");           // index into whitelist/sc (0-indexed)
     // write metadata
     let meta_group = file.create_group("metadata").expect(".h5 error");
@@ -339,5 +340,5 @@ fn main() {
     names.write_vector(&meta_group, "names");
     reads.write_vector(&meta_group, "reads");
     
-    println!("DONE");
+    eprintln!("Done!");
 }
