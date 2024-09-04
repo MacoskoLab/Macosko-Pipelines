@@ -67,8 +67,10 @@ fn main() {
     // - map is a HashMap<String, usize> that maps RNAME -> fasta byte
     // - mmap is a Mmap containing the fasta
     assert!(sq.len() == map.len()); // techincally don't need
-    assert!(mmap.len() <= SeqPos::MAX as usize);
+    assert!(mmap.len() <= SeqPos::MAX as usize, "ERROR: SeqPos is too small to fit the .fa file");
+    assert!(std::mem::size_of::<usize>() == 8, "ERROR: not running on a 64-bit machine");
     assert_eq!(mmap[0..10000].iter().filter(|&&b| b == b'\n').count(), 1, "ERROR: remove newlines from fasta sequences!");
+    map.values().for_each(|&v| assert!(v > 0 && mmap[v-1] == b'\n', "ERROR: the .fai file is not accurate to the .fa"));
     
     // Create string whitelists
     let mut cb_whitelist = Whitelist::new();
