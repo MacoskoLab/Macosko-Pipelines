@@ -681,6 +681,6 @@ open(GzipCompressorStream, joinpath(out_path,"matrix.csv.gz"), "w") do file
     CSV.write(file, df, writeheader=true)
 end
 
-println("done") ; flush(stdout) ; GC.gc()
-
 @assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.csv.gz", "sb2.csv.gz", "metadata.csv", "QC.pdf"])
+
+println("done") ; flush(stdout) ; GC.gc()
