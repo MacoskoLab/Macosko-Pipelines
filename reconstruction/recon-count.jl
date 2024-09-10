@@ -322,7 +322,6 @@ function compute_rpu(df)
     sort!(rpu_df, :reads_per_umi)
     return rpu_df
 end
-
 CSV.write(joinpath(out_path,"reads_per_umi.csv"), compute_rpu(df), writeheader=true)
 
 println("done") ; flush(stdout) ; GC.gc()
