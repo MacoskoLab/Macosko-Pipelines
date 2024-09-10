@@ -302,23 +302,32 @@ println("...done") ; flush(stdout) ; GC.gc()
 ####################################################################################################
 
 print("Counting reads... ") ; flush(stdout)
-sort!(df, [:sb1_i, :sb2_i, :umi1_i, :umi2_i])
-@assert nrow(df) == metadata["reads_filtered"]
-start = vcat(true, reduce(.|, [df[2:end,c] .!= df[1:end-1,c] for c in names(df)]))
-df = df[start, :]
-df[!,:reads] = vcat(diff(findall(start)), metadata["reads_filtered"]-findlast(start)+1)
-@assert sum(df.reads) == metadata["reads_filtered"]
-metadata["umis_filtered"] = nrow(df)
-println("done") ; flush(stdout) ; GC.gc()
 
-println("Total UMIs: $(nrow(df))") ; flush(stdout)
-@assert nrow(df) > 0
+function count_reads(df, metadata)
+    sort!(df, [:sb1_i, :sb2_i, :umi1_i, :umi2_i])
+    @assert nrow(df) == metadata["reads_filtered"]
+    start = vcat(true, reduce(.|, [df[2:end,c] .!= df[1:end-1,c] for c in names(df)]))
+    df = df[start, :]
+    df[!,:reads] = vcat(diff(findall(start)), metadata["reads_filtered"]-findlast(start)+1)
+    @assert sum(df.reads) == metadata["reads_filtered"]
+    metadata["umis_filtered"] = nrow(df)
+    return df, metadata
+end
+df, metadata = count_reads(df, metadata)
 
 # Save reads per umi distribution
-rpu_dict = countmap(df[!,:reads])
-rpu_df = DataFrame(reads_per_umi = collect(keys(rpu_dict)), umis = collect(values(rpu_dict)))
-sort!(rpu_df, :reads_per_umi)
-CSV.write(joinpath(out_path,"reads_per_umi.csv"), rpu_df, writeheader=true)
+function compute_rpu(df)
+    rpu_dict = countmap(df[!,:reads])
+    rpu_df = DataFrame(reads_per_umi = collect(keys(rpu_dict)), umis = collect(values(rpu_dict)))
+    sort!(rpu_df, :reads_per_umi)
+    return rpu_df
+end
+
+CSV.write(joinpath(out_path,"reads_per_umi.csv"), compute_rpu(df), writeheader=true)
+
+println("done") ; flush(stdout) ; GC.gc()
+println("Total UMIs: $(nrow(df))") ; flush(stdout)
+@assert nrow(df) > 0
 
 ####################################################################################################
 
@@ -484,7 +493,7 @@ function count_umis(df, metadata)
     bnd = vcat(true, (df.sb1_i[2:end] .!= df.sb1_i[1:end-1]) .| (df.sb2_i[2:end] .!= df.sb2_i[1:end-1]))
     umis = vcat(diff(findall(bnd)), nrow(df)-findlast(bnd)+1)
     df = df[bnd, :]
-    df.umi = umis
+    df[!,:umi] = umis
     metadata["umis_final"] = sum(df.umi)
     metadata["connections_final"] = nrow(df)
         
