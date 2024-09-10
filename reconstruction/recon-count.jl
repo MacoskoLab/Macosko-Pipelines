@@ -175,7 +175,6 @@ const UP2_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP2), i) for 
 println("Reading FASTQs...") ; flush(stdout)
 
 # Read the FASTQs
-const buffer_size = 100_000_000
 function process_fastqs(R1s, R2s)
     sb1_dictionary = Dict{String, UInt32}() # sb1 -> sb1_i
     sb2_dictionary = Dict{String, UInt32}() # sb2 -> sb2_i
@@ -185,11 +184,6 @@ function process_fastqs(R1s, R2s)
                     "R1_no_UP"=>0, "R2_no_UP"=>0, "R1_GG_UP"=>0, "R2_GG_UP"=>0,
                     "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0,
                     "R1_homopolymer_SB"=>0, "R2_homopolymer_SB"=>0)
-    buffer = DataFrame(sb1_i = fill(UInt32(0), buffer_size),
-                       umi1_i = fill(UInt32(0), buffer_size),
-                       sb2_i = fill(UInt32(0), buffer_size),
-                       umi2_i = fill(UInt32(0), buffer_size))
-    b = 1
 
     for fastqpair in zip(R1s, R2s)
         println(fastqpair) ; flush(stdout)
@@ -285,17 +279,9 @@ function process_fastqs(R1s, R2s)
             sb2_i = get!(sb2_dictionary, sb2, length(sb2_dictionary) + 1)
             umi1_i = UMItoindex(umi1)
             umi2_i = UMItoindex(umi2)
-            buffer[b, :] = (sb1_i, umi1_i, sb2_i, umi2_i)
-            b += 1
-            if b > buffer_size
-                append!(df, buffer)
-                b = 1
-            end
+            push!(df, (sb1_i, umi1_i, sb2_i, umi2_i))
             metadata["reads_filtered"] += 1
         end
-    end
-    if b > 1
-        append!(df, buffer[1:b-1, :])
     end
     
     sb1_whitelist = DataFrame(sb1 = collect(String, keys(sb1_dictionary)),
@@ -315,22 +301,24 @@ println("...done") ; flush(stdout) ; GC.gc()
 
 ####################################################################################################
 
-@assert false
-
-print("Counting reads...") ; flush(stdout)
+print("Counting reads... ") ; flush(stdout)
 sort!(df, [:sb1_i, :sb2_i, :umi1_i, :umi2_i])
 @assert nrow(df) == metadata["reads_filtered"]
 start = vcat(true, reduce(.|, [df[2:end,c] .!= df[1:end-1,c] for c in names(df)]))
-subset!(df, start)
+df = df[start, :]
 df[!,:reads] = vcat(diff(findall(start)), metadata["reads_filtered"]-findlast(start)+1)
 @assert sum(df.reads) == metadata["reads_filtered"]
 metadata["umis_filtered"] = nrow(df)
+println("done") ; flush(stdout) ; GC.gc()
+
+println("Total UMIs: $(nrow(df))") ; flush(stdout)
 @assert nrow(df) > 0
 
 # Save reads per umi distribution
-# countmap()
-
-println("done") ; flush(stdout) ; GC.gc()
+rpu_dict = countmap(df[!,:reads])
+rpu_df = DataFrame(reads_per_umi = collect(keys(rpu_dict)), umis = collect(values(rpu_dict)))
+sort!(rpu_df, :reads_per_umi)
+CSV.write(joinpath(out_path,"reads_per_umi.csv"), rpu_df, writeheader=true)
 
 ####################################################################################################
 
@@ -404,8 +392,8 @@ function elbow_plot(y, uc, R)
     return(p, bc)
 end
 
-tab1 = countmap([key[1] for key in keys(mat)])
-tab2 = countmap([key[3] for key in keys(mat)])
+tab1 = countmap(df[!,:sb1_i])
+tab2 = countmap(df[!,:sb2_i])
 
 p1, uc1 = umi_density_plot(tab1 |> values |> countmap, "R1")
 p3, uc2 = umi_density_plot(tab2 |> values |> countmap, "R2")
@@ -430,27 +418,23 @@ print("Matching to barcode whitelist... ") ; flush(stdout)
 wl1 = Set{UInt32}([k for (k, v) in tab1 if v >= uc1]) ; @assert length(wl1) == bc1
 wl2 = Set{UInt32}([k for (k, v) in tab2 if v >= uc2]) ; @assert length(wl2) == bc2
 
-function match_barcode(mat, wl1, wl2)
+function match_barcode(df, wl1, wl2)
     matching_metadata = Dict("R1_exact"=>0, "R1_none"=>0, "R2_exact"=>0, "R2_none"=>0)
-    
-    for key in keys(mat)
-        if key[1] in wl1
-            matching_metadata["R1_exact"] += 1
-        else
-            matching_metadata["R1_none"] += 1
-            delete!(mat, key)
-        end
-        if key[3] in wl2
-            matching_metadata["R2_exact"] += 1
-        else
-            matching_metadata["R2_none"] += 1
-            delete!(mat, key)
-        end
-    end
-    return mat, matching_metadata
+
+    m1 = [s1 in wl1 for s1 in df[!,:sb1_i]]
+    m2 = [s2 in wl2 for s2 in df[!,:sb2_i]]
+
+    matching_metadata["R1_exact"] = sum(m1)
+    matching_metadata["R1_none"] = sum(.!m1)
+    matching_metadata["R2_exact"] = sum(m2)
+    matching_metadata["R2_none"] = sum(.!m2)
+
+    df = df[m1 .& m2, :]
+
+    return df, matching_metadata
 end
-mat, matching_metadata = match_barcode(mat, wl1, wl2)
-metadata["umis_matched"] = length(mat)
+df, matching_metadata = match_barcode(df, wl1, wl2)
+metadata["umis_matched"] = nrow(df)
 
 println("done") ; flush(stdout) ; GC.gc()
 
@@ -475,29 +459,18 @@ function plot_reads_per_umi(vec)
             titlefont = 10, guidefont = 8)
     return p
 end
-p1 = plot_reads_per_umi(values(mat))
+p1 = plot_reads_per_umi(df[!,:reads])
 
-function count_umis(mat, metadata)
-    # Turn matrix from dictionary into dataframe
-    df = DataFrame(sb1_i = UInt32[], umi1_i = UInt32[], sb2_i = UInt32[], umi2_i = UInt32[], reads = UInt32[])
-    for key in keys(mat)
-        value = pop!(mat, key)
-        push!(df, (key[1], key[2], key[3], key[4], value))
-    end
-
+function count_umis(df, metadata)
     # Remove chimeras
     sort!(df, [:sb1_i, :umi1_i, :reads], rev = [false, false, true])
-    before_same = (df.sb1_i[2:end] .== df.sb1_i[1:end-1]) .& (df.umi1_i[2:end] .== df.umi1_i[1:end-1])
-    prepend!(before_same, [false])
-    after_same = (df.sb1_i[1:end-1] .== df.sb1_i[2:end]) .& (df.umi1_i[1:end-1] .== df.umi1_i[2:end]) .& (df.reads[1:end-1] .== df.reads[2:end])
-    append!(after_same, [false])
+    before_same = vcat(false, reduce(.&, [df[2:end,c] .== df[1:end-1,c] for c in [:sb1_i,:umi1_i]]))
+    after_same = vcat(reduce(.&, [df[2:end,c] .== df[1:end-1,c] for c in [:sb1_i,:umi1_i,:reads]]), false)
     df.chimeric1 = before_same .| after_same
     
     sort!(df, [:sb2_i, :umi2_i, :reads], rev = [false, false, true])
-    before_same = (df.sb2_i[2:end] .== df.sb2_i[1:end-1]) .& (df.umi2_i[2:end] .== df.umi2_i[1:end-1])
-    prepend!(before_same, [false])
-    after_same = (df.sb2_i[1:end-1] .== df.sb2_i[2:end]) .& (df.umi2_i[1:end-1] .== df.umi2_i[2:end]) .& (df.reads[1:end-1] .== df.reads[2:end])
-    append!(after_same, [false])
+    before_same = vcat(false, reduce(.&, [df[2:end,c] .== df[1:end-1,c] for c in [:sb2_i,:umi2_i]]))
+    after_same = vcat(reduce(.&, [df[2:end,c] .== df[1:end-1,c] for c in [:sb2_i,:umi2_i,:reads]]), false)
     df.chimeric2 = before_same .| after_same
     
     metadata["umis_chimeric_R1"] = sum(df.chimeric1)
@@ -508,17 +481,16 @@ function count_umis(mat, metadata)
 
     # Count UMIs
     sort!(df, [:sb1_i, :sb2_i])
-    df.bnd = vcat(true, (df.sb1_i[2:end] .!= df.sb1_i[1:end-1]) .| (df.sb2_i[2:end] .!= df.sb2_i[1:end-1]))
-    bnds = findall(identity, df.bnd)
-    umis = vcat(diff(bnds), nrow(df)-bnds[end]+1)
-    filter!(row -> row.bnd, df)
-    select!(df, Not(:bnd))
+    bnd = vcat(true, (df.sb1_i[2:end] .!= df.sb1_i[1:end-1]) .| (df.sb2_i[2:end] .!= df.sb2_i[1:end-1]))
+    umis = vcat(diff(findall(bnd)), nrow(df)-findlast(bnd)+1)
+    df = df[bnd, :]
     df.umi = umis
     metadata["umis_final"] = sum(df.umi)
+    metadata["connections_final"] = nrow(df)
         
     return df, metadata
 end
-df, metadata = count_umis(mat, metadata)
+df, metadata = count_umis(df, metadata)
 
 function plot_umis_per_connection(vec)
     tab = countmap(vec)
@@ -539,7 +511,7 @@ function plot_umis_per_connection(vec)
 end
 p2 = plot_umis_per_connection(df.umi)
 
-# Normalize the barcode indexes
+# Factorize the barcode indexes
 m1 = sort(collect(Set(df.sb1_i)))
 m2 = sort(collect(Set(df.sb2_i)))
 sb1_whitelist_short = sb1_whitelist[m1]
@@ -608,7 +580,7 @@ end
 df1, p3, p5 = plot_umi_distributions(df, :sb1_i)
 df2, p4, p6 = plot_umi_distributions(df, :sb2_i)
 
-# distrubtion of umi1 umi2, reads per umi, umi per connection
+# Distrubtion of umi1 umi2, reads per umi, umi per connection
 p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
 savefig(p, joinpath(out_path, "SNR.pdf"))
 
@@ -711,6 +683,6 @@ open(GzipCompressorStream, joinpath(out_path,"matrix.csv.gz"), "w") do file
     CSV.write(file, df, writeheader=true)
 end
 
-@assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.csv.gz", "sb2.csv.gz", "metadata.csv", "QC.pdf"])
+@assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.csv.gz", "sb2.csv.gz", "QC.pdf", "metadata.csv", "reads_per_umi.csv"])
 
 println("done") ; flush(stdout) ; GC.gc()
