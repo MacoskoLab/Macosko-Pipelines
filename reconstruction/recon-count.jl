@@ -54,9 +54,6 @@ R2s = filter(s -> occursin("_R2_", s), fastqs) ; println("R2s: ", basename.(R2s)
 @assert length(R1s) == length(R2s) > 0
 @assert [replace(R1, "_R1_"=>"", count=1) for R1 in R1s] == [replace(R2, "_R2_"=>"", count=1) for R2 in R2s]
 
-const UP1 = String31("TCTTCAGCGTTCCCGAGA")
-const UP2 = String15("CTGTTTCCTG")
-
 ####################################################################################################
 
 # Read structure methods
@@ -88,6 +85,8 @@ end
     umi = FASTQ.sequence(record, 28:36)
     return sb_1, sb_2, up, umi
 end
+const UP1 = String31("TCTTCAGCGTTCCCGAGA")
+const UP2 = String15("CTGTTTCCTG")
 
 # Determine the bead types
 function learn_R1type(R1)
@@ -176,26 +175,32 @@ const UP2_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP2), i) for 
 println("Reading FASTQs...") ; flush(stdout)
 
 # Read the FASTQs
+const buffer_size = 100_000_000
 function process_fastqs(R1s, R2s)
     sb1_dictionary = Dict{String, UInt32}() # sb1 -> sb1_i
     sb2_dictionary = Dict{String, UInt32}() # sb2 -> sb2_i
-    mat = Dict{Tuple{UInt32, UInt32, UInt32, UInt32}, UInt32}() # (sb1_i, umi1_i, sb2_i, umi2_i) -> reads
+    df = DataFrame(sb1_i = UInt32[], umi1_i = UInt32[], sb2_i = UInt32[], umi2_i = UInt32[]) 
     metadata = Dict("reads"=>0, "reads_filtered"=>0,
                     "R1_tooshort"=>0, "R2_tooshort"=>0,
                     "R1_no_UP"=>0, "R2_no_UP"=>0, "R1_GG_UP"=>0, "R2_GG_UP"=>0,
                     "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0,
                     "R1_homopolymer_SB"=>0, "R2_homopolymer_SB"=>0)
+    buffer = DataFrame(sb1_i = fill(UInt32(0), buffer_size),
+                       umi1_i = fill(UInt32(0), buffer_size),
+                       sb2_i = fill(UInt32(0), buffer_size),
+                       umi2_i = fill(UInt32(0), buffer_size))
+    b = 1
 
     for fastqpair in zip(R1s, R2s)
         println(fastqpair) ; flush(stdout)
         it1 = fastqpair[1] |> open |> GzipDecompressorStream |> FASTQ.Reader
         it2 = fastqpair[2] |> open |> GzipDecompressorStream |> FASTQ.Reader
         for record in zip(it1, it2)
-            metadata["reads"] += 1
-
             # Random dropout for downsampling
             prob < 1 && rand() > prob && continue
 
+            metadata["reads"] += 1
+            
             # Validate the sequence length
             skip = false
             if length(FASTQ.sequence(record[1])) < 44
@@ -280,27 +285,52 @@ function process_fastqs(R1s, R2s)
             sb2_i = get!(sb2_dictionary, sb2, length(sb2_dictionary) + 1)
             umi1_i = UMItoindex(umi1)
             umi2_i = UMItoindex(umi2)
-            key = (sb1_i, umi1_i, sb2_i, umi2_i)
-            mat[key] = get(mat, key, 0) + 1
+            buffer[b, :] = (sb1_i, umi1_i, sb2_i, umi2_i)
+            b += 1
+            if b > buffer_size
+                append!(df, buffer)
+                b = 1
+            end
             metadata["reads_filtered"] += 1
         end
     end
-
-    sb1_whitelist = DataFrame(sb1 = collect(String, keys(sb1_dictionary)), sb1_i = collect(UInt32, values(sb1_dictionary)))
-    sb2_whitelist = DataFrame(sb2 = collect(String, keys(sb2_dictionary)), sb2_i = collect(UInt32, values(sb2_dictionary)))
+    if b > 1
+        append!(df, buffer[1:b-1, :])
+    end
+    
+    sb1_whitelist = DataFrame(sb1 = collect(String, keys(sb1_dictionary)),
+                              sb1_i = collect(UInt32, values(sb1_dictionary)))
+    sb2_whitelist = DataFrame(sb2 = collect(String, keys(sb2_dictionary)),
+                              sb2_i = collect(UInt32, values(sb2_dictionary)))
     sort!(sb1_whitelist, :sb1_i)
     sort!(sb2_whitelist, :sb2_i)
     @assert sb1_whitelist.sb1_i == 1:size(sb1_whitelist, 1)
     @assert sb2_whitelist.sb2_i == 1:size(sb2_whitelist, 1)
     
-    metadata["umis_filtered"] = length(mat)
-    return(mat, sb1_whitelist.sb1, sb2_whitelist.sb2, metadata)
+    return(df, sb1_whitelist.sb1, sb2_whitelist.sb2, metadata)
 end
-mat, sb1_whitelist, sb2_whitelist, metadata = process_fastqs(R1s, R2s)
-
-@assert length(mat) > 0
+df, sb1_whitelist, sb2_whitelist, metadata = process_fastqs(R1s, R2s)
 
 println("...done") ; flush(stdout) ; GC.gc()
+
+####################################################################################################
+
+@assert false
+
+print("Counting reads...") ; flush(stdout)
+sort!(df, [:sb1_i, :sb2_i, :umi1_i, :umi2_i])
+@assert nrow(df) == metadata["reads_filtered"]
+start = vcat(true, reduce(.|, [df[2:end,c] .!= df[1:end-1,c] for c in names(df)]))
+subset!(df, start)
+df[!,:reads] = vcat(diff(findall(start)), metadata["reads_filtered"]-findlast(start)+1)
+@assert sum(df.reads) == metadata["reads_filtered"]
+metadata["umis_filtered"] = nrow(df)
+@assert nrow(df) > 0
+
+# Save reads per umi distribution
+# countmap()
+
+println("done") ; flush(stdout) ; GC.gc()
 
 ####################################################################################################
 
