@@ -503,31 +503,30 @@ def find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighb
         heapq.heapify(heap) 
         while(len(min_distances) < n_neighbors_max and len(heap) >0):
             dist, nn = heapq.heappop(heap)
-            if nn == -1:
+            if nn in seen or nn == -1:
                 continue
+        
+            min_distances.append(dist)
+            min_indices.append(nn)
+            seen.add(nn)
+            neighbor = connected_mnn[nn]
             
-            if nn not in seen:
-                min_distances.append(dist)
-                min_indices.append(nn)
-                seen.add(nn)
-                neighbor = connected_mnn[nn]
-                
-                for nn_nn in neighbor:
-                    if nn_nn not in seen:
-                        distance = 0
-                        if nn_nn in knn_indices_pos[nn]:
-                            pos = knn_indices_pos[nn][nn_nn]
-                            distance = knn_dists[nn][pos] 
-                        else:
-                            pos = knn_indices_pos[nn_nn][nn]
-                            distance = knn_dists[nn_nn][pos] 
-                        distance += dist
-                        if nn_nn not in mapping:
-                            mapping[nn_nn] = distance
-                            heapq.heappush(heap, (distance, nn_nn))
-                        elif mapping[nn_nn] > distance:
-                            mapping[nn_nn] = distance
-                            heapq.heappush(heap, (distance, nn_nn))
+            for nn_nn in neighbor:
+                if nn_nn not in seen:
+                    distance = 0
+                    if nn_nn in knn_indices_pos[nn]:
+                        pos = knn_indices_pos[nn][nn_nn]
+                        distance = knn_dists[nn][pos] 
+                    else:
+                        pos = knn_indices_pos[nn_nn][nn]
+                        distance = knn_dists[nn_nn][pos] 
+                    distance += dist
+                    if nn_nn not in mapping:
+                        mapping[nn_nn] = distance
+                        heapq.heappush(heap, (distance, nn_nn))
+                    elif mapping[nn_nn] > distance:
+                        mapping[nn_nn] = distance
+                        heapq.heappush(heap, (distance, nn_nn))
             
         if len(min_distances) < n_neighbors_max:
             for i in range(n_neighbors_max-len(min_distances)):
