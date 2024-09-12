@@ -537,8 +537,8 @@ def find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighb
 
 # Calculate the connected mutual nn graph
 def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, connectivity):
-    mutual_nn = {} # i -> set(row)
-    nearest_n = {} # i -> set(row, if reciprocated)
+    nearest_n = {} # i -> set(row)
+    mutual_nn = {} # i -> set(row, if reciprocated)
     
     knn_indices_pos = [None] * len(knn_indices) # i1 -> i2 -> col
     for i, top_vals in enumerate(knn_indices):
