@@ -509,9 +509,8 @@ def find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighb
             min_distances.append(dist)
             min_indices.append(nn)
             seen.add(nn)
-            neighbor = connected_mnn[nn]
             
-            for nn_nn in neighbor:
+            for nn_nn in connected_mnn[nn]:
                 if nn_nn not in seen:
                     distance = 0
                     if nn_nn in knn_indices_pos[nn]:
