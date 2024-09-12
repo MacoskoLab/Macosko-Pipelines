@@ -519,10 +519,7 @@ def find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighb
                         pos = knn_indices_pos[nn_nn][nn]
                         distance = knn_dists[nn_nn][pos] 
                     distance += dist
-                    if nn_nn not in mapping:
-                        mapping[nn_nn] = distance
-                        heapq.heappush(heap, (distance, nn_nn))
-                    elif mapping[nn_nn] > distance:
+                    if nn_nn not in mapping or mapping[nn_nn] > distance:
                         mapping[nn_nn] = distance
                         heapq.heappush(heap, (distance, nn_nn))
             
