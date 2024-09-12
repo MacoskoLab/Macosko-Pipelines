@@ -487,12 +487,12 @@ def create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n
     return connected_mnn  
 
 # Search to find path neighbors
-def find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max):
+def find_new_nn(knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max):
     import heapq
     new_knn_dists = [] 
     new_knn_indices = []
     
-    for i in range(len(knn_indices)): 
+    for i in range(len(knn_dists)): 
         min_distances = []
         min_indices = []
         
@@ -537,6 +537,8 @@ def find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighb
 
 # Calculate the connected mutual nn graph
 def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, connectivity):
+    assert knn_indices.shape == knn_dists.shape
+    
     nearest_n = {} # i -> set(row)
     mutual_nn = {} # i -> set(row, if reciprocated)
     
@@ -559,6 +561,6 @@ def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max, conn
     connected_mnn = create_connected_graph(mutual_nn, total_mutual_nn, knn_indices, knn_dists, n_neighbors, connectivity)
     
     print("Finding new nearest neighbors...")
-    new_knn_dists, new_knn_indices = find_new_nn(knn_indices, knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
+    new_knn_dists, new_knn_indices = find_new_nn(knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
     
     return np.array(new_knn_indices, dtype=np.int32), np.array(new_knn_dists)
