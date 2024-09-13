@@ -297,7 +297,7 @@ def knn_filter(knn_indices, knn_dists):
 
     # Filter low clustering coefficients
     z_low = -3
-    knn_matrix = create_knn_matrix(knn_indices, knn_dists, knn_indices.shape[1])
+    knn_matrix = create_knn_matrix(knn_indices, knn_dists)
     G = nx.from_scipy_sparse_array(knn_matrix, create_using=nx.Graph, edge_attribute=None) # undirected, unweighted
     clustering = nx.clustering(G, nodes=None, weight=None)
     data = [clustering[key] for key in sorted(clustering.keys())]
@@ -401,24 +401,15 @@ def knn_merge(knn_indices1, knn_dists1, knn_indices2, knn_dists2):
 ### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
 import scipy
 
-def create_knn_matrix(knn_indices, knn_dists, n_neighbors):
+def create_knn_matrix(knn_indices, knn_dists):
     assert knn_indices.shape == knn_dists.shape
-    assert n_neighbors <= knn_indices.shape[1]
-    rows = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
-    cols = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.int32)
-    vals = np.zeros(knn_indices.shape[0] * n_neighbors, dtype=np.float32)
+    assert np.all(knn_indices >= 0) and np.all(knn_dists >= 0)
     
-    pos = 0
-    for i, indices in enumerate(knn_indices):
-        for j, index in enumerate(indices[:n_neighbors]):
-            if index == -1:
-                continue
-            rows[pos] = i 
-            cols[pos] = index
-            vals[pos] = knn_dists[i][j]
-            pos += 1
-    
+    rows = np.repeat(knn_indices[:,0], knn_indices.shape[1])
+    cols = knn_indices.ravel()
+    vals = knn_dists.ravel()
     knn_matrix = scipy.sparse.csr_matrix((vals, (rows, cols)), shape=(knn_indices.shape[0], knn_indices.shape[0]))
+    
     return knn_matrix
     
 def min_spanning_tree(knn_matrix):
@@ -428,19 +419,16 @@ def min_spanning_tree(knn_matrix):
     sorted_weights_tuples = sorted(weights_tuples, key=lambda tup: tup[2])
     return sorted_weights_tuples 
 
-def create_connected_graph(mutual_nn, knn_indices, knn_dists, n_neighbors):
-    import copy
-    connected_mnn = copy.deepcopy(mutual_nn)
-        
+def create_connected_graph(mutual_nn, knn_matrix):
     # Find the min spanning tree with KNN
-    sorted_weights_tuples = min_spanning_tree(create_knn_matrix(knn_indices, knn_dists, n_neighbors))
+    sorted_weights_tuples = min_spanning_tree(knn_matrix)
     
     # Add edges until graph is connected
     for pos,(i,j,v) in enumerate(sorted_weights_tuples):
-        connected_mnn[i].add(j)
-        connected_mnn[j].add(i)
+        mutual_nn[i].add(j)
+        mutual_nn[j].add(i)
     
-    return connected_mnn  
+    return mutual_nn  
 
 # Search to find path neighbors
 def find_new_nn(knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max):
@@ -484,16 +472,19 @@ def find_new_nn(knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max):
                 min_indices.append(-1)
                 min_distances.append(np.inf)
         
-        new_knn_dists.append(min_distances)
         new_knn_indices.append(min_indices)
+        new_knn_dists.append(min_distances)
         
         if i % int(len(knn_dists) / 10) == 0:
             print("\tcompleted ", i, " / ", len(knn_dists), "epochs")
-    return new_knn_dists, new_knn_indices
+    
+    return np.array(new_knn_indices, dtype=np.int32), np.array(new_knn_dists)
 
 # Calculate the connected mutual nn graph
-def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max):
+def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors):
     assert knn_indices.shape == knn_dists.shape
+    assert np.array_equal(knn_indices[:,0], np.arange(len(knn_indices)))
+    knn_matrix = create_knn_matrix(knn_indices, knn_dists)
     
     nearest_n = {} # i -> set(row)
     mutual_nn = {} # i -> set(row, if reciprocated)
@@ -512,9 +503,9 @@ def mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors_max):
                  mutual_nn[i].add(nn)
 
     print("Creating connected graph...")
-    connected_mnn = create_connected_graph(mutual_nn, knn_indices, knn_dists, n_neighbors)
+    mutual_nn = create_connected_graph(mutual_nn, knn_matrix)
     
     print("Finding new nearest neighbors...")
-    new_knn_dists, new_knn_indices = find_new_nn(knn_dists, knn_indices_pos, connected_mnn, n_neighbors_max)
+    mnn_indices, mnn_dists = find_new_nn(knn_dists, knn_indices_pos, mutual_nn, n_neighbors)
     
-    return np.array(new_knn_indices, dtype=np.int32), np.array(new_knn_dists)
+    return mnn_indices, mnn_dists
