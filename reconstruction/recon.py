@@ -110,10 +110,8 @@ sys.stdout.flush()
 ### Compute the KNN ############################################################
 
 print("\nComputing the KNN...")
-n_neighbors2 = 150
-knn_indices, knn_dists = knn_descent(np.log1p(mat), n_neighbors2)
-knn_indices = knn_indices[:, :45]
-knn_dists = knn_dists[:, :45]
+n_neighbors_max = 150
+knn_indices, knn_dists = knn_descent(np.log1p(mat), n_neighbors_max)
 
 # print("\nFiltering the KNN...")
 # filter_indexes, fig, meta = knn_filter(knn_indices1, knn_dists1)
@@ -130,7 +128,9 @@ knn_dists = knn_dists[:, :45]
 
 if connectivity != "none":
     print("\Creating the MNN...")
-    mnn_indices, mnn_dists = mutual_nn_nearest(knn_indices, knn_dists, n_neighbors, n_neighbors2, connectivity)
+    in_neighbors = n_neighbors_max
+    out_neighbors = n_neighbors
+    mnn_indices, mnn_dists = mutual_nn_nearest(knn_indices, knn_dists, in_neighbors, out_neighbors, n_jobs=-1)
     np.savez_compressed(os.path.join(out_dir, "mnn.npz"), indices=mnn_indices, dists=mnn_dists)
     assert np.all(np.isfinite(mnn_indices))
     assert np.all(np.isfinite(mnn_dists))
