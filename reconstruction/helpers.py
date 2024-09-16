@@ -462,17 +462,13 @@ def find_new_nn(indices, dists, out_neighbors, i_range):
         
     return np.array(mnn_indices, dtype=np.int32), np.array(mnn_dists)
 
-# Calculate the connected mutual nn graph
-def mutual_nn_nearest(knn_indices, knn_dists, in_neighbors, out_neighbors, n_jobs=-1):
-    from multiprocessing import Pool
+# Prune non-reciproceted edges and 
+def create_mnn(knn_indices, knn_dists, in_neighbors):
     assert knn_indices.shape == knn_dists.shape
     assert np.max(knn_indices) < len(knn_indices)
     assert np.all(knn_indices >= 0) and np.all(knn_dists >= 0)
     assert np.array_equal(knn_indices[:,0], np.arange(len(knn_indices)))
     assert knn_indices.dtype == np.int32 and knn_dists.dtype == np.float64
-    
-    if n_jobs < 1:
-        n_jobs = len(os.sched_getaffinity(0))
 
     # Create mutual graph
     print("Creating mutual graph...")
@@ -504,12 +500,21 @@ def mutual_nn_nearest(knn_indices, knn_dists, in_neighbors, out_neighbors, n_job
         indices[i, :len(cols)] = cols
         dists[i, :len(vals)] = vals
     
-    indices.flush()
-    dists.flush()
+    indices.flush() ; dists.flush()
+    import gc ; gc.collect()
+    del indices, dists
+    import gc ; gc.collect()
+    shape = (knn_indices.shape[0], in_neighbors)
+    return shape
     
+def find_path_neighbors(shape, out_neighbors, n_jobs=-1):
     print("Finding new path neighbors...")
-    indices = np.memmap('/dev/shm/indices.bin', dtype='int32', mode='r', shape=(knn_indices.shape[0],in_neighbors))
-    dists = np.memmap('/dev/shm/dists.bin', dtype='float64', mode='r', shape=(knn_dists.shape[0],in_neighbors))
+    from multiprocessing import Pool
+    if n_jobs < 1:
+        n_jobs = len(os.sched_getaffinity(0))
+        
+    indices = np.memmap('/dev/shm/indices.bin', dtype='int32', mode='r', shape=shape)
+    dists = np.memmap('/dev/shm/dists.bin', dtype='float64', mode='r', shape=shape)
     ranges = np.array_split(range(len(indices)), n_jobs)
     with Pool(processes=n_jobs) as pool:
         results = pool.starmap(find_new_nn, [(indices, dists, out_neighbors, i_range) for i_range in ranges])
