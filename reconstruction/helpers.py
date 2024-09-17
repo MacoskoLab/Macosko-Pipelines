@@ -404,17 +404,27 @@ def knn_merge(knn_indices1, knn_dists1, knn_indices2, knn_dists2):
 
 def create_knn_matrix(knn_indices, knn_dists):
     assert knn_indices.shape == knn_dists.shape
+    assert knn_indices.dtype == np.int32 and knn_dists.dtype == np.float64
     assert np.max(knn_indices) < len(knn_indices)
-    assert np.all(knn_indices >= 0) and np.all(knn_dists >= 0)
     assert np.array_equal(knn_indices[:,0], np.arange(len(knn_indices)))
-
-    rows = np.repeat(knn_indices[:,0], knn_indices.shape[1])
-    cols = knn_indices.ravel()
-    vals = knn_dists.ravel()
+    assert np.all(knn_dists[:,1:] > 0) and not np.any(np.isnan(knn_dists))
+    
+    rows = np.repeat(knn_indices[:,0], knn_indices.shape[1]-1)
+    cols = knn_indices[:,1:].ravel()
+    vals = knn_dists[:,1:].ravel()
+    
+    # remove missing elements before constructing matrix
+    remove = (cols < 0) | (vals <= 0) | ~np.isfinite(cols) | ~np.isfinite(vals)
+    rows = rows[~remove]
+    cols = cols[~remove]
+    vals = vals[~remove]
+    if np.sum(remove) > 0:
+        print(f"{np.sum(remove)} values removed during matrix construction")
+    
     knn_matrix = sp.csr_matrix((vals, (rows, cols)), shape=(knn_indices.shape[0], knn_indices.shape[0]))
     
-    return knn_matrix
-    
+    return knn_matrix    
+
 def min_spanning_tree(knn_matrix):
     Tcsr = sp.csgraph.minimum_spanning_tree(knn_matrix)
     Tcsr = sp.coo_matrix(Tcsr)
@@ -462,14 +472,8 @@ def find_new_nn(indices, dists, out_neighbors, i_range):
         
     return np.array(mnn_indices, dtype=np.int32), np.array(mnn_dists)
 
-# Prune non-reciproceted edges and 
+# Prune non-reciprocated edges and add MST edges
 def create_mnn(knn_indices, knn_dists, in_neighbors):
-    assert knn_indices.shape == knn_dists.shape
-    assert np.max(knn_indices) < len(knn_indices)
-    assert np.all(knn_indices >= 0) and np.all(knn_dists >= 0)
-    assert np.array_equal(knn_indices[:,0], np.arange(len(knn_indices)))
-    assert knn_indices.dtype == np.int32 and knn_dists.dtype == np.float64
-
     # Create mutual graph
     print("Creating mutual graph...")
     knn_matrix = create_knn_matrix(knn_indices, knn_dists).tocsr()
