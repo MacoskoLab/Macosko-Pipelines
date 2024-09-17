@@ -6,6 +6,7 @@ import json
 import argparse
 import numpy as np
 import pandas as pd
+import scipy
 from scipy.sparse import coo_matrix
 from PyPDF2 import PdfMerger
 from helpers import *
@@ -103,6 +104,7 @@ metadata["connection_filter"] = meta ; del meta
 # Rows are the beads you wish to recon
 # Columns are the features used for judging similarity
 mat = coo_matrix((df['umi'], (df['sb2_index'], df['sb1_index']))).tocsr()
+scipy.sparse.save_npz(os.path.join(out_dir, "mat.npz"), mat)
 del df
 
 sys.stdout.flush()
@@ -123,17 +125,16 @@ knn_indices, knn_dists = knn_descent(np.log1p(mat), n_neighbors_max)
 # print("\nRe-computing the KNN...")
 # knn_indices2, knn_dists2 = knn_descent(np.log1p(mat), n_neighbors)
 # knn_indices, knn_dists = knn_merge(knn_indices1[m,:], knn_dists1[m,:], knn_indices2, knn_dists2)
-# np.savez_compressed(os.path.join(out_dir, "knn.npz"), indices=knn_indices, dists=knn_dists)
+np.savez_compressed(os.path.join(out_dir, "knn.npz"), indices=knn_indices, dists=knn_dists)
 # knn = (knn_indices, knn_dists)
 
 if connectivity != "none":
-    print("\Creating the MNN...")
-    in_neighbors = n_neighbors_max
-    out_neighbors = n_neighbors
-    mnn_indices, mnn_dists = mutual_nn_nearest(knn_indices, knn_dists, in_neighbors, out_neighbors, n_jobs=-1)
+    print("\nCreating the MNN...")
+    mnn_indices, mnn_dists = find_path_neighbors(create_mnn(knn_indices, knn_dists, n_neighbors), n_neighbors, n_jobs=-1)
     np.savez_compressed(os.path.join(out_dir, "mnn.npz"), indices=mnn_indices, dists=mnn_dists)
     assert np.all(np.isfinite(mnn_indices))
     assert np.all(np.isfinite(mnn_dists))
+    assert mnn_dists.shape[1] == n_neighbors
     n_neighbors = n_neighbors2
     knn = (mnn_indices, mnn_dists)
 
