@@ -432,6 +432,51 @@ def min_spanning_tree(knn_matrix):
     sorted_weights_tuples = sorted(weights_tuples, key=lambda tup: tup[2])
     return sorted_weights_tuples 
 
+# Prune non-reciprocated edges
+def create_mnn(knn_indices, knn_dists, n_neighbors_out=-1):
+    # Create mutual graph
+    print("Creating mutual graph...")
+    knn_matrix = create_knn_matrix(knn_indices, knn_dists).tocsr()
+    m = np.abs(knn_matrix - knn_matrix.T) > np.min(knn_matrix.data)/2
+    knn_matrix.data *= ~m[knn_matrix.astype(bool)].A1
+    knn_matrix.eliminate_zeros()
+    lil = knn_matrix.tolil()
+    lil.setdiag(0)
+    del knn_matrix, m
+    
+    # Add MST edges
+    # print("Adding MST edges...")
+    # knn_matrix = create_knn_matrix(knn_indices, knn_dists)
+    # sorted_weights_tuples = min_spanning_tree(knn_matrix)
+    # for i,j,v in sorted_weights_tuples:
+    #     lil[i,j] = v
+    #     lil[j,i] = v
+    # del sorted_weights_tuples, knn_matrix
+    
+    # Write output
+    print("Writing output...")
+    nrows = lil.shape[0]
+    ncols = max(len(row) for row in lil.rows) + 1
+    
+    mnn_indices = np.full((nrows, ncols), -1, dtype=np.int32)
+    mnn_dists = np.full((nrows, ncols), np.inf, dtype=np.float64)
+    for i in range(nrows):
+        cols = np.array(lil.rows[i]+[i], dtype=np.int32)
+        vals = np.array(lil.data[i]+[0], dtype=np.float64)
+
+        sorted_indices = np.argsort(vals)
+        cols = cols[sorted_indices]
+        vals = vals[sorted_indices]
+
+        mnn_indices[i, :len(cols)] = cols
+        mnn_dists[i, :len(vals)] = vals
+    
+    if n_neighbors_out > 0:
+        mnn_indices = mnn_indices[:,:n_neighbors_out]
+        mnn_dists = mnn_dists[:,:n_neighbors_out]
+    
+    return mnn_indices, mnn_dists
+
 # Search to find path neighbors (todo: stop at dist=0)
 def find_new_nn(indices, dists, out_neighbors, i_range):
     mnn_dists = [] 
@@ -472,56 +517,15 @@ def find_new_nn(indices, dists, out_neighbors, i_range):
         
     return np.array(mnn_indices, dtype=np.int32), np.array(mnn_dists)
 
-# Prune non-reciprocated edges and add MST edges
-def create_mnn(knn_indices, knn_dists, in_neighbors):
-    # Create mutual graph
-    print("Creating mutual graph...")
-    knn_matrix = create_knn_matrix(knn_indices, knn_dists).tocsr()
-    lil = knn_matrix.multiply(knn_matrix.transpose()).sqrt().tolil()
-    lil.setdiag(0)
-    
-    # Add MST edges
-    print("Adding MST edges...")
-    sorted_weights_tuples = min_spanning_tree(knn_matrix)
-    for i,j,v in sorted_weights_tuples:
-        lil[i,j] = v
-        lil[j,i] = v
-    del sorted_weights_tuples, knn_matrix
-    
-    # Memory-map the data
-    print("Memory-mapping the data...")
-    indices = np.memmap('/dev/shm/indices.bin', dtype='int32', mode='w+', shape=(knn_indices.shape[0],in_neighbors))
-    dists = np.memmap('/dev/shm/dists.bin', dtype='float64', mode='w+', shape=(knn_dists.shape[0],in_neighbors))
-    indices[:] = -1 ; dists[:] = -1
-    for i in range(lil.shape[0]):
-        cols = np.array(lil.rows[i], dtype=np.int32)
-        vals = np.array(lil.data[i], dtype=np.float64)
-        if len(cols) > in_neighbors:
-            inds = np.argpartition(vals, in_neighbors)[:in_neighbors]
-            cols = cols[inds]
-            vals = vals[inds]
-
-        indices[i, :len(cols)] = cols
-        dists[i, :len(vals)] = vals
-    
-    indices.flush() ; dists.flush()
-    import gc ; gc.collect()
-    del indices, dists
-    import gc ; gc.collect()
-    shape = (knn_indices.shape[0], in_neighbors)
-    return shape
-    
-def find_path_neighbors(shape, out_neighbors, n_jobs=-1):
+def find_path_neighbors(knn_indices, knn_dists, out_neighbors, n_jobs=-1):
     print("Finding new path neighbors...")
     from multiprocessing import Pool
     if n_jobs < 1:
         n_jobs = len(os.sched_getaffinity(0))
-        
-    indices = np.memmap('/dev/shm/indices.bin', dtype='int32', mode='r', shape=shape)
-    dists = np.memmap('/dev/shm/dists.bin', dtype='float64', mode='r', shape=shape)
-    ranges = np.array_split(range(len(indices)), n_jobs)
+
+    ranges = np.array_split(range(len(knn_indices)), n_jobs)
     with Pool(processes=n_jobs) as pool:
-        results = pool.starmap(find_new_nn, [(indices, dists, out_neighbors, i_range) for i_range in ranges])
+        results = pool.starmap(find_new_nn, [(knn_indices, knn_dists, out_neighbors, i_range) for i_range in ranges])
 
     mnn_indices, mnn_dists = zip(*results)
     mnn_indices = np.vstack(mnn_indices)
