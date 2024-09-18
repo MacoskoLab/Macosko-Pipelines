@@ -425,13 +425,6 @@ def create_knn_matrix(knn_indices, knn_dists):
     
     return knn_matrix    
 
-def min_spanning_tree(knn_matrix):
-    Tcsr = sp.csgraph.minimum_spanning_tree(knn_matrix)
-    Tcsr = sp.coo_matrix(Tcsr)
-    weights_tuples = zip(Tcsr.row, Tcsr.col, Tcsr.data)
-    sorted_weights_tuples = sorted(weights_tuples, key=lambda tup: tup[2])
-    return sorted_weights_tuples 
-
 # Prune non-reciprocated edges
 def create_mnn(knn_indices, knn_dists, n_neighbors_out=-1):
     # Create mutual graph
@@ -443,15 +436,6 @@ def create_mnn(knn_indices, knn_dists, n_neighbors_out=-1):
     lil = knn_matrix.tolil()
     lil.setdiag(0)
     del knn_matrix, m
-    
-    # Add MST edges
-    # print("Adding MST edges...")
-    # knn_matrix = create_knn_matrix(knn_indices, knn_dists)
-    # sorted_weights_tuples = min_spanning_tree(knn_matrix)
-    # for i,j,v in sorted_weights_tuples:
-    #     lil[i,j] = v
-    #     lil[j,i] = v
-    # del sorted_weights_tuples, knn_matrix
     
     # Write output
     print("Writing output...")
@@ -519,6 +503,8 @@ def find_new_nn(indices, dists, out_neighbors, i_range):
 
 def find_path_neighbors(knn_indices, knn_dists, out_neighbors, n_jobs=-1):
     print("Finding new path neighbors...")
+    assert np.all(np.sum(mnn_indices[:,1:]>=0, axis=1) > 0), "ERROR: Some beads have no edges"
+    
     from multiprocessing import Pool
     if n_jobs < 1:
         n_jobs = len(os.sched_getaffinity(0))
