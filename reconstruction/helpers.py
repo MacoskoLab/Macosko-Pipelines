@@ -1,5 +1,6 @@
 import os
 import math
+import copy
 import heapq
 import numpy as np
 import pandas as pd
@@ -322,6 +323,8 @@ def knn_filter(knn_indices, knn_dists):
     fig.tight_layout()
     return filter_indexes, fig, meta
 
+
+
 ### KNN METHODS ################################################################
 
 # Compute the KNN using NNDescent
@@ -399,6 +402,47 @@ def knn_merge(knn_indices1, knn_dists1, knn_indices2, knn_dists2):
 
     return knn_indices, knn_dists
 
+class KNNMask:
+    def __init__(self, knn_indices, knn_dists):
+        assert knn_indices.shape == knn_dists.shape
+        self.knn_indices = copy.deepcopy(knn_indices)
+        self.knn_dists = copy.deepcopy(knn_dists)
+        self.original_size = knn_indices.shape[0]
+        self.valid_original_indexes = np.arange(self.original_size)
+    
+    def remove(self, bad):
+        curr_len = self.knn_indices.shape[0]
+        
+        assert self.knn_indices.shape == self.knn_dists.shape
+        assert np.all(np.unique(bad, return_counts=True)[1] == 1)
+        assert np.min(bad) >= 0 and np.max(bad) < curr_len
+        print(f"Removing {len(bad)} beads")
+        
+        # Slice the data        
+        m = np.ones(curr_len, dtype=bool)
+        m[bad] = False
+        self.knn_indices = self.knn_indices[m]
+        self.knn_dists = self.knn_dists[m]
+        self.valid_original_indexes = self.valid_original_indexes[m]
+        assert np.all(b not in self.knn_indices[:,0] for b in bad)
+        
+        # Remap the KNN        
+        index_map = np.cumsum([i not in bad for i in range(curr_len)], dtype=np.int32) - 1
+        index_map[bad] = -1
+        mask_2d = np.isin(self.knn_indices, bad)
+        self.knn_indices = index_map[self.knn_indices]
+        assert np.all(self.knn_indices[mask_2d] == -1)
+        self.knn_dists[mask_2d] = np.inf
+
+        assert self.knn_indices.shape == self.knn_dists.shape
+        return copy.deepcopy(self.knn_indices), copy.deepcopy(self.knn_dists)
+    
+    def final(self):
+        assert len(self.valid_original_indexes) == self.knn_indices.shape[0] == self.knn_dists.shape[0]
+        mask = np.zeros(self.original_size, dtype=bool)
+        mask[self.valid_original_indexes] = True
+        return mask
+
 ### MNN METHODS ################################################################
 ### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
 
@@ -428,7 +472,7 @@ def create_knn_matrix(knn_indices, knn_dists):
 # Prune non-reciprocated edges
 def create_mnn(knn_indices, knn_dists, n_neighbors_out=-1):
     # Create mutual graph
-    print("Creating mutual graph...")
+    print(f"Creating mutual graph {knn_indices.shape[1]}->{n_neighbors_out}...")
     knn_matrix = create_knn_matrix(knn_indices, knn_dists).tocsr()
     m = np.abs(knn_matrix - knn_matrix.T) > np.min(knn_matrix.data)/2
     knn_matrix.data *= ~m[knn_matrix.astype(bool)].A1
@@ -459,6 +503,7 @@ def create_mnn(knn_indices, knn_dists, n_neighbors_out=-1):
         mnn_indices = mnn_indices[:,:n_neighbors_out]
         mnn_dists = mnn_dists[:,:n_neighbors_out]
     
+    print("done")
     return mnn_indices, mnn_dists
 
 # Search to find path neighbors (todo: stop at dist=0)
@@ -503,7 +548,7 @@ def find_new_nn(indices, dists, out_neighbors, i_range):
 
 def find_path_neighbors(knn_indices, knn_dists, out_neighbors, n_jobs=-1):
     print("Finding new path neighbors...")
-    assert np.all(np.sum(mnn_indices[:,1:]>=0, axis=1) > 0), "ERROR: Some beads have no edges"
+    assert np.all(np.sum(knn_indices[:,1:]>=0, axis=1) > 0), "ERROR: Some beads have no edges"
     
     from multiprocessing import Pool
     if n_jobs < 1:
