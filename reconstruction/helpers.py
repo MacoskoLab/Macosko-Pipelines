@@ -532,7 +532,7 @@ def find_path_neighbors(knn_indices, knn_dists, out_neighbors, n_jobs=-1):
     mnn_dists = np.vstack(mnn_dists)
     
     assert mnn_indices.shape == mnn_dists.shape
-    assert mnn_indices.shape[0] == shape[0]
+    assert mnn_indices.shape[0] == knn_indices.shape[0]
     assert np.max(mnn_indices) < len(mnn_indices)
     assert np.all(mnn_indices >= 0) and np.all(mnn_dists >= 0)
     assert np.array_equal(mnn_indices[:,0], np.arange(len(mnn_indices)))
