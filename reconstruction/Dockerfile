@@ -22,8 +22,9 @@ RUN sed -i '552s/.*/            elif isinstance(self.val[name], str):/g' /usr/bi
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
 
 # Install additional python packges
-RUN pip install numpy pandas matplotlib scipy scikit-learn networkx seaborn
-RUN pip install argparse gcsfs plotly editdistance mappy umi_tools PyPDF2
+RUN pip install numpy pandas matplotlib scipy scikit-learn seaborn
+RUN pip install networkx igraph rustworkx
+RUN pip install gcsfs plotly editdistance mappy umi_tools PyPDF2
 RUN pip install umap-learn[tbb] pydiffmap datafold MDAnalysis # dbmap
 RUN pip install pynndescent scikit-image datashader bokeh holoviews colorcet
 RUN pip install tensorflow annoy tqdm
