@@ -569,40 +569,50 @@ anno_polar <- function(df) {
 
 ### Workflow ###################################################################
 
-# Load + select seurat data
+# STEP 1: Load coordinates
+# - `df` is a three-column dataframe of x, y, color
+# - (color is optional, but helps with drawing)
+
+# Option 1: load + select seurat data
 # obj = qread("seurat.qs")
 # obj %<>% cluster_selector
 # df <- data.frame(x=obj$x_um, y=obj$y_um, col=obj$seurat_clusters) %>% dplyr::filter(is.finite(x), is.finite(y))
 # df %<>% layer_selector
 
-# Load dataframe data
+# Option 2: load coordinate data directly
 # df <- read.csv("cgrid_sampledata.csv")
 
-# Draw splines
-# splines <- anno_splines(df)
-# DimPlot(obj,reduction="spatial") %>% plot.splines(splines) + coord_fixed()
-
-# Spline drawing tips
+# STEP 2: Annotate splines
 # - all splines must be drawn in order and with the same orientation
 # - all interior points must be included between the spline edges
 # - all points must lay between the spline endpoints
 # - first spline is i=0, last spline is i=1
 # - first points are r=0, last points are r=1
 
-# Method 1 (simple)
+# Draw splines
+# splines <- anno_splines(df)
+# DimPlot(obj,reduction="spatial") %>% plot.splines(splines) + coord_fixed()
+
+# STEP 3: Use splines to create coordinate grid (cgrid)
+# - Option 1 uniformly parameterizes the curves
+# - Option 2 keeps the parameterizations as close as possible
+
+# Option 1 (simple)
 # cgrid <- makegrid1(splines, 10, 100)
 # ggplot(cgrid,aes(x=x,y=y,col=i)) + geom_point()
 # ggplot(cgrid,aes(x=x,y=y,col=r)) + geom_point()
 # DimPlot(obj,reduction="spatial") %>% plot.splines(cgrid2splines(cgrid))
 
-# Method 2 (advanced)
+# Option 2 (advanced)
 # cgrids <- map(2:len(splines), ~makegrid2(splines[[.-1]], splines[[.]], 20, 200))
 # cgrid <- Reduce(function(x,y) cgridmerge(x, y, flip=F), cgrids)
 # ggplot(cgrid, aes(x=x,y=y,col=i)) + geom_point()
 # ggplot(cgrid, aes(x=x,y=y,col=r)) + geom_point()
 # DimPlot(obj,reduction="spatial") %>% plot.splines(cgrid2splines(cgrid))
 
-# Add coords to object
+# STEP 4: Use coordinate grid to assign new coordinates to each cell
+
+# Option 1: add coords to Seurat object
 # obj %<>% obj2ir(cgrid)
 # DimPlot(obj, reduction="flat")
 # Misc(obj,"spline_boundaries") <- map_dbl(splines, function(spline) {
@@ -612,3 +622,6 @@ anno_polar <- function(df) {
 #   }) %>% which.min
 #   return(i_list[[index]])
 # })
+
+# Option 2: generate new coords from an xy dataframe of points
+# ir <- xy2ir(xy, cgrid)
