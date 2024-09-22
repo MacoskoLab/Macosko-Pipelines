@@ -430,9 +430,11 @@ def create_knn_matrix(knn_indices, knn_dists):
     return knn_matrix    
 
 # Prune non-reciprocated edges
-def create_mnn(knn_indices, knn_dists, n_neighbors_out=-1):
+def create_mnn(knn_indices, knn_dists):
+    assert knn_indices.shape == knn_dists.shape
+
     # Create mutual graph
-    print(f"Creating mutual graph {knn_indices.shape[1]}->{n_neighbors_out}...")
+    print(f"Creating mutual graph...")
     knn_matrix = create_knn_matrix(knn_indices, knn_dists).tocsr()
     m = np.abs(knn_matrix - knn_matrix.T) > np.min(knn_matrix.data)/2
     knn_matrix.data *= ~m[knn_matrix.astype(bool)].A1
@@ -458,10 +460,6 @@ def create_mnn(knn_indices, knn_dists, n_neighbors_out=-1):
 
         mnn_indices[i, :len(cols)] = cols
         mnn_dists[i, :len(vals)] = vals
-    
-    if n_neighbors_out > 0:
-        mnn_indices = mnn_indices[:,:n_neighbors_out]
-        mnn_dists = mnn_dists[:,:n_neighbors_out]
     
     print("done")
     return mnn_indices, mnn_dists
