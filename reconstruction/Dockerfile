@@ -38,6 +38,7 @@ RUN /software/julia-1.8.5/bin/julia -e 'using Pkg;               \
                                         Pkg.add("FASTX");        \
                                         Pkg.add("Plots");        \
                                         Pkg.add("Peaks");        \
+                                        Pkg.add("ArgParse");     \
                                         Pkg.add("CodecZlib");    \
                                         Pkg.add("PDFmerger");    \
                                         Pkg.add("IterTools");    \
