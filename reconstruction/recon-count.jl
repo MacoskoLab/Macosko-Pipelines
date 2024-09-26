@@ -2,6 +2,7 @@ using CSV
 using FASTX
 using Plots
 using Peaks: findminima
+using ArgParse
 using CodecZlib
 using PDFmerger
 using StatsBase
@@ -20,31 +21,60 @@ using Distributions: pdf, Exponential
 # JJJJJJJJJJJJJJJ   CTGTTTCCTG NNNNNNNNN          (V15)
 # JJJJJJJJJJJJJJJJJ CTGTTTCCTG NNNNNNNNN          (V16)
 
-# Load the command-line arguments
-if length(ARGS) == 3
-    fastq_path = ARGS[1]
-    out_path = ARGS[2]
-    downsampling_level = ARGS[3]
-elseif length(ARGS) == 2
-    fastq_path = ARGS[1]
-    out_path = ARGS[2]
-    downsampling_level = "1"
-elseif length(ARGS) == 1
-    fastq_path = ARGS[1]
-    out_path = "."
-    downsampling_level = "1"
-else 
-    error("Usage: julia recon-count.jl fastq_path [out_path] [downsampling_level]")
+# Read the command-line arguments
+function get_args()
+    s = ArgParseSettings()
+
+    # Positional arguments
+    @add_arg_table s begin
+        "fastq_path"
+        help = "Path to the directory of FASTQ files"
+        arg_type = String
+        required = true
+
+        "out_path"
+        help = "Output directory"
+        arg_type = String
+        required = true
+    end
+    
+    # Optional arguments
+    @add_arg_table s begin
+        "--downsampling_level", "-p"
+        help = "Level of downsampling"
+        arg_type = Float64
+        default = 1.0
+
+        # "--umi_cutoff_1", "-uc1"
+        # help = "Level of downsampling"
+        # arg_type = Int64
+        # default = 1.0
+
+        # "--umi_cutoff_2", "-uc2"
+        # help = "Level of downsampling"
+        # arg_type = Int64
+        # default = 1.0
+    end
+
+    return parse_args(ARGS, s)
 end
+
+# Load the command-line arguments
+args = get_args()
+const fastq_path = args["fastq_path"]
+const out_path = args["out_path"]
+const prob = args["downsampling_level"]
+
 println("FASTQ path: "*fastq_path)
 @assert isdir(fastq_path) "FASTQ path not found"
 @assert !isempty(readdir(fastq_path)) "FASTQ path is empty"
 println("Output path: "*out_path)
 Base.Filesystem.mkpath(out_path)
-@assert isdir(out_path) "Output path not created"
-const prob = parse(Float64, downsampling_level)
+@assert isdir(out_path) "Output path could not be created"
 @assert 0 < prob <= 1 "Invalid downsampling level $prob"
-prob < 1 && println("Downsampling level: $prob")
+if prob < 1
+    println("Downsampling level: $prob")
+end
 
 # Load the FASTQ paths
 fastqs = readdir(fastq_path, join=true)
@@ -138,11 +168,11 @@ println("R2 bead type: $bead2_type")
 
 # UMI matching+compressing methods
 const px = [convert(UInt32, 4^i) for i in 0:(9-1)]
-function UMItoindex(UMI::StringView{SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}})::UInt32
+@inline function UMItoindex(UMI::StringView{SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}})::UInt32
     return(dot(px, (codeunits(UMI).>>1).&3))
 end
 const bases = ['A','C','T','G'] # MUST NOT change this order
-function indextoUMI(i::UInt32)::String15
+@inline function indextoUMI(i::UInt32)::String15
     return(String15(String([bases[(i>>n)&3+1] for n in 0:2:16])))
 end
 
@@ -332,11 +362,41 @@ println("Total UMIs: $(nrow(df))") ; flush(stdout)
 
 print("Computing barcode whitelist... ") ; flush(stdout)
 
-# Create elbow plots and determine bead UMI cutoff
-#     We use the elbow plot to determine which beads to use as our whitelist
-#     The cutoff is auto-detected using the flat part of the distribution
-#     To make finding it more consistent, we set a reasonable min/max UMI count
-function umi_density_plot(table, R)
+function remove_intermediate(x, y)
+    m = (y .!= vcat(y[2:end], NaN)) .| (y .!= vcat(NaN, y[1:end-1]))
+    x = x[m] ; y = y[m]
+    return(x, y)
+end
+
+# Use the elbow plot to determine which beads to use as our whitelist
+#   The cutoff is auto-detected using the steepest part of the curve
+#   To make finding it more consistent, we set a reasonable min/max UMI cutoff
+#   uc (umi cutoff) is the steepest part of the curve between min_uc and max_uc
+function determine_umi_cutoff(y)
+    sort!(y, rev=true)
+    x = 1:length(y)
+    x, y = remove_intermediate(x, y)
+    
+    # find the steepest slope
+    lx = log10.(x) ; ly = log10.(y)
+    dydx = (ly[1:end-2] - ly[3:end]) ./ (lx[1:end-2] - lx[3:end])
+    min_uc = 10 ; max_uc = 1000 ; m = log10(min_uc) .<= ly[2:end-1] .<= log10(max_uc)
+    min_index = findall(m)[argmin(dydx[m])] + 1 + 2
+    
+    uc = round(Int64, 10^ly[min_index])
+    return uc
+end
+
+const tab1 = countmap(df[!,:sb1_i])
+const tab2 = countmap(df[!,:sb2_i])
+
+const uc1 = determine_umi_cutoff(tab1 |> values |> collect)
+const uc2 = determine_umi_cutoff(tab2 |> values |> collect)
+
+const bc1 = count(e -> e >= uc1, tab1 |> values |> collect)
+const bc2 = count(e -> e >= uc2, tab2 |> values |> collect)
+
+function umi_density_plot(table, uc, R)
     x = collect(keys(table))
     y = collect(values(table))
     perm = sortperm(x)
@@ -351,24 +411,8 @@ function umi_density_plot(table, R)
         kde = sum(log10.(y) .* weights) / sum(weights)
         push!(ly_s, kde)
     end
-
-    min_umis = 5
-    min_beads = 10_000
-    max_umis = x[end-findfirst(cumsum(reverse(y)) .>= min_beads)]
     
-    # Find the flattest point
-    mins = lx_s[findminima(ly_s).indices] |> sort
-    filter!(m -> min_umis <= 10^m <= max_umis, mins)
-    if length(mins) > 0
-        uc = round(10^mins[1])
-    else
-        println("\nWARNING: no local min found for $R, selecting flattest point along curve")
-        l = round(Int,log10(min_umis)*1000) ; r = round(Int,log10(max_umis)*1000)
-        i = argmin(abs.(diff(ly_s[l:r])))
-        uc = round(10^lx_s[l-1+i])
-    end
-
-    # Create an elbow plot
+    # Create a density plot
     p = plot(x, y, seriestype = :scatter, xscale = :log10, yscale = :log10, 
              xlabel = "Number of UMI", ylabel = "Frequency",
              markersize = 3, markerstrokewidth = 0.1,
@@ -377,17 +421,12 @@ function umi_density_plot(table, R)
     vline!(p, [uc], linestyle = :dash, color = :red, label = "UMI cutoff")
     xticks!(p, [10^i for i in 0:ceil(log10(maximum(x)))])
     yticks!(p, [10^i for i in 0:ceil(log10(maximum(y)))])
-    return(p, uc)
+    return p
 end
-function remove_intermediate(x, y)
-    m = (y .!= vcat(y[2:end], NaN)) .| (y .!= vcat(NaN, y[1:end-1]))
-    x = x[m] ; y = y[m]
-    return(x, y)
-end
-function elbow_plot(y, uc, R)
+
+function elbow_plot(y, uc, bc, R)
     sort!(y, rev=true)
     x = 1:length(y)
-    bc = count(e -> e >= uc, y)
     
     xp, yp = remove_intermediate(x, y)
     p = plot(xp, yp, seriestype = :line, xscale = :log10, yscale = :log10,
@@ -397,17 +436,14 @@ function elbow_plot(y, uc, R)
     vline!(p, [bc], linestyle = :dash, color = :green, label = "SB cutoff")
     xticks!(p, [10^i for i in 0:ceil(log10(maximum(xp)))])
     yticks!(p, [10^i for i in 0:ceil(log10(maximum(yp)))])
-    return(p, bc)
+    return p
 end
 
-tab1 = countmap(df[!,:sb1_i])
-tab2 = countmap(df[!,:sb2_i])
+p1 = umi_density_plot(tab1 |> values |> countmap, uc1, "R1")
+p3 = umi_density_plot(tab2 |> values |> countmap, uc2, "R2")
 
-p1, uc1 = umi_density_plot(tab1 |> values |> countmap, "R1")
-p3, uc2 = umi_density_plot(tab2 |> values |> countmap, "R2")
-
-p2, bc1 = elbow_plot(tab1 |> values |> collect, uc1, "R1")
-p4, bc2 = elbow_plot(tab2 |> values |> collect, uc2, "R2")
+p2 = elbow_plot(tab1 |> values |> collect, uc1, bc1, "R1")
+p4 = elbow_plot(tab2 |> values |> collect, uc2, bc2, "R2")
 
 p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
 savefig(p, joinpath(out_path, "elbows.pdf"))
