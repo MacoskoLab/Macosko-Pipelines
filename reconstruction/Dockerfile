@@ -30,22 +30,24 @@ RUN pip install pynndescent scikit-image datashader bokeh holoviews colorcet
 RUN pip install tensorflow annoy tqdm
 
 # Install Julia
-RUN wget -P /software https://julialang-s3.julialang.org/bin/linux/x64/1.8/julia-1.8.5-linux-x86_64.tar.gz && \
-    tar -xzvf /software/julia-1.8.5-linux-x86_64.tar.gz -C /software                                       && \
-    rm /software/julia-1.8.5-linux-x86_64.tar.gz
-RUN /software/julia-1.8.5/bin/julia -e 'using Pkg;               \
-                                        Pkg.add("CSV");          \
-                                        Pkg.add("FASTX");        \
-                                        Pkg.add("Plots");        \
-                                        Pkg.add("Peaks");        \
-                                        Pkg.add("ArgParse");     \
-                                        Pkg.add("CodecZlib");    \
-                                        Pkg.add("PDFmerger");    \
-                                        Pkg.add("IterTools");    \
-                                        Pkg.add("StatsBase");    \
-                                        Pkg.add("DataFrames");   \
-                                        Pkg.add("StatsPlots");   \
-                                        Pkg.add("StringViews");  \
-                                        Pkg.add("LinearAlgebra");\
-                                        Pkg.add("Distributions");\
-                                        Pkg.add("Combinatorics")'
+RUN wget -P /software https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.5-linux-x86_64.tar.gz && \
+    tar -xzvf /software/julia-1.10.5-linux-x86_64.tar.gz -C /software                                        && \
+    rm /software/julia-1.10.5-linux-x86_64.tar.gz
+RUN /software/julia-1.10.5/bin/julia -e 'using Pkg;               \
+                                         Pkg.add("CSV");          \
+                                         Pkg.add("GZip");         \
+                                         Pkg.add("HDF5");         \
+                                         Pkg.add("Plots");        \
+                                         Pkg.add("FASTX");        \
+                                         Pkg.add("Peaks");        \
+                                         Pkg.add("ArgParse");     \
+                                         Pkg.add("CodecZlib");    \
+                                         Pkg.add("PDFmerger");    \
+                                         Pkg.add("IterTools");    \
+                                         Pkg.add("StatsBase");    \
+                                         Pkg.add("DataFrames");   \
+                                         Pkg.add("StatsPlots");   \
+                                         Pkg.add("StringViews");  \
+                                         Pkg.add("Combinatorics");\
+                                         Pkg.add("Distributions");\
+                                         Pkg.add("LinearAlgebra")'
