@@ -8,7 +8,6 @@ using PDFmerger
 using StatsBase
 using IterTools: product
 using DataFrames
-using StatsPlots
 using StringViews
 using LinearAlgebra: dot
 using Combinatorics: combinations
