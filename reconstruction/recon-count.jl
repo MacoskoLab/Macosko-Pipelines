@@ -311,6 +311,10 @@ function process_fastqs(R1s, R2s)
             umi2_i = UMItoindex(umi2)
             push!(df, (sb1_i, umi1_i, sb2_i, umi2_i))
             metadata["reads_filtered"] += 1
+
+            if metadata["reads_filtered"] % 10_000_000 == 0
+                println(metadata["reads_filtered"])
+            end
         end
     end
     
