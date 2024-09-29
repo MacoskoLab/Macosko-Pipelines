@@ -1,17 +1,11 @@
 using CSV
-using FASTX
 using Plots
 using Peaks: findminima
 using ArgParse
-using CodecZlib
 using PDFmerger
 using StatsBase
-using IterTools: product
-using DataFrames
 using StatsPlots
-using StringViews
-using LinearAlgebra: dot
-using Combinatorics: combinations
+using Distributed
 using Distributions: pdf, Exponential
 
 # R1 recognized bead types:
@@ -44,16 +38,6 @@ function get_args()
         help = "Level of downsampling"
         arg_type = Float64
         default = 1.0
-
-        # "--umi_cutoff_1", "-uc1"
-        # help = "Level of downsampling"
-        # arg_type = Int64
-        # default = 1.0
-
-        # "--umi_cutoff_2", "-uc2"
-        # help = "Level of downsampling"
-        # arg_type = Int64
-        # default = 1.0
     end
 
     return parse_args(ARGS, s)
@@ -75,264 +59,341 @@ Base.Filesystem.mkpath(out_path)
 if prob < 1
     println("Downsampling level: $prob")
 end
+println("Threads: $(Threads.nthreads())")
 
 # Load the FASTQ paths
 fastqs = readdir(fastq_path, join=true)
 fastqs = filter(fastq -> endswith(fastq, ".fastq.gz"), fastqs)
-R1s = filter(s -> occursin("_R1_", s), fastqs) ; println("R1s: ", basename.(R1s))
-R2s = filter(s -> occursin("_R2_", s), fastqs) ; println("R2s: ", basename.(R2s))
-@assert length(R1s) == length(R2s) > 0
+@assert length(fastqs) > 1 "ERROR: No FASTQ pairs found"
+const R1s = filter(s -> occursin("_R1_", s), fastqs) ; println("R1s: ", basename.(R1s))
+const R2s = filter(s -> occursin("_R2_", s), fastqs) ; println("R2s: ", basename.(R2s))
+@assert length(R1s) > 0 && length(R2s) > 0 "ERROR: No FASTQ pairs found"
+@assert length(R1s) == length(R2s) "ERROR: R1s and R2s are not all paired"
 @assert [replace(R1, "_R1_"=>"", count=1) for R1 in R1s] == [replace(R2, "_R2_"=>"", count=1) for R2 in R2s]
+println("$(length(R1s)) pair(s) of FASTQs found\n")
 
 ####################################################################################################
 
-# Read structure methods
-@inline function get_V10(record::FASTX.FASTQ.Record)
-    sb_1 = FASTQ.sequence(record, 1:8)
-    up = FASTQ.sequence(record, 9:26)
-    sb_2 = FASTQ.sequence(record, 27:33)
-    umi = FASTQ.sequence(record, 34:42)
-    return sb_1, sb_2, up, umi
-end
-@inline function get_V17(record::FASTX.FASTQ.Record)
-    sb_1 = FASTQ.sequence(record, 1:9)
-    up = FASTQ.sequence(record, 10:27)
-    sb_2 = FASTQ.sequence(record, 28:35)
-    umi = FASTQ.sequence(record, 36:44)
-    return sb_1, sb_2, up, umi
-end
-@inline function get_V15(record::FASTX.FASTQ.Record)
-    sb_1 = FASTQ.sequence(record, 1:8)
-    sb_2 = FASTQ.sequence(record, 9:15)
-    up = FASTQ.sequence(record, 16:25)
-    umi = FASTQ.sequence(record, 26:34)
-    return sb_1, sb_2, up, umi
-end
-@inline function get_V16(record::FASTX.FASTQ.Record)
-    sb_1 = FASTQ.sequence(record, 1:9)
-    sb_2 = FASTQ.sequence(record, 10:17)
-    up = FASTQ.sequence(record, 18:27)
-    umi = FASTQ.sequence(record, 28:36)
-    return sb_1, sb_2, up, umi
-end
-const UP1 = String31("TCTTCAGCGTTCCCGAGA")
-const UP2 = String15("CTGTTTCCTG")
+# Create a worker for each FASTQ pair
+addprocs(length(R1s))
 
-# Determine the bead types
-function learn_R1type(R1)
-    iter = R1 |> open |> GzipDecompressorStream |> FASTQ.Reader
-    s10 = 0 ; s17 = 0
-    for (i, record) in enumerate(iter)
-        i > 100000 ? break : nothing
-        s10 += FASTQ.sequence(record, 9:26)  == UP1
-        s17 += FASTQ.sequence(record, 10:27) == UP1
+@everywhere begin
+    using FASTX
+    using CodecZlib
+    using IterTools: product
+    using DataFrames
+    using StringViews
+    using LinearAlgebra: dot
+    using Combinatorics: combinations
+
+    const R1s = $R1s
+    const R2s = $R2s
+    const prob = $prob
+
+    # Read structure methods
+    const SeqView = StringView{SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}}
+    @inline function get_V10(seq::SeqView)
+        @inbounds sb_1 = seq[1:8]
+        @inbounds up = seq[9:26]
+        @inbounds sb_2 = seq[27:33]
+        @inbounds umi = seq[34:42]
+        return sb_1, sb_2, up, umi
     end
-    println("V10: ", s10, " V17: ", s17)
-    return(s10 >= s17 ? "V10" : "V17")
-end
-function learn_R2type(R2)
-    iter = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
-    s15 = 0 ; s16 = 0
-    for (i, record) in enumerate(iter)
-        i > 100000 ? break : nothing
-        s15 += FASTQ.sequence(record, 16:25) == UP2
-        s16 += FASTQ.sequence(record, 18:27) == UP2
+    @inline function get_V17(seq::SeqView)
+        @inbounds sb_1 = seq[1:9]
+        @inbounds up = seq[10:27]
+        @inbounds sb_2 = seq[28:35]
+        @inbounds umi = seq[36:44]
+        return sb_1, sb_2, up, umi
     end
-    println("V15: ", s15, " V16: ", s16)
-    return(s15 >= s16 ? "V15" : "V16")
-end
+    @inline function get_V15(seq::SeqView)
+        @inbounds sb_1 = seq[1:8]
+        @inbounds sb_2 = seq[9:15]
+        @inbounds up = seq[16:25]
+        @inbounds umi = seq[26:34]
+        return sb_1, sb_2, up, umi
+    end
+    @inline function get_V16(seq::SeqView)
+        @inbounds sb_1 = seq[1:9]
+        @inbounds sb_2 = seq[10:17]
+        @inbounds up = seq[18:27]
+        @inbounds umi = seq[28:36]
+        return sb_1, sb_2, up, umi
+    end
+    const UP1 = "TCTTCAGCGTTCCCGAGA"
+    const UP2 = "CTGTTTCCTG"
+    
+    # String bit-encoding methods
+    const bases = ['A','C','T','G'] # MUST NOT change this order
+    const px7 = [convert(UInt32, 4^i) for i in 0:6]
+    const px8 = [convert(UInt32, 4^i) for i in 0:7]
+    const px9 = [convert(UInt32, 4^i) for i in 0:8]
 
-R1_types = [learn_R1type(R1) for R1 in R1s]
-if all(x -> x == "V10", R1_types)
-    const bead1_type = "V10"
-    get_R1 = get_V10
-elseif all(x -> x == "V17", R1_types)
-    const bead1_type = "V17"
-    get_R1 = get_V17
-else
-    error("Error: The R1 bead type is not consistent ($R1_types)")
-end
-println("R1 bead type: $bead1_type")
+    @inline function encode_str(str::String)::UInt64 # careful, encodes N as G
+        return dot([4^i for i in 0:(length(str)-1)], (codeunits(str) .>> 1) .& 3)
+    end
+    
+    @inline function encode_umi(umi::SeqView)::UInt32
+        @fastmath @inbounds b = dot(px9, (codeunits(umi) .>> 1) .& 3)
+        return b
+    end
+    @inline function decode_umi(code::UInt32)::String
+        return String([bases[(code >> n) & 3 + 1] for n in 0:2:16])
+    end
+    
+    @inline function encode_15(sb_1::SeqView, sb_2::SeqView)::UInt64
+        @fastmath @inbounds b1 = dot(px8, (codeunits(sb_1) .>> 1) .& 3)
+        @fastmath @inbounds b2 = dot(px7, (codeunits(sb_2) .>> 1) .& 3)
+        return b1 + b2 * 4^8
+    end
+    @inline function decode_15(code::UInt64)::String
+        return String([bases[(code >> n) & 3 + 1] for n in 0:2:28])
+    end
+    
+    @inline function encode_17(sb_1::SeqView, sb_2::SeqView)::UInt64
+        @fastmath @inbounds b1 = dot(px9, (codeunits(sb_1) .>> 1) .& 3)
+        @fastmath @inbounds b2 = dot(px8, (codeunits(sb_2) .>> 1) .& 3)
+        return b1 + b2 * 4^9
+    end
+    @inline function decode_17(code::UInt64)::String
+        return String([bases[(code >> n) & 3 + 1] for n in 0:2:32])
+    end
 
-R2_types = [learn_R2type(R2) for R2 in R2s]
-if all(x -> x == "V15", R2_types)
-    const bead2_type = "V15"
-    get_R2 = get_V15
-elseif all(x -> x == "V16", R2_types)
-    const bead2_type = "V16"
-    get_R2 = get_V16
-else
-    error("Error: The R2 bead type is not consistent ($R2_types)")
-end
-println("R2 bead type: $bead2_type")
-
-# UMI matching+compressing methods
-const px = [convert(UInt32, 4^i) for i in 0:(9-1)]
-@inline function UMItoindex(UMI::StringView{SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}})::UInt32
-    return(dot(px, (codeunits(UMI).>>1).&3))
-end
-const bases = ['A','C','T','G'] # MUST NOT change this order
-@inline function indextoUMI(i::UInt32)::String15
-    return(String15(String([bases[(i>>n)&3+1] for n in 0:2:16])))
-end
-
-function listHDneighbors(str, hd, charlist = ['A','C','G','T','N'])::Set{String}
-    res = Set{String}()
-    for inds in combinations(1:length(str), hd)
-        chars = [str[i] for i in inds]
-        pools = [setdiff(charlist, [char]) for char in chars]
-        prods = product(pools...)
-        for prod in prods
-            s = str
-            for (i, c) in zip(inds, prod)
-                s = s[1:i-1]*string(c)*s[i+1:end]
-            end
-            push!(res,s)
+    # Determine the R1 bead type
+    function learn_R1type(R1)
+        iter = R1 |> open |> GzipDecompressorStream |> FASTQ.Reader
+        s10 = 0 ; s17 = 0
+        for (i, record) in enumerate(iter)
+            i > 100000 ? break : nothing
+            seq = FASTQ.sequence(record)
+            length(seq) < 44 ? continue : nothing
+            s10 += get_V10(seq)[3] == UP1
+            s17 += get_V17(seq)[3] == UP1
         end
+        myid() == 1 && println("V10: ", s10, " V17: ", s17)
+        return(s10 >= s17 ? "V10" : "V17")
     end
-    return(res)
+    R1_types = [learn_R1type(R1) for R1 in R1s]
+    if all(x -> x == "V10", R1_types)
+        const bead1_type = "V10"
+        const R1_len = 42
+        get_R1 = get_V10
+        encode_sb1 = encode_15
+        decode_sb1 = decode_15
+    elseif all(x -> x == "V17", R1_types)
+        const bead1_type = "V17"
+        const R1_len = 44
+        get_R1 = get_V17
+        encode_sb1 = encode_17
+        decode_sb1 = decode_17
+    else
+        error("Error: The R1 bead type is not consistent ($R1_types)")
+    end
+    myid() == 1 && println("R1 bead type: $bead1_type")
+    
+    # Determine the R2 bead type
+    function learn_R2type(R2)
+        iter = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
+        s15 = 0 ; s16 = 0
+        for (i, record) in enumerate(iter)
+            i > 100000 ? break : nothing
+            seq = FASTQ.sequence(record)
+            length(seq) < 36 ? continue : nothing
+            s15 += get_V15(seq)[3] == UP2
+            s16 += get_V16(seq)[3] == UP2
+        end
+        myid() == 1 &&  println("V15: ", s15, " V16: ", s16)
+        return(s15 >= s16 ? "V15" : "V16")
+    end
+    R2_types = [learn_R2type(R2) for R2 in R2s]
+    if all(x -> x == "V15", R2_types)
+        const bead2_type = "V15"
+        const R2_len = 34
+        get_R2 = get_V15
+        encode_sb2 = encode_15
+        decode_sb2 = decode_15
+    elseif all(x -> x == "V16", R2_types)
+        const bead2_type = "V16"
+        const R2_len = 36
+        get_R2 = get_V16
+        encode_sb2 = encode_17
+        decode_sb2 = decode_17
+    else
+        error("Error: The R2 bead type is not consistent ($R2_types)")
+    end
+    myid() == 1 && println("R2 bead type: $bead2_type")
 end
 
-const umi_homopolymer_whitelist = reduce(union, [listHDneighbors(c^9, i) for c in ["A","C","G","T"] for i in 0:2])
-const sb_homopolymer_whitelist = reduce(union, [listHDneighbors(c^15, i) for c in ["A","C","G","T"] for i in 0:3])
-const UP1_whitelist = reduce(union, [listHDneighbors(UP1, i) for i in 0:2])
-const UP2_whitelist = reduce(union, [listHDneighbors(UP2, i) for i in 0:1])
-const UP1_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP1), i) for i in 0:3])
-const UP2_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP2), i) for i in 0:2])
+# Create fuzzy matching whitelists
+@everywhere workers() begin
+    function listHDneighbors(str, hd, charlist = ['A','C','G','T','N'])::Set{String}
+        res = Set{String}()
+        for inds in combinations(1:length(str), hd)
+            chars = [str[i] for i in inds]
+            pools = [setdiff(charlist, [char]) for char in chars]
+            prods = product(pools...)
+            for prod in prods
+                s = str
+                for (i, c) in zip(inds, prod)
+                    s = s[1:i-1]*string(c)*s[i+1:end]
+                end
+                push!(res,s)
+            end
+        end
+        return(res)
+    end
+    
+    const UP1_whitelist = reduce(union, [listHDneighbors(UP1, i) for i in 0:2])
+    const UP2_whitelist = reduce(union, [listHDneighbors(UP2, i) for i in 0:1])
+    const UP1_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP1), i) for i in 0:3])
+    const UP2_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP2), i) for i in 0:2])
+    const umi_homopolymer_whitelist = reduce(union, [listHDneighbors(c^9, i) for c in bases for i in 0:2])
+    const sbi_homopolymer_whitelist = Set{UInt64}(encode_str(str) for str in reduce(union, [listHDneighbors(c^15, i) for c in bases for i in 0:3]))
+end
 
 ####################################################################################################
 
-println("Reading FASTQs...") ; flush(stdout)
+println("\nReading FASTQs...") ; flush(stdout)
 
 # Read the FASTQs
-function process_fastqs(R1s, R2s)
-    sb1_dictionary = Dict{String, UInt32}() # sb1 -> sb1_i
-    sb2_dictionary = Dict{String, UInt32}() # sb2 -> sb2_i
-    df = DataFrame(sb1_i = UInt32[], umi1_i = UInt32[], sb2_i = UInt32[], umi2_i = UInt32[]) 
+@everywhere function process_fastqs(R1, R2)
+    it1 = R1 |> open |> GzipDecompressorStream |> FASTQ.Reader
+    it2 = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
+
+    df = DataFrame(sb1_i = UInt64[], umi1_i = UInt32[], sb2_i = UInt64[], umi2_i = UInt32[]) 
     metadata = Dict("reads"=>0, "reads_filtered"=>0,
                     "R1_tooshort"=>0, "R2_tooshort"=>0,
                     "R1_no_UP"=>0, "R2_no_UP"=>0, "R1_GG_UP"=>0, "R2_GG_UP"=>0,
                     "R1_N_UMI"=>0, "R2_N_UMI"=>0, "R1_homopolymer_UMI"=>0, "R2_homopolymer_UMI"=>0,
-                    "R1_homopolymer_SB"=>0, "R2_homopolymer_SB"=>0)
+                    "R1_N_SB"=>0, "R2_N_SB"=>0, "R1_homopolymer_SB"=>0, "R2_homopolymer_SB"=>0)
 
-    for fastqpair in zip(R1s, R2s)
-        println(fastqpair) ; flush(stdout)
-        it1 = fastqpair[1] |> open |> GzipDecompressorStream |> FASTQ.Reader
-        it2 = fastqpair[2] |> open |> GzipDecompressorStream |> FASTQ.Reader
-        for record in zip(it1, it2)
-            # Random dropout for downsampling
-            prob < 1 && rand() > prob && continue
+    for record in zip(it1, it2)
+        # Random dropout for downsampling
+        prob < 1 && rand() > prob && continue
 
-            metadata["reads"] += 1
-            
-            # Validate the sequence length
-            skip = false
-            if length(FASTQ.sequence(record[1])) < 44
-                metadata["R1_tooshort"] += 1
-                skip = true
-            end
-            if length(FASTQ.sequence(record[2])) < 44
-                metadata["R2_tooshort"] += 1
-                skip = true
-            end
-            if skip
-                continue
-            end
+        metadata["reads"] += 1
 
-            # Parse the read structure
-            sb1_1, sb1_2, up1, umi1 = get_R1(record[1])
-            sb2_1, sb2_2, up2, umi2 = get_R2(record[2])
+        # Load the sequences
+        seq1 = FASTQ.sequence(record[1])
+        seq2 = FASTQ.sequence(record[2])
+        
+        # Validate the sequence length
+        skip = false
+        if length(seq1) < R1_len
+            metadata["R1_tooshort"] += 1
+            skip = true
+        end
+        if length(seq2) < R2_len
+            metadata["R2_tooshort"] += 1
+            skip = true
+        end
+        if skip
+            continue
+        end
 
-            # Validate the UP
-            skip = false
-            if !in(up1, UP1_whitelist)
-                metadata["R1_no_UP"] += 1
-                skip = true
-            end
-            if !in(up2, UP2_whitelist)
-                metadata["R2_no_UP"] += 1
-                skip = true
-            end
-            if in(up1, UP1_GG_whitelist)
-                metadata["R1_GG_UP"] += 1
-                skip = true
-            end
-            if in(up2, UP2_GG_whitelist)
-                metadata["R2_GG_UP"] += 1
-                skip = true
-            end
-            if skip
-                continue
-            end
+        # Parse the read structure
+        sb1_1, sb1_2, up1, umi1 = get_R1(seq1)
+        sb2_1, sb2_2, up2, umi2 = get_R2(seq2)
 
-            # Validate the UMI
-            skip = false
-            if occursin('N', umi1)
-                metadata["R1_N_UMI"] += 1
-                skip = true
-            end
-            if occursin('N', umi2) 
-                metadata["R2_N_UMI"] += 1
-                skip = true
-            end
-            if in(umi1, umi_homopolymer_whitelist)
-                metadata["R1_homopolymer_UMI"] += 1
-                skip = true
-            end
-            if in(umi2, umi_homopolymer_whitelist)
-                metadata["R2_homopolymer_UMI"] += 1
-                skip = true
-            end
-            if skip
-                continue
-            end
+        # Validate the UP
+        skip = false
+        if !in(up1, UP1_whitelist)
+            metadata["R1_no_UP"] += 1
+            skip = true
+        end
+        if !in(up2, UP2_whitelist)
+            metadata["R2_no_UP"] += 1
+            skip = true
+        end
+        if in(up1, UP1_GG_whitelist)
+            metadata["R1_GG_UP"] += 1
+            skip = true
+        end
+        if in(up2, UP2_GG_whitelist)
+            metadata["R2_GG_UP"] += 1
+            skip = true
+        end
+        if skip
+            continue
+        end
 
-            sb1 = sb1_1*sb1_2
-            sb2 = sb2_1*sb2_2
+        # Validate the UMI
+        skip = false
+        if occursin('N', umi1)
+            metadata["R1_N_UMI"] += 1
+            skip = true
+        end
+        if occursin('N', umi2) 
+            metadata["R2_N_UMI"] += 1
+            skip = true
+        end
+        if in(umi1, umi_homopolymer_whitelist)
+            metadata["R1_homopolymer_UMI"] += 1
+            skip = true
+        end
+        if in(umi2, umi_homopolymer_whitelist)
+            metadata["R2_homopolymer_UMI"] += 1
+            skip = true
+        end
+        if skip
+            continue
+        end
 
-            # Validate the SB
-            skip = false
-            if in(sb1[1:15], sb_homopolymer_whitelist)
-                metadata["R1_homopolymer_SB"] += 1
-                skip = true
-            end
-            if in(sb2[1:15], sb_homopolymer_whitelist)
-                metadata["R2_homopolymer_SB"] += 1
-                skip = true
-            end
-            if skip
-                continue
-            end
+        # Check SB for N
+        skip = false
+        if occursin('N', sb1_1) || occursin('N', sb1_2)
+            metadata["R1_N_SB"] += 1
+            skip = true
+        end
+        if occursin('N', sb2_1) || occursin('N', sb2_2)
+            metadata["R2_N_SB"] += 1
+            skip = true
+        end
+        if skip
+            continue
+        end
 
-            # Update counts
-            sb1_i = get!(sb1_dictionary, sb1, length(sb1_dictionary) + 1)
-            sb2_i = get!(sb2_dictionary, sb2, length(sb2_dictionary) + 1)
-            umi1_i = UMItoindex(umi1)
-            umi2_i = UMItoindex(umi2)
-            push!(df, (sb1_i, umi1_i, sb2_i, umi2_i))
-            metadata["reads_filtered"] += 1
+        sb1_i = encode_sb1(sb1_1, sb1_2)
+        sb2_i = encode_sb2(sb2_1, sb2_2)
 
-            if metadata["reads_filtered"] % 10_000_000 == 0
-                println(metadata["reads_filtered"])
-            end
+        # Check SB for homopolymer
+        skip = false
+        if in(sb1_i & (4^15 - 1), sbi_homopolymer_whitelist)
+            metadata["R1_homopolymer_SB"] += 1
+            skip = true
+        end
+        if in(sb2_i & (4^15 - 1), sbi_homopolymer_whitelist)
+            metadata["R2_homopolymer_SB"] += 1
+            skip = true
+        end
+        if skip
+            continue
+        end
+
+        # Update counts
+        umi1_i = encode_umi(umi1)
+        umi2_i = encode_umi(umi2)
+        push!(df, (sb1_i, umi1_i, sb2_i, umi2_i))
+        metadata["reads_filtered"] += 1
+
+        if metadata["reads_filtered"] % 10_000_000 == 0
+            println(metadata["reads_filtered"]) ; flush(stdout)
+            break
         end
     end
-    
-    sb1_whitelist = DataFrame(sb1 = collect(String, keys(sb1_dictionary)),
-                              sb1_i = collect(UInt32, values(sb1_dictionary)))
-    sb2_whitelist = DataFrame(sb2 = collect(String, keys(sb2_dictionary)),
-                              sb2_i = collect(UInt32, values(sb2_dictionary)))
-    sort!(sb1_whitelist, :sb1_i)
-    sort!(sb2_whitelist, :sb2_i)
-    @assert sb1_whitelist.sb1_i == 1:size(sb1_whitelist, 1)
-    @assert sb2_whitelist.sb2_i == 1:size(sb2_whitelist, 1)
-    
-    return(df, sb1_whitelist.sb1, sb2_whitelist.sb2, metadata)
+        
+    return df, metadata
 end
-df, sb1_whitelist, sb2_whitelist, metadata = process_fastqs(R1s, R2s)
 
+@time results = pmap((pair) -> process_fastqs(pair...), zip(R1s, R2s))
+df = vcat([view(r[1],:,:) for r in results]...)
+metadata = reduce((x, y) -> mergewith(+, x, y), [r[2] for r in results])
+results = nothing
+
+rmprocs(workers())
 println("...done") ; flush(stdout) ; GC.gc()
 
+####################################################################################################
 ####################################################################################################
 
 print("Counting reads... ") ; flush(stdout)
@@ -457,17 +518,17 @@ metadata["R2_umicutoff"] = uc2
 metadata["R1_barcodes"] = bc1
 metadata["R2_barcodes"] = bc2
 
-println("...done") ; flush(stdout) ; GC.gc()
+println("done") ; flush(stdout) ; GC.gc()
 
 ####################################################################################################
 
 print("Matching to barcode whitelist... ") ; flush(stdout)
 
-wl1 = Set{UInt32}([k for (k, v) in tab1 if v >= uc1]) ; @assert length(wl1) == bc1
-wl2 = Set{UInt32}([k for (k, v) in tab2 if v >= uc2]) ; @assert length(wl2) == bc2
-
-function match_barcode(df, wl1, wl2)
+function match_barcode(df, tab1, tab2)
     matching_metadata = Dict("R1_exact"=>0, "R1_none"=>0, "R2_exact"=>0, "R2_none"=>0)
+    
+    wl1 = Set{UInt64}([k for (k, v) in tab1 if v >= uc1]) ; @assert length(wl1) == bc1
+    wl2 = Set{UInt64}([k for (k, v) in tab2 if v >= uc2]) ; @assert length(wl2) == bc2
 
     m1 = [s1 in wl1 for s1 in df[!,:sb1_i]]
     m2 = [s2 in wl2 for s2 in df[!,:sb2_i]]
@@ -481,7 +542,7 @@ function match_barcode(df, wl1, wl2)
 
     return df, matching_metadata
 end
-df, matching_metadata = match_barcode(df, wl1, wl2)
+df, matching_metadata = match_barcode(df, tab1, tab2)
 metadata["umis_matched"] = nrow(df)
 
 println("done") ; flush(stdout) ; GC.gc()
@@ -560,18 +621,14 @@ end
 p2 = plot_umis_per_connection(df.umi)
 
 # Factorize the barcode indexes
-m1 = sort(collect(Set(df.sb1_i)))
-m2 = sort(collect(Set(df.sb2_i)))
-sb1_whitelist_short = sb1_whitelist[m1]
-sb2_whitelist_short = sb2_whitelist[m2]
-dict1 = Dict{UInt32, UInt32}(value => index for (index, value) in enumerate(m1))
-dict2 = Dict{UInt32, UInt32}(value => index for (index, value) in enumerate(m2))
-sb1_new = [dict1[k] for k in df.sb1_i]
-sb2_new = [dict2[k] for k in df.sb2_i]
-@assert sb1_whitelist[df.sb1_i] == sb1_whitelist_short[sb1_new]
-@assert sb2_whitelist[df.sb2_i] == sb2_whitelist_short[sb2_new]
-df.sb1_i = sb1_new
-df.sb2_i = sb2_new
+uniques1 = sort(collect(Set(df.sb1_i)))
+uniques2 = sort(collect(Set(df.sb2_i)))
+sb1_whitelist = [decode_sb1(sb1_i) for sb1_i in uniques1]
+sb2_whitelist = [decode_sb2(sb2_i) for sb2_i in uniques2]
+dict1 = Dict{UInt64, UInt64}(value => index for (index, value) in enumerate(uniques1))
+dict2 = Dict{UInt64, UInt64}(value => index for (index, value) in enumerate(uniques2))
+df.sb1_i = [dict1[k] for k in df.sb1_i]
+df.sb2_i = [dict2[k] for k in df.sb2_i]
 @assert sort(collect(Set(df.sb1_i))) == collect(1:length(Set(df.sb1_i)))
 @assert sort(collect(Set(df.sb2_i))) == collect(1:length(Set(df.sb2_i)))
 
@@ -665,6 +722,8 @@ data = [
 (d(m["R1_N_UMI"],m["reads"]), "", d(m["R2_N_UMI"],m["reads"])),
 ("R1 degen UMI", "", "R2 degen UMI"),
 (d(m["R1_homopolymer_UMI"],m["reads"]), "", d(m["R2_homopolymer_UMI"],m["reads"])),
+("R1 LQ SB", "", "R2 LQ SB"),
+(d(m["R1_N_SB"],m["reads"]), "", d(m["R2_N_SB"],m["reads"])),
 ("R1 degen SB", "", "R2 degen SB"),
 (d(m["R1_homopolymer_SB"],m["reads"]), "", d(m["R2_homopolymer_SB"],m["reads"])),
 ("", "Filtered reads", ""),
@@ -686,12 +745,12 @@ data = [
 ("", "Final UMIs", ""),
 ("", d(m["umis_final"],m["umis_filtered"]), ""),
 ]
-p = plot(xlim=(0, 4), ylim=(0, 32+1), framestyle=:none, size=(7*100, 8*100),
+p = plot(xlim=(0, 4), ylim=(0, 34+1), framestyle=:none, size=(7*100, 8*100),
          legend=false, xticks=:none, yticks=:none)
 for (i, (str1, str2, str3)) in enumerate(data)
-    annotate!(p, 1, 32 - i + 1, text(str1, :center, 12))
-    annotate!(p, 2, 32 - i + 1, text(str2, :center, 12))
-    annotate!(p, 3, 32 - i + 1, text(str3, :center, 12))
+    annotate!(p, 1, 34 - i + 1, text(str1, :center, 12))
+    annotate!(p, 2, 34 - i + 1, text(str2, :center, 12))
+    annotate!(p, 3, 34 - i + 1, text(str3, :center, 12))
 end
 hline!(p, [14.5], linestyle = :solid, color = :black)
 savefig(p, joinpath(out_path, "metadata.pdf"))
@@ -712,17 +771,17 @@ sort!(meta_df, :key) ; meta_df = select(meta_df, :key, :value)
 CSV.write(joinpath(out_path,"metadata.csv"), meta_df, writeheader=false)
 
 # Save the matrix
-@assert length(df1.umi) == length(sb1_whitelist_short)
+@assert length(df1.umi) == length(sb1_whitelist)
 open(GzipCompressorStream, joinpath(out_path,"sb1.csv.gz"), "w") do file
     write(file, "sb1,umi,connections,max\n")
-    for line in zip(sb1_whitelist_short, df1.umi, df1.connections, df1.max)
+    for line in zip(sb1_whitelist, df1.umi, df1.connections, df1.max)
         write(file, join(line, ",") * "\n")
     end
 end
-@assert length(df2.umi) == length(sb2_whitelist_short)
+@assert length(df2.umi) == length(sb2_whitelist)
 open(GzipCompressorStream, joinpath(out_path,"sb2.csv.gz"), "w") do file
     write(file, "sb2,umi,connections,max\n")
-    for line in zip(sb2_whitelist_short, df2.umi, df2.connections, df2.max)
+    for line in zip(sb2_whitelist, df2.umi, df2.connections, df2.max)
         write(file, join(line, ",") * "\n")
     end
 end
