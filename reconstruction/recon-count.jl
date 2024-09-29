@@ -378,7 +378,7 @@ println("\nReading FASTQs...") ; flush(stdout)
 
         if metadata["reads_filtered"] % 10_000_000 == 0
             println(metadata["reads_filtered"]) ; flush(stdout)
-            break
+            # break
         end
     end
         
