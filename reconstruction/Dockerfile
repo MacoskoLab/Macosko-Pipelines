@@ -51,4 +51,5 @@ RUN /software/julia-1.10.5/bin/julia -e 'using Pkg;               \
                                          Pkg.add("StringViews");  \
                                          Pkg.add("Combinatorics");\
                                          Pkg.add("Distributions");\
-                                         Pkg.add("LinearAlgebra")'
+                                         Pkg.add("LinearAlgebra");\
+                                         Pkg.add("LoopVectorization")'
