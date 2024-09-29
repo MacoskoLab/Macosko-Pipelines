@@ -24,6 +24,7 @@ RUN wget -P /software https://julialang-s3.julialang.org/bin/linux/x64/1.10/juli
 RUN /software/julia-1.10.5/bin/julia -e 'using Pkg;               \
                                          Pkg.add("CSV");          \
                                          Pkg.add("GZip");         \
+                                         Pkg.add("SIMD");         \
                                          Pkg.add("HDF5");         \
                                          Pkg.add("Plots");        \
                                          Pkg.add("FASTX");        \
