@@ -1,4 +1,4 @@
-FROM debian:buster
+FROM debian:bookworm
 SHELL ["/bin/bash", "-c"]
 
 # Install system libraries
@@ -22,60 +22,61 @@ RUN wget -P /software https://julialang-s3.julialang.org/bin/linux/x64/1.10/juli
     tar -xzvf /software/julia-1.10.5-linux-x86_64.tar.gz -C /software                                        && \
     rm /software/julia-1.10.5-linux-x86_64.tar.gz                                                            && \
     ln -s /software/julia-1.10.5/bin/julia /usr/local/bin/julia
-RUN /software/julia-1.10.5/bin/julia -e 'using Pkg;                     \
-                                         Pkg.add(["CSV",                \
-                                                  "GZip",               \
-                                                  "SIMD",               \
-                                                  "HDF5",               \
-                                                  "Plots",              \
-                                                  "FASTX",              \
-                                                  "Peaks",              \
-                                                  "IJulia",             \
-                                                  "ArgParse",           \
-                                                  "CodecZlib",          \
-                                                  "PDFmerger",          \
-                                                  "IterTools",          \
-                                                  "StatsBase",          \
-                                                  "DataFrames",         \
-                                                  "StatsPlots",         \
-                                                  "StringViews",        \
-                                                  "Combinatorics",      \
-                                                  "Distributions",      \
-                                                  "LinearAlgebra",      \
-                                                  "LoopVectorization"])'
+RUN julia -e 'using Pkg;                     \
+              Pkg.add(["CSV",                \
+                       "GZip",               \
+                       "SIMD",               \
+                       "HDF5",               \
+                       "Plots",              \
+                       "FASTX",              \
+                       "Peaks",              \
+                       "IJulia",             \
+                       "ArgParse",           \
+                       "CodecZlib",          \
+                       "PDFmerger",          \
+                       "IterTools",          \
+                       "StatsBase",          \
+                       "DataFrames",         \
+                       "StatsPlots",         \
+                       "StringViews",        \
+                       "Combinatorics",      \
+                       "Distributions",      \
+                       "LinearAlgebra",      \
+                      "LoopVectorization"])'
 
 # Install R
-# RUN export R_VERSION=4.3.3 && \
-#     curl -O https://cdn.rstudio.com/r/debian-10/pkgs/r-${R_VERSION}_1_amd64.deb && \
-#     echo y | gdebi r-${R_VERSION}_1_amd64.deb                                   && \
-#     sudo ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R                       && \
-#     sudo ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
+RUN export R_VERSION=4.3.3 && \
+    curl -O https://cdn.rstudio.com/r/debian-12/pkgs/r-${R_VERSION}_1_amd64.deb && \
+    echo y | gdebi r-${R_VERSION}_1_amd64.deb                                   && \
+    sudo ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R                       && \
+    sudo ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
 
 # # Install R libraries
+RUN R -e "install.packages(c('qs',          \
+                             'glue',        \
+                             'qpdf',        \
+                             'dplyr',       \
+                             'purrr',       \
+                             'furrr',       \
+                             'rlist',       \
+                             'rdist',       \
+                             'tidyr',       \
+                             'hdf5r',       \
+                             'dbscan',      \
+                             'future',      \
+                             'Seurat',      \
+                             'cowplot',     \
+                             'ggplot2',     \
+                             'ggrastr',     \
+                             'stringr',     \
+                             'viridis',     \
+                             'jsonlite',    \
+                             'magrittr',    \
+                             'gridExtra',   \
+                             'SeuratObject'), repos='http://cran.rstudio.com/')"
+
 # RUN R -e "if (!require('BiocManager',quietly=T)) {install.packages('BiocManager',repos='http://cran.rstudio.com/')}; \
 #           BiocManager::install('rhdf5')"
-# RUN R -e "install.packages(c('qs',          \
-#                              'glue',        \
-#                              'qpdf',        \
-#                              'dplyr',       \
-#                              'purrr',       \
-#                              'furrr',       \
-#                              'rlist',       \
-#                              'rdist',       \
-#                              'tidyr',       \
-#                              'hdf5r',       \
-#                              'dbscan',      \
-#                              'future',      \
-#                              'Seurat',      \
-#                              'cowplot',     \
-#                              'ggplot2',     \
-#                              'ggrastr',     \
-#                              'stringr',     \
-#                              'viridis',     \
-#                              'jsonlite',    \
-#                              'magrittr',    \
-#                              'gridExtra',   \
-#                              'SeuratObject'), repos='http://cran.rstudio.com/')"
 
 # Install python
 # TODO
