@@ -44,18 +44,22 @@ df = data.frame(cb_index=f("matrix/cb_index"),
 print(g("{sum(df$reads)} spatial barcode reads loaded"))
 
 # load metadata
-metadata = list(SB_info = list(R1s=f("metadata/R1s"),
-                               R2s=f("metadata/R2s"),
+metadata = list(SB_info = list(R1s=f("lists/R1_list"),
+                               R2s=f("lists/R2_list"),
+                               pucks=f("lists/puck_list"),
                                UMI_downsampling=f("metadata/downsampling"),
-                               switch_R1R2=f("metadata/switch") %>% as.logical),
-                UP_matching = setNames(f("metadata/UP_matching/count"), f("metadata/UP_matching/type")),
-                SB_matching = setNames(f("metadata/SB_matching/count"),f("metadata/SB_matching/type")),
-                SB_fuzzy_position = setNames(f("metadata/SB_matching/position_count"), f("metadata/SB_matching/position")),
+                               switch_R1R2=f("metadata/switch") %>% as.logical,
+                               bead_type=f("metadata/bead")),
+                UMI_filtering = setNames(f("metadata/UMI/count"), f("metadata/UMI/type")),
+                UP_matching = setNames(f("metadata/UP/count"), f("metadata/UP/type")),
+                SB_matching = setNames(f("metadata/SB/count"),f("metadata/SB/type")),
+                SB_fuzzy_position = setNames(f("metadata/SB_HD/count"), f("metadata/SB_HD/type")) %>% {.[order(as.integer(names(.)))]},
                 bead_info = list(num_lowQ=f("metadata/num_lowQbeads"))
 )
-metadata$SB_filtering = c(reads_total=f("metadata/num_reads"),
-                          reads_noumi=sum(metadata$UP_matching[c("umi_N","umi_homopolymer")]),
-                          reads_noup=sum(metadata$UP_matching[c("none","GG")]),
+metadata$SB_filtering = c(reads_total=f("metadata/reads"),
+                          reads_tooshort=f("metadata/R1_tooshort")+f("metadata/R2_tooshort"),
+                          reads_noumi=sum(metadata$UMI[c("N","homopolymer")]),
+                          reads_noup=sum(metadata$UP[c("none","GG")]),
                           reads_nosb=sum(metadata$SB_matching[c("none","HD1ambig")]))
 
 ### Helper methods #############################################################
@@ -105,7 +109,7 @@ make.pdf <- function(plots, name, w, h) {
 
 ### Workflow ###################################################################
 
-# Fuzzy match and convert cb_index from a cb_list index to a cb_whitelist index
+# Convert cb_index from a cb_list index to a cb_whitelist index
 print("Performing fuzzy cell-barcode matching")
 fuzzy_matching <- function(df, cb_list, cb_whitelist) {
   # Check the lists
@@ -211,7 +215,7 @@ plot_rankplots <- function(df, f, out_path) {
   rm(sb.data, sb.data2) ; invisible(gc())
   
   # p3
-  x = seq(0, 1, 0.05) * f("metadata/num_reads")/1000000
+  x = seq(0, 1, 0.05) * f("metadata/reads")/1000000
   plot.df = data.frame(x=x, y=f("metadata/downsampling")/1000000)
   p3 = ggplot(plot.df, aes(x=x,y=y)) + geom_point() + theme_bw() + 
     xlab("Millions of reads") + ylab("Millions of filtered SB UMIs") + ggtitle("SB downsampling curve")
@@ -219,7 +223,7 @@ plot_rankplots <- function(df, f, out_path) {
   # p4
   d = table(df$reads) %>% as.data.frame %>% setNames(c("reads","count")) %>% mutate(reads = as.numeric(levels(reads))[reads])
   d %<>% filter(reads < 10) %>% bind_rows(data.frame(reads = 10, count = sum(d$count[d$reads >= 10])))
-  total_reads = prettyNum(f('metadata/num_reads'), big.mark=',')
+  total_reads = prettyNum(f('metadata/reads'), big.mark=',')
   sequencing_saturation = round((1 - nrow(df) / sum(df$reads)) * 100, 2) %>% paste0("%")
   p4 = ggplot(d, aes(x=reads, y=count/1000/1000)) + geom_col() +
     theme_bw() + xlab("Reads per UMI") + ylab("Millions of filtered SB UMIs") + ggtitle("SB read depth") + 
@@ -277,25 +281,57 @@ load_puckdf <- function(f) {
                         num_beads = map_int(puckdfs, nrow))
   
   # remove duplicated or low-quality beads
+  sb_len = nchar(puckdf$sb[1]) ; mc_tol = round(sb_len*0.75) ; lr_tol = round(sb_len*0.5)
   meta$bead_info$num_dup = map_int(puckdfs, ~sum(.$sb %in% dups))
   meta$bead_info$num_N = map_int(puckdfs, ~sum(.$sb %in% Ns))
-  meta$bead_info$num_degen = map_int(puckdfs, ~sum(.$mc > 10 | .$lr > 7))
+  meta$bead_info$num_degen = map_int(puckdfs, ~sum(.$mc > mc_tol | .$lr > lr_tol))
   puckdfs %<>% map(~filter(., !sb %in% dups))
   puckdfs %<>% map(~filter(., !sb %in% Ns))
-  puckdfs %<>% map(~filter(., mc <= 10, lr <= 7))
+  puckdfs %<>% map(~filter(., mc <= mc_tol, lr <= lr_tol))
   
   # scale the coordinates (to um)
   get_scaling_factor <- function(bn) {
     if (bn < 150000) {
       k = 0.73
-    } else if (bn < 600000) {
+      s = "3mm"
+    } else if (bn < 700000) {
       k = 0.73 * 2
+      s = "5.5mm"
     } else {
       k = 0.645
+      s = "1cm"
     }
-    return(k)
+    return(c(k, s))
   }
-  meta$puck_info$scaling_factors = map_dbl(meta$puck_info$num_beads, get_scaling_factor)
+  get_recon_scaling_factor <- function(bn, d) {
+    if (bn < 300000) {
+      k = 6000 / d
+      s = "6mm"
+    } else if (bn < 1000000) {
+      k = 12000 / d
+      s = "1.2cm"
+    } else if (bn < 3200000) {
+      k = 20000 / d
+      s = "2cm"
+    } else {
+      k = 30000 / d
+      s = "3cm"
+    }
+    return(c(k, s))
+  }
+  
+  res = map2(puckdfs, meta$puck_info$num_beads, function(puckdf, bn) {
+    if (mean(c(puckdf$x,puckdf$y)) > 100) {
+      # Regular puck
+      get_scaling_factor(bn)
+    } else {
+      # Recon puck
+      d = mean(c(max(puckdf$x)-min(puckdf$x), max(puckdf$y)-min(puckdf$y)))
+      get_recon_scaling_factor(bn, d)
+    }
+  })
+  meta$puck_info$scaling_factors = map_dbl(res, ~as.numeric(.[[1]]))
+  meta$puck_info$puck_sizes = map_chr(res, ~as.character(.[[2]]))
   puckdfs %<>% map2(meta$puck_info$scaling_factors, ~transmute(.x, sb=sb, x=x*.y, y=y*.y))
   
   # center the coordinates
@@ -358,18 +394,17 @@ df %<>% filter(cb_index > 0)
 
 # count umis
 print("Counting UMIs")
-stopifnot(sum(metadata$SB_filtering)+sum(df$reads) == 2 * metadata$SB_filtering["reads_total"])
 metadata$SB_filtering %<>% c(reads_final=sum(df$reads))
 df %<>% count_umis
 metadata$SB_filtering %<>% c(UMIs_final=sum(df$umi))
 invisible(gc())
 
-# join tables
+# join tables -> (cb_index, x, y, umi)
 stopifnot(df$sb_index %in% puckdf$sb_index)
 df %<>% left_join(puckdf, by="sb_index") %>% select(cb_index, x, y, umi) %>% arrange(cb_index, desc(umi))
 
 metadata$puck_info$umi_final = map_int(1:len(metadata$puck_info$puck_name), ~filter(df, x >= metadata$puck_info$puck_boundaries[[.]],
-                                                                                    x <= metadata$puck_info$puck_boundaries[[.+1]])$umi %>% sum)
+                                                                                        x <= metadata$puck_info$puck_boundaries[[.+1]])$umi %>% sum)
 
 # plot metadata
 print("Plotting metadata")
@@ -377,30 +412,30 @@ plot_metrics <- function(metadata, out_path) {
   
   plot.df = list(
     c("Total Reads", metadata$SB_filtering[["reads_total"]] %>% add.commas),
-    c("Final UMIs", metadata$SB_filtering[["UMIs_final"]] %>% add.commas),
     c("R1<->R2", metadata$SB_info$switch_R1R2),
     c("Remap 10X CB", metadata$SB_info$remap_10X_CB),
+    c("Bead type", metadata$SB_info$bead_type),
     c("Low Q beads", metadata$bead_info$num_lowQ)
   ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("Metric", "Value"))
   p_sp = plot_grid(gdraw("Library information"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.6))
   
   header = c("Metric", metadata$puck_info$puck_name %>% str_remove("^Puck_") %>% str_remove("\\.csv$"))
   plot.df = list(c("Beads", metadata$puck_info$num_beads %>% add.commas),
+                 c("Size", metadata$puck_info$puck_sizes),
                  c("Filtered beads", Reduce(`+`,metadata$bead_info[c("num_dup","num_N","num_degen")]) %>% add.commas),
-                 c("Scaling factor", metadata$puck_info$scaling_factors),
+                 c("Scaling factor", metadata$puck_info$scaling_factors %>% round(2)),
                  c("Final UMIs", metadata$puck_info$umi_final %>% add.commas)
   ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(header)
   p_puck = plot_grid(gdraw("Puck information"),
                      plot.tab(plot.df),
-                     gdraw(""), #spacer
-                     ncol=1, rel_heights=c(0.1,0.5,0.1))
+                     ncol=1, rel_heights=c(0.1,0.6))
   
   UP_matching = metadata$UP_matching
   SB_filtering = metadata$SB_filtering
   
   plot.df = data.frame(a=c("exact","fuzzy", "none", "GG"),
                        b=c(UP_matching[["exact"]],
-                           sum(UP_matching[c("1D-","1D-1X","-1X","-1D","-2X")]),
+                           UP_matching[["HD1"]],
                            UP_matching[["none"]],
                            UP_matching[["GG"]]
                        ) %>% {./sum(.)*100} %>% round(2) %>% paste0("%")
@@ -422,20 +457,24 @@ plot_metrics <- function(metadata, out_path) {
     c("Uncalled CB", SB_filtering[["reads_uncalled"]])
   ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("Filter","Percent"))
   plot.df$Percent = as.numeric(plot.df$Percent) / (SB_filtering[["reads_total"]] - lag(cumsum(plot.df$Percent),1,0))
-  # plot.df[1:4,2] = 1-plot.df[1:4,2] # convert from fraction removed to fraction retained
   plot.df$Percent = round(plot.df$Percent * 100, 2) %>% paste0("%")
   p_filter = plot_grid(gdraw("SB filtering"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.7))
   
-  plot.df = metadata$SB_fuzzy_position %>% {data.frame(pos=as.numeric(names(.)),count=as.numeric(unname(.)))} %>% filter(pos>0)
-  plot.df$pos[plot.df$pos>8] %<>% add(18)
-  #plot.df %<>% mutate(count = count/1000/1000)
+  plot.df = metadata$SB_fuzzy_position %>% {data.frame(pos=as.numeric(names(.)),count=as.numeric(unname(.)))}
+  switch(metadata$SB_info$bead_type, 
+         "V10"={u1=9  ; u2=26},
+         "V17"={u1=10 ; u2=27},
+         "V15"={u1=16 ; u2=25},
+         "V16"={u1=18 ; u2=27}
+  )
+  plot.df$pos[plot.df$pos>=u1] %<>% add(u2-u1+1)
   p_loc = ggplot(plot.df,aes(x=pos,y=count))+geom_col()+theme_bw() +
-    geom_rect(aes(xmin=9, xmax=26, ymin=-Inf, ymax=Inf), fill="grey") +
-    annotate("text", x=17.5, y=max(plot.df$count, na.rm=T)*0.1, label="UP Site", color="black") +
+    geom_rect(aes(xmin=u1, xmax=u2, ymin=-Inf, ymax=Inf), fill="grey") +
+    annotate("text", x=(u1+u2)/2, y=max(plot.df$count, na.rm=T)*0.1, label="UP Site", color="black") +
     xlab("Spatial barcode base position") + ylab("Fuzzy matches") + ggtitle("Location of spatial barcode fuzzy match")
   
-  p_R = list(c("R1s", metadata$SB_info$R1s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_001")),
-             c("R2s", metadata$SB_info$R2s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_001"))) %>%
+  p_R = list(c("R1s", metadata$SB_info$R1s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_R1_001")),
+             c("R2s", metadata$SB_info$R2s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_R2_001"))) %>%
     {do.call(rbind,.)} %>% as.data.frame %>% setNames(NULL) %>% plot.tab
   
   plot = plot_grid(
@@ -444,7 +483,6 @@ plot_metrics <- function(metadata, out_path) {
     plot_grid(p_up, p_sb, p_cb, ncol=3),
     plot_grid(p_filter, p_loc, ncol=2, rel_widths = c(0.35,0.65)),
     p_R,
-    #gdraw(""), #spacer
     ncol=1,
     rel_heights = c(0.04,0.15,0.11,0.17,0.1)
   )
