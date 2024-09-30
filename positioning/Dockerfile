@@ -3,12 +3,12 @@ SHELL ["/bin/bash", "-c"]
 
 # Install system libraries
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends zip unzip gzip less socat wget curl && \
-    apt-get install -y --no-install-recommends sudo procps dstat moreutils gnupg   && \
-    apt-get install -y --no-install-recommends python3-pip libhdf5-dev zlib1g-dev  && \
-    apt-get install -y --no-install-recommends gdebi-core build-essential alien    && \
-    apt-get install -y --no-install-recommends libpng-dev libtiff5-dev libjpeg-dev && \
-    apt-get install -y --no-install-recommends apt-transport-https ca-certificates libssl-dev libxml2-dev && \
+    apt-get install -y --no-install-recommends zip unzip gzip less wget curl    && \
+    apt-get install -y --no-install-recommends sudo tmux htop dstat socat       && \
+    apt-get install -y --no-install-recommends procps moreutils gnupg           && \
+    apt-get install -y --no-install-recommends gdebi-core build-essential alien && \
+    apt-get install -y --no-install-recommends libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev && \
+    apt-get install -y --no-install-recommends apt-transport-https ca-certificates libssl-dev libxml2-dev zlib1g-dev && \
     apt-get install -y --no-install-recommends libfreetype6-dev libcairo2-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev
 
 # Install Google Cloud SDK
@@ -21,7 +21,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 RUN wget -P /software https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.5-linux-x86_64.tar.gz && \
     tar -xzvf /software/julia-1.10.5-linux-x86_64.tar.gz -C /software                                        && \
     rm /software/julia-1.10.5-linux-x86_64.tar.gz
-RUN /software/julia-1.10.5/bin/julia -e 'using Pkg;               \
+RUN /software/julia-1.10.5/bin/julia -e 'using Pkg; \
                                          Pkg.add(["CSV",          
                                                   "GZip",         
                                                   "SIMD",         
@@ -56,23 +56,25 @@ RUN R -e "if (!require('BiocManager',quietly=T)) {install.packages('BiocManager'
 RUN R -e "install.packages(c('qs',          \
                              'glue',        \
                              'qpdf',        \
+                             'dplyr',       \
                              'purrr',       \
                              'furrr',       \
-                             'dplyr',       \
                              'rlist',       \
                              'rdist',       \
                              'tidyr',       \
                              'hdf5r',       \
-                             'Seurat',      \
-                             'future',      \
                              'dbscan',      \
+                             'future',      \
+                             'Seurat',      \
+                             'cowplot',     \
+                             'ggplot2',     \
                              'ggrastr',     \
                              'stringr',     \
                              'viridis',     \
-                             'cowplot',     \
-                             'ggplot2',     \
-                             'magrittr',    \
-                             'parallel',    \
                              'jsonlite',    \
+                             'magrittr',    \
                              'gridExtra',   \
                              'SeuratObject'), repos='http://cran.rstudio.com/')"
+
+# Install python
+# TODO
