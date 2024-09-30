@@ -21,26 +21,26 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 RUN wget -P /software https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.5-linux-x86_64.tar.gz && \
     tar -xzvf /software/julia-1.10.5-linux-x86_64.tar.gz -C /software                                        && \
     rm /software/julia-1.10.5-linux-x86_64.tar.gz
-RUN /software/julia-1.10.5/bin/julia -e 'using Pkg; \
-                                         Pkg.add(["CSV",          
-                                                  "GZip",         
-                                                  "SIMD",         
-                                                  "HDF5",         
-                                                  "Plots",        
-                                                  "FASTX",        
-                                                  "Peaks",        
-                                                  "IJulia",       
-                                                  "ArgParse",     
-                                                  "CodecZlib",    
-                                                  "PDFmerger",    
-                                                  "IterTools",    
-                                                  "StatsBase",    
-                                                  "DataFrames",   
-                                                  "StatsPlots",   
-                                                  "StringViews",  
-                                                  "Combinatorics",
-                                                  "Distributions",
-                                                  "LinearAlgebra",
+RUN /software/julia-1.10.5/bin/julia -e 'using Pkg;                     \
+                                         Pkg.add(["CSV",                \
+                                                  "GZip",               \
+                                                  "SIMD",               \
+                                                  "HDF5",               \
+                                                  "Plots",              \
+                                                  "FASTX",              \
+                                                  "Peaks",              \
+                                                  "IJulia",             \
+                                                  "ArgParse",           \
+                                                  "CodecZlib",          \
+                                                  "PDFmerger",          \
+                                                  "IterTools",          \
+                                                  "StatsBase",          \
+                                                  "DataFrames",         \
+                                                  "StatsPlots",         \
+                                                  "StringViews",        \
+                                                  "Combinatorics",      \
+                                                  "Distributions",      \
+                                                  "LinearAlgebra",      \
                                                   "LoopVectorization"])'
 
 # Install R
