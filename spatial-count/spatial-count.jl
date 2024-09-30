@@ -18,11 +18,11 @@ using Combinatorics: combinations
 if length(ARGS) != 2
     error("Usage: julia spatial-count.jl fastq_path puck_path")
 end
-fastqpath = "fastqs" # ARGS[1]
+fastqpath = ARGS[1]
 println("FASTQ path: "*fastqpath)
 @assert isdir(fastqpath) "FASTQ path not found"
 @assert !isempty(readdir(fastqpath)) "FASTQ path is empty"
-puckpath = "pucks" #ARGS[2]
+puckpath = ARGS[2]
 println("Puck path: "*puckpath)
 @assert isdir(puckpath) "Puck path not found"
 @assert !isempty(readdir(puckpath)) "Puck path is empty"
