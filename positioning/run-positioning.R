@@ -27,7 +27,7 @@ if (length(args) == 2) {
   SBpath <- args[[2]]
   out_path <- args[[3]]
 } else {
-  stop("Usage: Rscript positioning.R RNApath SBpath [output_path]", call. = FALSE)
+  stop("Usage: Rscript run-positioning.R RNApath SBpath [output_path]", call. = FALSE)
 }
 stopifnot(dir.exists(RNApath), len(list.files(RNApath)) > 0)
 if (dir.exists(SBpath)) { SBpath = file.path(SBpath, "SBcounts.h5") }
@@ -40,6 +40,8 @@ print(g("SB file: {normalizePath(SBpath)}"))
 # Determine the RNA method
 if (file.exists(file.path(RNApath, "filtered_feature_bc_matrix.h5"))) {
   method = "10X"
+} else if (dir.exists(file.path(RNApath, "filtered_feature_bc_matrix"))) {
+  method = "10X_dir" # todo
 } else {
   stop("ERROR: unknown RNA technique", call. = FALSE)
 }
