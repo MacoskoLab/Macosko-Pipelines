@@ -51,7 +51,7 @@ RUN export R_VERSION=4.3.3 && \
     sudo ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R                       && \
     sudo ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
 
-# # Install R libraries
+# Install R libraries
 RUN R -e "install.packages(c('qs',          \
                              'glue',        \
                              'qpdf',        \
