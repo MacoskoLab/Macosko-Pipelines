@@ -18,11 +18,11 @@ using Combinatorics: combinations
 if length(ARGS) != 2
     error("Usage: julia spatial-count.jl fastq_path puck_path")
 end
-fastqpath = ARGS[1]
+fastqpath = "fastqs"#ARGS[1]
 println("FASTQ path: "*fastqpath)
 @assert isdir(fastqpath) "FASTQ path not found"
 @assert !isempty(readdir(fastqpath)) "FASTQ path is empty"
-puckpath = ARGS[2]
+puckpath = "pucks"#ARGS[2]
 println("Puck path: "*puckpath)
 @assert isdir(puckpath) "Puck path not found"
 @assert !isempty(readdir(puckpath)) "Puck path is empty"
@@ -58,6 +58,10 @@ for (puck, puckdf) in zip(puck_paths, puckdfs)
     @assert length(puckdf.sb) == length(Set(puckdf.sb)) "ERROR: Some spatial barcodes in $puck are repeated"
 end
 
+# Check for low quality spatial barcodes
+const num_lowQbeads = [sum(count(c -> c == 'N', sb) > 1 for sb in puckdf.sb) for puckdf in puckdfs]
+println("Removed $(sum(num_lowQbeads)) bead barcode(s) for having 2+ N bases")    
+
 # Concatenate the puck dataframes
 for (i, puckdf) in enumerate(puckdfs)
     puckdf[!, :puck_index] = fill(UInt8(i), nrow(puckdf))
@@ -66,13 +70,11 @@ const puckdf = vcat(puckdfs...)
 empty!(puckdfs)
 
 # Create the sb_whitelist
-const num_lowQbeads = count(str -> count(c -> c == 'N', str) >= 2, puckdf.sb)
-println("Removed $(num_lowQbeads) bead barcode(s) for having 2+ N bases")    
-const sb_whitelist = [str for str in sort(collect(Set{String}(puckdf.sb))) if count(c -> c == 'N', str) < 2]
+const sb_whitelist = [str for str in sort(collect(Set(puckdf.sb))) if count(c -> c == 'N', str) < 2]
 println("Total number of unique spatial barcodes: $(length(sb_whitelist))")
 @assert length(sb_whitelist) < 2^32-1 "Must change type of sb_i from U32 to U64"
 
-println("")
+println("") ; flush(stdout) ; GC.gc()
 
 ##### Load the FASTQ data ######################################################
 
@@ -117,7 +119,7 @@ const UP1 = "TCTTCAGCGTTCCCGAGA"
 const UP2 = "CTGTTTCCTG"
 
 # UMI compressing (between 0x00000000 and 0x00ffffff for a 12bp UMI)
-const px12 = [convert(UInt32, 4^i) for i in 0:(12-1)]
+const px12 = [convert(UInt32, 4^i) for i in 0:11]
 function UMItoindex(UMI::SeqView)::UInt32
     return dot(px12, (codeunits(UMI).>>1).&3)
 end
@@ -165,6 +167,7 @@ bead_list = [r[2] for r in R2_types]
 @assert length(Set(bead_list)) == 1 "ERROR: the bead type is not consistent"
 const bead = first(Set(bead_list))
 println("Bead type: $bead")
+
 if bead == "V10"
     get_SB = get_V10
     const UP = UP1
@@ -288,10 +291,10 @@ end
 
 print("Creating matching dictionaries... ") ; flush(stdout)
 
-const SBtoindex = create_SBtoindex(sb_whitelist) # HD1
+const SBtoindex = create_SBtoindex(sb_whitelist)
 
 const UP_TOL = round(Int, length(UP)/6)
-const UP_whitelist = reduce(union, [listHDneighbors(UP, i) for i in 0:UP_TOL])
+const UP_HD_whitelist = reduce(union, [listHDneighbors(UP, i) for i in 0:UP_TOL])
 const UP_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP), i) for i in 0:UP_TOL])
 
 const UMI_TOL = round(Int, 12/6)
@@ -303,14 +306,14 @@ println("done") ; flush(stdout) ; GC.gc()
 
 println("Reading FASTQs... ") ; flush(stdout)
 
-function process_fastqs(R1s, R2s, sb_whitelist)
+function process_fastqs(R1s, R2s)
     # Create data structures
     mat = Dict{Tuple{UInt32, UInt32, UInt32}, UInt32}() # (cb_i, umi_i, sb_i) -> reads
-    cb_dictionary = Dict{String, UInt32}() # cb -> cb_i
+    cb_dictionary = Dict{String31, UInt32}() # cb -> cb_i
     metadata = Dict("reads"=>0, "reads_filtered"=>0,
                     "R1_tooshort"=>0, "R2_tooshort"=>0,
                     "UMI"=>Dict("N"=>0, "homopolymer"=>0),
-                    "UP"=>Dict("exact"=>0, "HD1"=>0, "GG"=>0, "none"=>0),
+                    "UP"=>Dict("exact"=>0, "fuzzy"=>0, "GG"=>0, "none"=>0),
                     "SB"=>Dict("exact"=>0, "HD1"=>0, "HD1ambig"=>0, "none"=>0),
                     "SB_HD"=>Dict(i=>0 for i in collect(1:sb_len)))
     
@@ -341,17 +344,12 @@ function process_fastqs(R1s, R2s, sb_whitelist)
             # Load R1
             cb  = seq1[1:16]
             umi = seq1[17:28]
-            skip = false
             # Filter UMI
             if occursin('N', umi)
                 metadata["UMI"]["N"] += 1
-                skip = true
-            end
-            if in(umi, umi_homopolymer_whitelist)
+                continue
+            elseif in(umi, umi_homopolymer_whitelist)
                 metadata["UMI"]["homopolymer"] += 1
-                skip = true
-            end
-            if skip
                 continue
             end
 
@@ -360,8 +358,8 @@ function process_fastqs(R1s, R2s, sb_whitelist)
             # Filter UP
             if up == UP
                 metadata["UP"]["exact"] += 1
-            elseif in(up, UP_whitelist)
-                metadata["UP"]["HD1"] += 1
+            elseif in(up, UP_HD_whitelist)
+                metadata["UP"]["fuzzy"] += 1
             elseif in(up, UP_GG_whitelist)
                 metadata["UP"]["GG"] += 1
                 continue
@@ -405,16 +403,17 @@ function process_fastqs(R1s, R2s, sb_whitelist)
     end
 
     # Turn cb_dictionary into cb_whitelist
-    cb_whitelist = DataFrame(cb = collect(String, keys(cb_dictionary)), cb_i = collect(UInt32, values(cb_dictionary)))
+    cb_whitelist = DataFrame(cb = collect(String31, keys(cb_dictionary)), cb_i = collect(UInt32, values(cb_dictionary)))
     sort!(cb_whitelist, :cb_i)
     @assert cb_whitelist.cb_i == 1:size(cb_whitelist, 1)
 
     return(df, cb_whitelist.cb, metadata)
 end
 
-df, cb_whitelist, metadata = process_fastqs(R1s, R2s, sb_whitelist)
+df, cb_whitelist, metadata = process_fastqs(R1s, R2s)
 
-@assert metadata["UP"]["exact"] + metadata["UP"]["HD1"] == sum(values(metadata["SB"]))
+@assert metadata["reads"] - sum(values(metadata["UMI"])) == sum(values(metadata["UP"]))
+@assert metadata["UP"]["exact"] + metadata["UP"]["fuzzy"] == sum(values(metadata["SB"]))
 @assert metadata["SB"]["exact"] + metadata["SB"]["HD1"] == metadata["reads_filtered"] == sum(df.reads)
 @assert sum(values(metadata["SB_HD"])) == metadata["SB"]["HD1"]
 
@@ -435,8 +434,8 @@ print("Saving results... ") ; flush(stdout)
 
 h5open("SBcounts.h5", "w") do file
     create_group(file, "lists")
-    file["lists/cb_list", compress=9] = String31.(cb_whitelist) # Vector{String31}
-    file["lists/sb_list", compress=9] = String31.(sb_whitelist) # Vector{String31}
+    file["lists/cb_list", compress=9] = String31.(cb_whitelist) # Vector{String}
+    file["lists/sb_list", compress=9] = String31.(sb_whitelist) # Vector{String}
     file["lists/puck_list"] = String255.(basename.(puck_paths)) # Vector{String}
     file["lists/R1_list"] = String255.(basename.(R1s))          # Vector{String}
     file["lists/R2_list"] = String255.(basename.(R2s))          # Vector{String}
@@ -488,12 +487,12 @@ println("done") ; flush(stdout) ; GC.gc()
 ##### Documentation ############################################################
 
 # The workflow for processing the FASTQs is as follows:
-#   1) UMI filter: throw out reads that have an N in the umi or a homopolymer umi
-#   2) throw out reads that don't have a detectable UP site
+#   1) UMI filter: discard reads that have an N in the umi or a homopolymer umi
+#   2) UP filter: discard reads that don't have a detectable UP site
 #      - UP site does fuzzy matching - allow 1 mismatch for every 6 bases
-#   3) throw out reads whose spatial barcode (sb) doesn't match the puck whitelist
-#      - allow fuzzy matching with 1 mismatch
+#   3) SB filter: discard reads whose spatial barcode (sb) doesn't match the puck whitelist
+#      - does fuzzy matching with 1 mismatch
 #   4) matrix update
-#      - for reads that made it this far, the (cb, umi, sb) key of the dictionary will be incremented by 1
+#      - for reads that made it this far, the (cb_i, umi_i, sb_i) key of the dictionary will be incremented by 1
 #      - cb_i, sb_i represent an index into the cb_whitelist, sb_whitelist vectors respectively
-#      - umi is 2-bit encoded
+#      - umi_i is the 2-bit encoded umi
