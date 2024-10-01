@@ -64,7 +64,7 @@ task count {
 
     # Run the script
     echo ; echo "Running spatial-count.jl"
-    /software/julia-1.10.5/bin/julia spatial-count.jl fastqs pucks
+    julia spatial-count.jl fastqs pucks
 
     if [[ -f SBcounts.h5 ]] ; then
         echo ; echo "Success, uploading counts"
