@@ -74,9 +74,8 @@ RUN R -e "install.packages(c('qs',          \
                              'magrittr',    \
                              'gridExtra',   \
                              'SeuratObject'), repos='http://cran.rstudio.com/')"
-
-# RUN R -e "if (!require('BiocManager',quietly=T)) {install.packages('BiocManager',repos='http://cran.rstudio.com/')}; \
-#           BiocManager::install('rhdf5')"
+RUN R -e "if (!require('BiocManager',quietly=T)) {install.packages('BiocManager',repos='http://cran.rstudio.com/')}; \
+          BiocManager::install('rhdf5')"
 
 # Install python
 # TODO
