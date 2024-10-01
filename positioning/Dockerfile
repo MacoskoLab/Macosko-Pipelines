@@ -22,6 +22,8 @@ RUN wget -P /software https://julialang-s3.julialang.org/bin/linux/x64/1.10/juli
     tar -xzvf /software/julia-1.10.5-linux-x86_64.tar.gz -C /software                                        && \
     rm /software/julia-1.10.5-linux-x86_64.tar.gz                                                            && \
     ln -s /software/julia-1.10.5/bin/julia /usr/local/bin/julia
+
+# Install Julia libraries
 RUN julia -e 'using Pkg;                     \
               Pkg.add(["CSV",                \
                        "GZip",               \
