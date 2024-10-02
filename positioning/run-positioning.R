@@ -293,7 +293,15 @@ make.pdf(plot, file.path(out_path,"DimPlot.pdf"), 7, 8)
 
 # RNA vs SB metrics
 plot_RNAvsSB <- function(obj) {
-  obj$sb_umi <- Misc(obj,"coords")$umi %>% tidyr::replace_na(0)
+  if (!is.null(Misc(obj,"coords")$umi)) {
+    obj$sb_umi <- Misc(obj,"coords")$umi %>% tidyr::replace_na(0)
+  }
+  else if (!is.null(Misc(obj,"coords")$umi_dbscan)) {
+    obj$sb_umi <- Misc(obj,"coords")$umi_dbscan %>% tidyr::replace_na(0)
+  } else {
+    obj$sb_umi = 0
+  }
+  
   obj$clusters <- Misc(obj,"coords")$clusters %>% tidyr::replace_na(0)
   obj$placed <- !is.na(obj$x_um) & !is.na(obj$y_um)
   
