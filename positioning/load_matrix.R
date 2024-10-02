@@ -54,7 +54,7 @@ metadata = list(SB_info = list(R1s=f("lists/R1_list"),
                 UP_matching = setNames(f("metadata/UP/count"), f("metadata/UP/type")),
                 SB_matching = setNames(f("metadata/SB/count"),f("metadata/SB/type")),
                 SB_fuzzy_position = setNames(f("metadata/SB_HD/count"), f("metadata/SB_HD/type")) %>% {.[order(as.integer(names(.)))]},
-                bead_info = list(num_lowQ=f("metadata/num_lowQbeads"))
+                puck_info = list(num_lowQ=f("metadata/num_lowQbeads"))
 )
 metadata$SB_filtering = c(reads_total=f("metadata/reads"),
                           reads_tooshort=f("metadata/R1_tooshort")+f("metadata/R2_tooshort"),
@@ -102,7 +102,7 @@ add.commas <- function(num){prettyNum(num, big.mark=",")}
 plot.tab <- function(df) {return(plot_grid(tableGrob(df,rows=NULL)))}
 make.pdf <- function(plots, name, w, h) {
   if ("gg" %in% class(plots) || class(plots)=="Heatmap") {plots = list(plots)}
-  pdf(file=name, width=w ,height=h)
+  pdf(file=name, width=w, height=h)
   lapply(plots, function(x){print(x)})
   dev.off()
 }
@@ -277,14 +277,14 @@ load_puckdf <- function(f) {
   
   # load puck metadata
   meta <- metadata
-  meta$puck_info = list(puck_name = as.character(f("lists/puck_list")),
+  meta$puck_info %<>% c(puck_name = as.character(f("lists/puck_list")),
                         num_beads = map_int(puckdfs, nrow))
   
   # remove duplicated or low-quality beads
   sb_len = nchar(puckdf$sb[1]) ; mc_tol = round(sb_len*0.75) ; lr_tol = round(sb_len*0.5)
-  meta$bead_info$num_dup = map_int(puckdfs, ~sum(.$sb %in% dups))
-  meta$bead_info$num_N = map_int(puckdfs, ~sum(.$sb %in% Ns))
-  meta$bead_info$num_degen = map_int(puckdfs, ~sum(.$mc > mc_tol | .$lr > lr_tol))
+  meta$puck_info$num_dup = map_int(puckdfs, ~sum(.$sb %in% dups))
+  meta$puck_info$num_N = map_int(puckdfs, ~sum(.$sb %in% Ns))
+  meta$puck_info$num_degen = map_int(puckdfs, ~sum(.$mc > mc_tol | .$lr > lr_tol))
   puckdfs %<>% map(~filter(., !sb %in% dups))
   puckdfs %<>% map(~filter(., !sb %in% Ns))
   puckdfs %<>% map(~filter(., mc <= mc_tol, lr <= lr_tol))
@@ -399,7 +399,7 @@ df %<>% count_umis
 metadata$SB_filtering %<>% c(UMIs_final=sum(df$umi))
 invisible(gc())
 
-# join tables -> (cb_index, x, y, umi)
+# join tables (cb_index, sb_index, umi) -> (cb_index, x, y, umi)
 stopifnot(df$sb_index %in% puckdf$sb_index)
 df %<>% left_join(puckdf, by="sb_index") %>% select(cb_index, x, y, umi) %>% arrange(cb_index, desc(umi))
 
@@ -412,17 +412,17 @@ plot_metrics <- function(metadata, out_path) {
   
   plot.df = list(
     c("Total Reads", metadata$SB_filtering[["reads_total"]] %>% add.commas),
+    c("Final UMIs", metadata$SB_filtering[["UMIs_final"]] %>% add.commas),
     c("R1<->R2", metadata$SB_info$switch_R1R2),
     c("Remap 10X CB", metadata$SB_info$remap_10X_CB),
-    c("Bead type", metadata$SB_info$bead_type),
-    c("Low Q beads", metadata$bead_info$num_lowQ)
+    c("Bead type", metadata$SB_info$bead_type)
   ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("Metric", "Value"))
   p_sp = plot_grid(gdraw("Library information"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.6))
   
   header = c("Metric", metadata$puck_info$puck_name %>% str_remove("^Puck_") %>% str_remove("\\.csv$"))
   plot.df = list(c("Beads", metadata$puck_info$num_beads %>% add.commas),
                  c("Size", metadata$puck_info$puck_sizes),
-                 c("Filtered beads", Reduce(`+`,metadata$bead_info[c("num_dup","num_N","num_degen")]) %>% add.commas),
+                 c("Filtered beads", Reduce(`+`,metadata$puck_info[c("num_dup","num_N","num_degen","num_lowQ")]) %>% add.commas),
                  c("Scaling factor", metadata$puck_info$scaling_factors %>% round(2)),
                  c("Final UMIs", metadata$puck_info$umi_final %>% add.commas)
   ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(header)
@@ -435,7 +435,7 @@ plot_metrics <- function(metadata, out_path) {
   
   plot.df = data.frame(a=c("exact","fuzzy", "none", "GG"),
                        b=c(UP_matching[["exact"]],
-                           UP_matching[["HD1"]],
+                           UP_matching[["fuzzy"]],
                            UP_matching[["none"]],
                            UP_matching[["GG"]]
                        ) %>% {./sum(.)*100} %>% round(2) %>% paste0("%")
