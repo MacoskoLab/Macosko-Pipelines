@@ -21,7 +21,7 @@ args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 2) {
   RNApath <- args[[1]]
   SBpath <- args[[2]]
-  out_path <- "output"
+  out_path <- "."
 } else if (length(args) == 3) {
   RNApath <- args[[1]]
   SBpath <- args[[2]]
@@ -29,19 +29,23 @@ if (length(args) == 2) {
 } else {
   stop("Usage: Rscript run-positioning.R RNApath SBpath [output_path]", call. = FALSE)
 }
+
+# Check arguments
 stopifnot(dir.exists(RNApath), len(list.files(RNApath)) > 0)
 if (dir.exists(SBpath)) { SBpath = file.path(SBpath, "SBcounts.h5") }
-stopifnot(str_sub(SBpath,-11,-1) == "SBcounts.h5", file.exists(SBpath))
+stopifnot(str_sub(SBpath, -11, -1) == "SBcounts.h5", file.exists(SBpath))
 if (!dir.exists(out_path)) { dir.create(out_path, recursive = T) }
+stopifnot("Could not create output path" = dir.exists(out_path))
 print(g("RNA dir: {normalizePath(RNApath)}"))
 print(g("RNA files: {list.files(RNApath) %>% paste0(collapse=', ')}"))
 print(g("SB file: {normalizePath(SBpath)}"))
+print(g("Output dir: {normalizePath(out_path)}"))
 
 # Determine the RNA method
 if (file.exists(file.path(RNApath, "filtered_feature_bc_matrix.h5"))) {
   method = "10X"
 } else if (dir.exists(file.path(RNApath, "filtered_feature_bc_matrix"))) {
-  method = "10X_dir" # todo
+  method = "10X"
 } else {
   stop("ERROR: unknown RNA technique", call. = FALSE)
 }
@@ -52,7 +56,7 @@ plot.tab <- function(df) {return(plot_grid(tableGrob(df,rows=NULL)))}
 add.commas <- function(num){prettyNum(num, big.mark=",")}
 make.pdf <- function(plots, name, w, h) {
   if ("gg" %in% class(plots) || class(plots)=="Heatmap") {plots = list(plots)}
-  pdf(file=name, width=w ,height=h)
+  pdf(file=name, width=w, height=h)
   lapply(plots, function(x){print(x)})
   dev.off()
 }
@@ -289,7 +293,7 @@ make.pdf(plot, file.path(out_path,"DimPlot.pdf"), 7, 8)
 
 # RNA vs SB metrics
 plot_RNAvsSB <- function(obj) {
-  obj$sb_umi <- Misc(obj,"coords")$umi_dbscan %>% tidyr::replace_na(0)
+  obj$sb_umi <- Misc(obj,"coords")$umi %>% tidyr::replace_na(0)
   obj$clusters <- Misc(obj,"coords")$clusters %>% tidyr::replace_na(0)
   obj$placed <- !is.na(obj$x_um) & !is.na(obj$y_um)
   
