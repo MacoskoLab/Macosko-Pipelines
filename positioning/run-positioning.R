@@ -295,8 +295,7 @@ make.pdf(plot, file.path(out_path,"DimPlot.pdf"), 7, 8)
 plot_RNAvsSB <- function(obj) {
   if (!is.null(Misc(obj,"coords")$umi)) {
     obj$sb_umi <- Misc(obj,"coords")$umi %>% tidyr::replace_na(0)
-  }
-  else if (!is.null(Misc(obj,"coords")$umi_dbscan)) {
+  } else if (!is.null(Misc(obj,"coords")$umi_dbscan)) {
     obj$sb_umi <- Misc(obj,"coords")$umi_dbscan %>% tidyr::replace_na(0)
   } else {
     obj$sb_umi = 0
