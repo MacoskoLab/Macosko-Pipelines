@@ -32,7 +32,7 @@ task count {
     [[ ! "${count_output_path:0:5}" == "gs://" ]] && echo "ERROR: count_output_path does not start with gs://" && exit 1
     [[ ! "${log_output_path:0:5}"   == "gs://" ]] && echo "ERROR: log_output_path does not start with gs://" && exit 1
 
-    echo "RNA: ~{rna_paths}"
+    echo "RNA: ~{sep=' ' rna_paths}"
     echo "SB: ~{sb_path}"
     echo "Output directory: $count_output_path" ; echo
 
