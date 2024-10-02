@@ -2,8 +2,8 @@ version 1.0
 
 task count {
   input {
-    Array[String] fastq_paths
-    Array[String] pucks
+    Array[String] rna_paths
+    String sb_path
     Int mem_GiB
     Int disk_GiB
     String count_output_path
@@ -12,13 +12,15 @@ task count {
   }
   command <<<
     echo "<< starting spatial-count >>"
-    dstat --time --cpu --mem --disk --io --freespace --output spatial-count.usage &> /dev/null &
+    dstat --time --cpu --mem --disk --io --freespace --output positioning.usage &> /dev/null &
 
     gcloud config set storage/process_count 16
     gcloud config set storage/thread_count  2
 
-    # Download the script
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/spatial-count/spatial-count.jl
+    # Download the scripts
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/positioning/run-positioning.R
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/positioning/load_matrix.R
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/positioning/positioning.R
 
     # Assign the WDL variables to bash variables
     count_output_path="~{count_output_path}"
@@ -30,63 +32,61 @@ task count {
     [[ ! "${count_output_path:0:5}" == "gs://" ]] && echo "ERROR: count_output_path does not start with gs://" && exit 1
     [[ ! "${log_output_path:0:5}"   == "gs://" ]] && echo "ERROR: log_output_path does not start with gs://" && exit 1
 
-    echo "FASTQs: ~{length(fastq_paths)} paths provided"
-    echo "Pucks: ~{length(pucks)} puck(s) provided"
+    echo "RNA: ~{rna_paths}"
+    echo "SB: ~{sb_path}"
     echo "Output directory: $count_output_path" ; echo
 
-    # Assert that the fastqs exist
-    fastqs=(~{sep=' ' fastq_paths})
-    for fastq in "${fastqs[@]}" ; do
-        if ! gsutil stat "$fastq" &> /dev/null ; then
-            echo "ERROR: gsutil stat command failed on fastq $fastq"
+    # Assert that the RNA files exist
+    rnas=(~{sep=' ' rna_paths})
+    for rna in "${rnas[@]}" ; do
+        if ! gsutil stat "$rna" &> /dev/null ; then
+            echo "ERROR: gsutil stat command failed on file $rna"
             exit 1
         fi
     done
 
-    # Download the fastqs
-    echo "Downloading fastqs:"
-    mkdir fastqs
-    gcloud storage cp ~{sep=' ' fastq_paths} fastqs
+    # Download the RNA
+    echo "Downloading RNA:"
+    mkdir RNA
+    gcloud storage cp ~{sep=' ' rna_paths} RNA
 
-    # Assert that the pucks exist
-    pucks=(~{sep=' ' pucks})
-    for puck in "${pucks[@]}" ; do
-        if ! gsutil stat "$puck" &> /dev/null ; then
-            echo "ERROR: gsutil stat command failed on puck $puck"
-            exit 1
-        fi
-    done
+    # Assert that the SB file exists
+    if ! gsutil stat "~{sb_path}" &> /dev/null ; then
+        echo "ERROR: gsutil stat command failed on file ~{sb_path}"
+        exit 1
+    fi
 
-    # Download the pucks
-    echo "Downloading pucks:"
-    mkdir pucks
-    gcloud storage cp ~{sep=' ' pucks} pucks
+    # Download the SB
+    echo "Downloading SB:"
+    mkdir SB
+    gcloud storage cp ~{sb_path} SB
 
     # Run the script
-    echo ; echo "Running spatial-count.jl"
-    julia spatial-count.jl fastqs pucks
+    echo ; echo "Running run-positioning.R"
+    Rscript run-positioning.R RNA SB output
 
-    if [[ -f SBcounts.h5 ]] ; then
-        echo ; echo "Success, uploading counts"
-        gcloud storage cp -r SBcounts.h5 "$count_output_path/SBcounts.h5"
+    # Upload the results
+    gcloud storage cp -r output/* "$count_output_path"
+
+    if [[ -f output/seurat.qs ]] ; then
         echo "true" > DONE
     else
-        echo ; echo "ERROR: CANNOT FIND: SBcounts.h5"
+        echo ; echo "ERROR: CANNOT FIND: seurat.qs"
     fi
 
     echo; echo "Writing logs:"
     kill $(ps aux | fgrep dstat | fgrep -v grep | awk '{print $2}')
-    echo; echo "fastqs size:"; du -sh fastqs
-    echo; echo "pucks size:"; du -sh pucks
-    echo; echo "output size:"; du -sh SBcounts.h5
+    echo; echo "RNA size:"; du -sh RNA
+    echo; echo "SB size:"; du -sh SB
+    echo; echo "output size:"; du -sh output
     echo; echo "FREE SPACE:"; df -h
     
     echo "uploading logs"
-    gcloud storage cp /cromwell_root/stdout "$log_output_path/spatial-count.out"
-    gcloud storage cp /cromwell_root/stderr "$log_output_path/spatial-count.err"
-    gcloud storage cp spatial-count.usage "$log_output_path/spatial-count.usage"
+    gcloud storage cp /cromwell_root/stdout "$log_output_path/positioning.out"
+    gcloud storage cp /cromwell_root/stderr "$log_output_path/positioning.err"
+    gcloud storage cp positioning.usage "$log_output_path/positioning.usage"
     
-    echo "<< completed spatial-count >>"
+    echo "<< completed positioning >>"
   >>>
   output {
     Boolean DONE = read_boolean("DONE")
@@ -95,7 +95,7 @@ task count {
     docker: docker
     memory: "~{mem_GiB} GB"
     disks: "local-disk ~{disk_GiB} SSD"
-    cpu: 1
+    cpu: 16
     preemptible: 0
   }
 }
@@ -104,19 +104,19 @@ workflow spatial_count {
     String pipeline_version = "1.0.0"
     input {
         String id
-        Array[String] fastq_paths
-        Array[String] pucks
-        Int mem_GiB = 64
+        Array[String] rna_paths
+        String sb_path
+        Int mem_GiB = 128
         Int disk_GiB = 128
-        String count_output_path = "gs://"+bucket+"/spatial-count/"+id
+        String count_output_path = "gs://"+bucket+"/positioning/"+id
         String log_output_path = "gs://"+bucket+"/logs/"+id
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         String docker = "us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest"
     }
     call count {
         input:
-            fastq_paths = fastq_paths,
-            pucks = pucks,
+            rna_paths = rna_paths,
+            sb_path = sb_path,
             mem_GiB = mem_GiB,
             disk_GiB = disk_GiB,
             count_output_path = count_output_path,
