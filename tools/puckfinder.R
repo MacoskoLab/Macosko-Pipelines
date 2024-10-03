@@ -21,7 +21,7 @@ system(g("gsutil cp {puckpath}/Puck_230525*.csv pucks"))
 fastq = "fastqs/SI-NT-D9_S2_L001_R2_001.fastq.gz"
 
 library(ShortRead) # sread, quality, id
-R = fastq %>% readFastq %>% sread %>% subseq(start=1, end=32) %>% as.data.frame
+R = fastq %>% FastqStreamer(n = 100000) %>% yield %>% sread %>% subseq(start=1, end=32) %>% as.data.frame
 R %<>% tidyr::separate(x, into=c("sb1","up","sb2"), sep=c(8,26))
 R %<>% filter(up=="TCTTCAGCGTTCCCGAGA") %>% transmute(sb=paste0(sb1,sb2))
 
