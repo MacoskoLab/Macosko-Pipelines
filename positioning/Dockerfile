@@ -44,7 +44,7 @@ RUN julia -e 'using Pkg;                     \
                        "Combinatorics",      \
                        "Distributions",      \
                        "LinearAlgebra",      \
-                      "LoopVectorization"])'
+                       "LoopVectorization"])'
 
 # Install R
 RUN export R_VERSION=4.3.3 && \
