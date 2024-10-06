@@ -477,13 +477,13 @@ df, cb_whitelist, metadata = process_fastqs(R1s, R2s)
 @assert metadata["SB"]["exact"] + metadata["SB"]["HD1"] == metadata["reads_filtered"] == sum(df.reads)
 @assert sum(values(metadata["SB_HD"])) == metadata["SB"]["HD1"]
 
-println("...done") ; flush(stdout) ; GC.gc()
+println("...done\n") ; flush(stdout) ; GC.gc()
 
 # Create a downsampling curve
 downsampling = UInt32[]
 table = countmap(df.reads)
-for prob in 0:0.05:1
-    s = [length(unique(floor.(sample(0:k*v-1, round(Int,k*v*prob), replace=false)/k))) for (k,v) in zip(keys(table),values(table))]
+for p in 0:0.05:1
+    s = [length(unique(floor.(sample(0:k*v-1, round(Int,k*v*p), replace=false)/k))) for (k,v) in zip(keys(table),values(table))]
     append!(downsampling, sum(s))
     GC.gc()
 end
