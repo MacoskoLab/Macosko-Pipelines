@@ -80,5 +80,8 @@ RUN R -e "install.packages(c('qs',          \
 RUN R -e "if (!require('BiocManager',quietly=T)) {install.packages('BiocManager',repos='http://cran.rstudio.com/')}; \
           BiocManager::install('rhdf5')"
 
-# Install python
-# TODO
+# Install python + pip
+RUN sudo ln -s /usr/bin/python3 /usr/bin/python
+RUN sudo apt-get update && sudo apt-get install python3-pip
+
+# Install python packages
