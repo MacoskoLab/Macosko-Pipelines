@@ -50,6 +50,7 @@ RUN julia -e 'using Pkg;                     \
 RUN export R_VERSION=4.3.3 && \
     curl -O https://cdn.rstudio.com/r/debian-12/pkgs/r-${R_VERSION}_1_amd64.deb && \
     echo y | gdebi r-${R_VERSION}_1_amd64.deb                                   && \
+    rm r-${R_VERSION}_1_amd64.deb                                               && \
     sudo ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R                       && \
     sudo ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
 
