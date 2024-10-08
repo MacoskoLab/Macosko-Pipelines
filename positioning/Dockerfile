@@ -80,13 +80,12 @@ RUN R -e "install.packages(c('qs',          \
 RUN R -e "if (!require('BiocManager',quietly=T)) {install.packages('BiocManager',repos='http://cran.rstudio.com/')}; \
           BiocManager::install('rhdf5')"
 
+# Install python
+# Python 3.11.2 already installed
+RUN sudo ln -s /usr/bin/python3 /usr/bin/python
+
 # Install micromamba
 RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
-RUN source ~/.bashrc
-
-# Install python + jupyter
-RUN sudo ln -s /usr/bin/python3 /usr/bin/python
-RUN micromamba install -c conda-forge jupyterlab
 
 # Install python packages
-# TODO
+RUN /root/.local/bin/micromamba install -c conda-forge jupyterlab
