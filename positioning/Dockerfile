@@ -81,13 +81,12 @@ RUN R -e "if (!require('BiocManager',quietly=T)) {install.packages('BiocManager'
           BiocManager::install('rhdf5')"
 
 # Install micromamba
-# curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj bin/micromamba
 RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
 
-
 # Install python + pip + jupyter
-# RUN sudo ln -s /usr/bin/python3 /usr/bin/python
+RUN sudo ln -s /usr/bin/python3 /usr/bin/python
 # RUN sudo apt-get update && sudo apt-get install python3-pip
-# RUN pip install jupyterlab
+RUN micromamba install -c conda-forge jupyterlab
 
 # Install python packages
+# TODO
