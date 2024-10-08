@@ -86,6 +86,7 @@ RUN sudo ln -s /usr/bin/python3 /usr/bin/python
 
 # Install micromamba
 RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
+# RUN echo "micromamba activate base" >> ~/.bashrc
 
 # Install python packages
 RUN /root/.local/bin/micromamba install -c conda-forge jupyterlab
