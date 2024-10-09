@@ -205,7 +205,7 @@ makegrid1 <- function(splines, num.i, num.r) {
 }
 
 # take in two splines, num layers, num columns, return cgrid (x,y,i,r)
-makegrid2 <- function(spl1, spl2, num.i, num.r) {
+makegrid2 <- function(spl1, spl2, num.i, num.r, p=1/20) {
   validate.xydf(spl1) ; validate.xydf(spl2)
   stopifnot(ncol(spl1) == 2, ncol(spl2) == 2)
   spl1 %<>% dplyr::select(1,2) %>% setNames(c("x","y"))
@@ -217,7 +217,7 @@ makegrid2 <- function(spl1, spl2, num.i, num.r) {
   df = data.frame(a=0, b=0) # distances along each spline to mark points
   
   a = 0 ; b = 0 # these must start at 0 - represents the distance moved along the spline
-  sr = 100 ; z = d/5 # sr is the search resolution, z is is min distance moved
+  sr = 100 ; z = d*p # sr is the search resolution, z is is min distance moved
   for (it in 1:(num.r-1)) {
     if (abs(d.end1+d.end2-a-b) < 1.5*d) { a = d.end1 ; b = d.end2 } # only one step left - set to end
     else if (a == d.end1) { b %<>% add(d) } 
