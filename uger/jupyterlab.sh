@@ -12,5 +12,5 @@ exec podman run --rm --name "jupyterlab$PORT_NUM" -v /broad/macosko/data/discopi
 
 # Add this to your .my.bashrc
 jupyterlab() {
-    srun -X -C container "$@" /broad/macosko/data/discopipeline/scripts/jupyterlab.sh
+    srun -X -C container -t 30-00:00:00 "$@" /broad/macosko/data/discopipeline/scripts/jupyterlab.sh
 }
