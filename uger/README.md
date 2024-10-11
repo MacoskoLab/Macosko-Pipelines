@@ -22,13 +22,19 @@ while read -r partition node <&3; do
 done 3<<< "$PARTITION_NODE_LIST"
 ```
 Helpful commands:
-Pull image: ```podman pull <IMAGE>``` 
-Delete container: ```podman rm <ID>``` 
-Delete image: ```podman rmi <ID>``` 
-```podman system migrate``` 
-```podman system reset``` 
-```rm -rf /tmp/containers-user-$UID``` (WARNING) 
-```rm -rf /tmp/podman-run-$UID``` (WARNING) 
+Pull image: ```podman pull <IMAGE>```
+
+Delete container: ```podman rm <ID>```
+
+Delete image: ```podman rmi <ID>```
+
+```podman system migrate```
+
+```podman system reset```
+
+```rm -rf /tmp/containers-user-$UID``` (WARNING)
+
+```rm -rf /tmp/podman-run-$UID``` (WARNING)
 
 ## Docker images
 ### us-central1-docker.pkg.dev/velina-208320/docker-count/img:latest
