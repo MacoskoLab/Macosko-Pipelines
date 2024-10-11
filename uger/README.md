@@ -1,6 +1,6 @@
 ### Podman commands
 
-Logging in on all avaiable nodes (run in login00.broadinstitute.org)
+login in on all avaiable nodes (run in login00.broadinstitute.org)
 ```
 use Google-Cloud-SDK
 LOGIN_CMD="gcloud auth print-access-token --quiet | podman login -u oauth2accesstoken --password-stdin us-central1-docker.pkg.dev"
