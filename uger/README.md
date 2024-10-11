@@ -21,7 +21,8 @@ while read -r partition node <&3; do
   srun --partition=$partition --nodelist=$node bash -c "$COMMAND"
 done 3<<< "$PARTITION_NODE_LIST"
 ```
-Helpful commands:  
+Helpful commands:
+
 Pull image: ```podman pull <IMAGE>```
 
 Delete container: ```podman rm <ID>```
