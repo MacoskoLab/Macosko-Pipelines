@@ -86,7 +86,10 @@ RUN sudo ln -s /usr/bin/python3 /usr/bin/python
 
 # Install micromamba
 RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
-# RUN echo "micromamba activate base" >> ~/.bashrc
 
 # Install python packages
 RUN /root/.local/bin/micromamba install -c conda-forge jupyterlab
+RUN /root/.local/bin/micromamba install -c conda-forge numpy pandas scipy scikit-learn
+RUN /root/.local/bin/micromamba install -c conda-forge matplotlib seaborn plotly PyPDF2
+RUN /root/.local/bin/micromamba install -c conda-forge networkx rustworkx igraph graph-tool
+RUN /root/.local/bin/micromamba install -c conda-forge pynndescent umap-learn
