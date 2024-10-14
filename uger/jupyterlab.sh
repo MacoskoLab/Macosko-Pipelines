@@ -1,7 +1,7 @@
 #!/bin/bash
 
 HOST_IP=$(hostname -i)
-PORT_NUM=$(for port in {8700..9000}; do ss -tuln | grep -q ":$port " || { echo "$port"; break; }; done)
+PORT_NUM=$(for port in {8700..9000}; do ss -an | grep -q ":$port " || { echo "$port"; break; }; done)
 echo "***************"
 echo "$HOST_IP:$PORT_NUM"
 echo "***************"
