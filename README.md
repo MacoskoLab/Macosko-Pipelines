@@ -106,12 +106,6 @@ R 4.3.3
 Python 3.11  
 CUDA 12.2  
 
-# Test BCLs
-Normal: 230521_SL-NXA_2112_AH3FLKBGXT (4 lanes, 24.06 GiB)  
-Multiome GEX: 230824_VH01286_38_AACVHVJM5 (1 lane, 23G)  
-Multiome ATAC: 230827_VH01286_40_AACVHVLM5 (1 lane, 20G)  
-Slide-Tags: 240329_SL-NTA_74_AAFJ3LYM5 (1 lane, 42.69 GiB)
-
 Links
 =====
 Cell Ranger downloads:  
