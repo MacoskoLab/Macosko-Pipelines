@@ -1,5 +1,4 @@
 FROM debian:bookworm
-SHELL ["/bin/bash", "-c"]
 
 # Install system libraries
 RUN apt-get update && \
@@ -28,10 +27,10 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
 
 # Install python
 # Python 3.11.2 already installed
-# RUN sudo ln -s /usr/bin/python3 /usr/bin/python
+RUN sudo ln -s /usr/bin/python3 /usr/bin/python
 
 # Install micromamba
-# RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
+RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
 
 # Install jupyterlab
-# RUN /root/.local/bin/micromamba install -c conda-forge jupyterlab
+RUN /root/.local/bin/micromamba install -c conda-forge jupyterlab
