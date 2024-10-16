@@ -428,7 +428,7 @@ function process_fastqs(R1s, R2s)
                 continue
             end
             # Filter SB
-            sb_i, ind = get(SBtoindex, (sb1, sb2), (-1, 0))
+            sb_i, ind = get(SBtoindex, (sb1[1:sb1_len], sb2[1:sb2_len]), (-1, 0))
             if sb_i > 0 && ind == 0
                 metadata["SB"]["exact"] += 1
             elseif sb_i > 0 && ind > 0
