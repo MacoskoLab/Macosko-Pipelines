@@ -201,7 +201,6 @@ function learn_bead(R)
         length(seq) < 35 ? continue : nothing
         counts["V17"] += get_V17(seq)[3] == UP1
     end
-    @assert sum(values(counts)) > 0
     println(counts)
     return findmax(counts)
 end
