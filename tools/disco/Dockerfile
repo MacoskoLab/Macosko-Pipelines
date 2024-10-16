@@ -23,7 +23,8 @@ RUN export R_VERSION=4.3.3 && \
 
 # Install RStudio
 RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09.0-375-amd64.deb && \
-    sudo gdebi rstudio-server-2024.09.0-375-amd64.deb
+    sudo gdebi rstudio-server-2024.09.0-375-amd64.deb && \
+    rm rstudio-server-2024.09.0-375-amd64.deb
 
 # Install python
 # Python 3.11.2 already installed
@@ -34,3 +35,5 @@ RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
 
 # Install jupyterlab
 RUN /root/.local/bin/micromamba install -c conda-forge jupyterlab
+
+ENTRYPOINT ["/bin/bash"]
