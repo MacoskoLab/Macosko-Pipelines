@@ -1,5 +1,5 @@
 Introduction to login00
-=======================
+-----------------------
 
 The login server `login00.broadinstitute.org` has SLURM enabled. We can use it to submit jobs to various nodes
  nodes that jobs can be submitted to
@@ -8,7 +8,7 @@ You can login to this
 ``` ssh ```
 
 Introduction to nodes
-=====================
+---------------------
 
 There are a total of three partitions, each with their own set of nodes
 * disco
@@ -51,7 +51,7 @@ Type `sinfo` or `scontrol show nodes` to see this information in more detail
 `dotkit` means the node has the familiar list of "use" modules (e.g. Google-Cloud-SDK)
 
 Introduction to SLURM
-=====================
+---------------------
 
 There are two ways to run jobs:
 
@@ -72,17 +72,16 @@ By default, these are the resources:
 * --mem = 1G per CPU
 
 Here are some helpful commands:
-
-`squeue -u $USER` lists all your jobs
-`squeue -t RUNNING` lists all running jobs
-`scontrol show job <ID>` lists information about a job
-`scancel <ID>` cancels a job
-`scancel -u $USER` cancels all your jobs
+* `squeue -u $USER`: lists all your jobs
+* `squeue -t RUNNING`: lists all running jobs
+* `scontrol show job <ID>`: lists information about a job
+* `scancel <ID>`: cancels a job
+* `scancel -u $USER`: cancels all your jobs
 
 Any modules loaded in the login server will propagate to the srun node
 
 Introduction to podman
-======================
+----------------------
 
 There is no way to get root access on the Broad HPC cluster. Thus, all commands that required `sudo` such as `apt install` are unavailable. As such, we will instead be setting up our environment inside of a rootless podman container.
 
@@ -94,7 +93,7 @@ Here are three important terms:
 We have a sample Dockerfile available. In the next section we'll show how to build an image using this recipe, and in the section after we'll use this image to create runnable containers.
 
 Building an image
-=================
+-----------------
 
 The first thing we need to do is make a podman image. To do this, we need to be on a node that supports the container feature. Let's open an interactive session on our partition:
 
@@ -132,4 +131,4 @@ Exit the srun session - this step is complete
 These commands do not have to be run again, unless you decide to update the Dockerfile. The image is now available anytime to be used as a container template.
 
 Intro to containers
-===================
+-------------------
