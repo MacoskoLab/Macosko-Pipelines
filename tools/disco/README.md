@@ -3,20 +3,20 @@
 The login server login00.broadinstitute.org has SLURM enabled.
 
 Currently there are 12 different nodes on the disco partition that jobs can be submitted to:
-`
-slurm-bits-d001  
-slurm-bits-d002  
-slurm-bits-d003  
-slurm-bits-d004  
-slurm-bits-d005  
-slurm-bits-d006  
-slurm-bits-rh7-d001  
-slurm-bits-rh7-d002  
-slurm-bits-rh7-d003  
-slurm-bits-rh7-d004  
-slurm-bits-rh7-d005  
-slurm-bits-rh7-d006  
-`
+```
+slurm-bits-d001
+slurm-bits-d002
+slurm-bits-d003
+slurm-bits-d004
+slurm-bits-d005
+slurm-bits-d006
+slurm-bits-rh7-d001
+slurm-bits-rh7-d002
+slurm-bits-rh7-d003
+slurm-bits-rh7-d004
+slurm-bits-rh7-d005
+slurm-bits-rh7-d006
+```
 Available Features:
 `slurm-bits-d[001-006]`: RedHat8, container
 `slurm-bits-rh7-d[001-006]`: RedHat7, dotkit
