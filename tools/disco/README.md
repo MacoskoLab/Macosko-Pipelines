@@ -1,6 +1,6 @@
 # Introduction to Disco
 
-The login server login00.broadinstitute.org has SLURM enabled.
+The login server `login00.broadinstitute.org` has SLURM enabled.
 
 Currently there are 12 different nodes on the disco partition that jobs can be submitted to:
 ```
@@ -23,11 +23,11 @@ Available Features:
 Each node has 128 cores and 755GiB RAM
 
 There are also a gpu partition with 3 GPU nodes:
-`
+```
 slurm-gpu-d001
 slurm-gpu-d002
 slurm-gpu-d003
-`
+```
 Available Features:
 `slurm-gpu-d[001-003]`: RedHat8, container
 Each GPU node has 64 cores, 502GiB RAM, and 4 NVIDIA A30 with 24GiB VRAM
