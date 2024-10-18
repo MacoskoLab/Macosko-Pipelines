@@ -72,7 +72,7 @@ TODO: explain what this does, and the default parameters, mounted files
 
 By default, these are the resources:
 * --partition = disco
-* --time = 01:00:00 (1 hour)
+* -t --time = 01:00:00 (1 hour)
 * -c --cpus-per-task = 1
 * --mem = 1G per CPU
 
@@ -84,3 +84,8 @@ Here are some helpful commands:
 * `scancel -u $USER`: cancels all your jobs
 
 Any modules loaded in the login server will propagate to the srun node
+
+Helpful links
+-------------
+https://broad.service-now.com/kb_view.do?sys_kb_id=a6c74cb147d6a51411484438946d430e
+
