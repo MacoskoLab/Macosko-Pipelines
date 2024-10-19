@@ -39,7 +39,7 @@ These commands do not have to be run again, unless you decide to update the Dock
 
 Summary
 -------
-Log into login00.broadinstitute.org and run this command:
+Log into `login00.broadinstitute.org` and run this command:
 ```
 srun --partition=hpcx_macosko --pty bash
 wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
