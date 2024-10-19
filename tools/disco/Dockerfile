@@ -33,10 +33,12 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Install micromamba
-RUN /bin/bash <(curl -L micro.mamba.pm/install.sh)
+# RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
+# RUN bash -c "curl -L micro.mamba.pm/install.sh"
+RUN curl -L micro.mamba.pm/install.sh | /bin/bash
 
 # Install jupyterlab
-RUN /root/.local/bin/micromamba install -c conda-forge jupyterlab
+RUN /bin/bash -c "source ~/.profile ; micromamba install -c conda-forge jupyterlab"
 
 # Ensure the container doesn't exit immediately
 CMD ["tail", "-f", "/dev/null"]
