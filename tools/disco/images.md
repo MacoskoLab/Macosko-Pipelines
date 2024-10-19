@@ -22,7 +22,7 @@ List the built podman images:
 
 You should see a newly created image called "myimage"
 
-A few notes on the build before moving on:
+A few notes on the build:
 
 `-t myimage`: this is the name to give the image (tag?)
 `--squash`: podman stores a copy of the image after each step of the build - this is to make
@@ -35,7 +35,7 @@ Exit the srun session - this step is complete
 
 ```exit```
 
-These commands do not have to be run again, unless you decide to update the Dockerfile. The image is now available anytime to be used as a container template.
+These commands do not have to be run again, unless you decide to update the Dockerfile. The image is now available on this node anytime to be used as a container template.
 
 Summary
 -------
