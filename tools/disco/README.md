@@ -1,15 +1,3 @@
-Introduction to podman
-----------------------
-
-There is no way to get root access on the Broad HPC cluster. Thus, all commands that required `sudo` such as `apt install` are unavailable. As such, we will instead be setting up our environment inside of a rootless podman container.
-
-Here are three important terms:
-* Dockerfile: a recipe to build a single image
-* Image: a read-only template used for creating containers
-* Container: an isolated environment in which we can install packages and run code
-
-We have a sample Dockerfile available. In the next section we'll show how to build an image using this recipe, and in the section after we'll use this image to create runnable containers.
-
 Building an image
 -----------------
 
