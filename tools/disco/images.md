@@ -42,7 +42,6 @@ Summary
 ```
 ssh login00.broadinstitute.org
 srun --partition=hpcx_macosko --pty bash
-cd /broad/macosko/$USER
 wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
 podman build --squash -t myimage .
 exit
