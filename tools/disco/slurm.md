@@ -85,7 +85,24 @@ Here are some helpful commands:
 
 Any modules loaded in the login server will propagate to the srun node
 
+Introduction to podman
+----------------------
+
+There is no way to get root access on the Broad HPC cluster. Thus, all commands that required `sudo` such as `apt install` are unavailable. As such, we will instead be setting up our environment inside of a rootless podman container.
+
+Inside a container, we have root access. We can install packages, configure an environment, and run code. Containers can be started and stopped like google VMs.
+
+A container is sealed off from the surrounding environment.
+Inside has its own filesystem, process tree, and network stack. 
+
+Here are three important terms:
+* Dockerfile: a recipe to build a single image
+* Image: a read-only template used for creating containers
+* Container: an isolated environment in which we can install packages and run code
+
+In the next section we'll show how to build an image using a sample Dockerfile, and in the section after we'll use this image to create runnable containers.
+
 Helpful links
 -------------
 https://broad.service-now.com/kb_view.do?sys_kb_id=a6c74cb147d6a51411484438946d430e
-
+https://backstage.broadinstitute.org/docs/default/component/disco-docs
