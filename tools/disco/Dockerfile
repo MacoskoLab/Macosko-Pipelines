@@ -24,8 +24,9 @@ RUN export R_VERSION=4.3.3 && \
 
 # Install RStudio
 RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09.0-375-amd64.deb && \
-    gdebi rstudio-server-2024.09.0-375-amd64.deb && \
-    rm rstudio-server-2024.09.0-375-amd64.deb
+    echo y | gdebi rstudio-server-2024.09.0-375-amd64.deb && \
+    rm rstudio-server-2024.09.0-375-amd64.deb && \
+    rstudio-server stop
 
 # Install python
 # Python 3.11.2 already installed
