@@ -34,7 +34,7 @@ yes
 
 ---
 
-Help! The `srun` session ended while a container was still running and now the podman state is corrupted. How to fix?
+Help! The `srun` session ended while `mycontainer` was still running and now the podman state is corrupted. How to fix?
 
 Step 1: Log out of the node and log back in 
 
