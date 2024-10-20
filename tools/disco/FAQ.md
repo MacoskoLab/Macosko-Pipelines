@@ -1,3 +1,7 @@
+FAQ
+
+---
+
 ```srun: command not found```
 
 Make sure you are on login00.broadinstitute.org
