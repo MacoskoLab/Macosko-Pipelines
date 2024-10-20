@@ -46,7 +46,7 @@ Step 4: The container cannot be repaired - we will instead copy its state to a n
 
 Step 5: You can now use this image to make a new container
 
-To remove the broken container, you must remove the image the container was made from using `podman rmi`. Make sure any other containers using that image have been backed up as they will be deleted too.
+To remove the broken container, you must remove the image the container was made from using `podman rmi --force myimage`. Make sure all containers from this image have been backed up as they will be deleted too.
 
 ---
 
