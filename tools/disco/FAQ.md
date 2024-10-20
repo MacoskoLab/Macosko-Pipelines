@@ -10,7 +10,7 @@ Make sure you are on login00.broadinstitute.org
 
 When I run `srun` it hangs forever - why?
 
-If you are already on a node `srun` will hang forever - make sure you are on login00.broadinstitute.org.
+`srun` will hang forever if you are already in a node - make sure you are on login00.broadinstitute.org.
 
 Alternatively, the node may be busy. Try requesting requesting fewer resources or monitoring usage with TODO
 
@@ -28,7 +28,7 @@ podman could not find the image "myimage". Run `podman images -a` to verify that
 
 ---
 
-Can I move images between nodes?
+Can I share images between nodes?
 
 yes
 
