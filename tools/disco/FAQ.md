@@ -1,4 +1,4 @@
-FAQ
+Frequently Asked Questions
 
 ---
 
@@ -45,3 +45,15 @@ Step 3: Run `podman ps --all --external` - you should see the container has the 
 Step 4: The container cannot be repaired - we will instead copy its state to a new image and use that image to generate a new container. The contents of memory will be lost, but everything on disk will be preserved. Run the command `podman commit mycontainer newimage`
 
 Step 5: You can now use this image to make a new container
+
+---
+
+Can I completely reset podman state?
+
+Yes. Run these commands on each node that has podman state:
+
+```
+rm -rf /tmp/containers-user-$UID
+rm -rf /tmp/podman-run-$UID
+podman system reset
+```
