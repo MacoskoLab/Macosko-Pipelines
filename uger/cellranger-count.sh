@@ -26,7 +26,7 @@ SBATCH_PARAMS="-C RedHat7 -o $ROOT/logs/$BCL/$INDEX/cellranger-count.log -J cell
                -c 32 --mem 96G --time 96:00:00 \
                --mail-user mshabet@broadinstitute.org --mail-type END,FAIL,REQUEUE,INVALID_DEPEND,STAGE_OUT,TIME_LIMIT"
 CELLRANGER_PARAMS="--id $INDEX \
-                   --output-dir $ROOT/cellranger-count/$BCL \
+                   --output-dir $ROOT/cellranger-count/$BCL/$INDEX \
                    --transcriptome $ROOT/references/$TRANSCRIPTOME \
                    --fastqs $ROOT/fastqs/$BCL \
                    --sample $INDEX \
@@ -35,5 +35,6 @@ CELLRANGER_PARAMS="--id $INDEX \
                    --include-introns true \
                    --nosecondary"
 
+mkdir -p $ROOT/cellranger-count/$BCL
 mkdir -p $ROOT/logs/$BCL/$INDEX
-srun $SBATCH_PARAMS $BINARY count $CELLRANGER_PARAMS
+sbatch $SBATCH_PARAMS --wrap "$BINARY count $CELLRANGER_PARAMS"
