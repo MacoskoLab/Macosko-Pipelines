@@ -6,10 +6,10 @@ if [ "$#" -ne 4 ]; then
     exit 1
 fi
 
-BCL="$1"           ; echo $BCL
-INDEX="$2"         ; echo $INDEX
-TRANSCRIPTOME="$3" ; echo $TRANSCRIPTOME
-CHEMISTRY="$4"     ; echo $CHEMISTRY
+BCL="$1"           ; echo "BCL: $BCL"
+INDEX="$2"         ; echo "Index: $INDEX"
+TRANSCRIPTOME="$3" ; echo "Transcriptome: $TRANSCRIPTOME"
+CHEMISTRY="$4"     ; echo "Chemistry: $CHEMISTRY"
 
 # Assert no whitespace
 for arg in "$@"; do
@@ -35,4 +35,5 @@ CELLRANGER_PARAMS="--id $INDEX \
                    --include-introns true \
                    --nosecondary"
 
-sbatch $SBATCH_PARAMS $BINARY count $CELLRANGER_PARAMS
+mkdir -p $ROOT/logs/$BCL/$INDEX
+srun $SBATCH_PARAMS $BINARY count $CELLRANGER_PARAMS
