@@ -33,8 +33,10 @@ CELLRANGER_PARAMS="--id $INDEX \
                    --chemistry $CHEMISTRY \
                    --create-bam true \
                    --include-introns true \
-                   --nosecondary"
+                   --nosecondary \
+                   --disable-ui"
 
 mkdir -p $ROOT/cellranger-count/$BCL
 mkdir -p $ROOT/logs/$BCL/$INDEX
+cd $ROOT/cellranger-count/$BCL
 sbatch $SBATCH_PARAMS --wrap "$BINARY count $CELLRANGER_PARAMS"
