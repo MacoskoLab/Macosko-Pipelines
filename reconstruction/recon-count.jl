@@ -83,16 +83,16 @@ if prob < 1
     println("Downsampling level: $prob")
 end
 
-const bc1_manual = args["R1_barcodes"]
-if bc1_manual > 0
-    println("R1 barcodes: $bc1_manual")
+const R1_barcodes = args["R1_barcodes"]
+if R1_barcodes > 0
+    println("R1 barcodes: $R1_barcodes")
 else
     println("R1 barcodes: AUTO")
 end
 
-const bc2_manual = args["R2_barcodes"]
-if bc2_manual > 0
-    println("R2 barcodes: $bc2_manual")
+const R2_barcodes = args["R2_barcodes"]
+if R2_barcodes > 0
+    println("R2 barcodes: $R2_barcodes")
 else
     println("R2 barcodes: AUTO")
 end
@@ -110,6 +110,24 @@ const R2s = filter(s -> occursin("_R2_", s), fastqs) ; println("R2s: ", basename
 @assert length(R1s) == length(R2s) "ERROR: R1s and R2s are not all paired"
 @assert [replace(R1, "_R1_"=>"", count=1) for R1 in R1s] == [replace(R2, "_R2_"=>"", count=1) for R2 in R2s]
 println("$(length(R1s)) pair(s) of FASTQs found\n")
+
+# Create a plot showing the file paths
+N = 30
+p = plot(xlim=(0, 4), ylim=(0, N+1), framestyle=:none, size=(7*100, 8*100),
+         legend=false, xticks=:none, yticks=:none)
+annotate!(p, 0.1, N, text("Input directory: $fastq_path", :left, 12))
+annotate!(p, 0.1, N-1, text("Output directory: $out_path", :left, 12))
+annotate!(p, 0.1, N-3, text("R1 FASTQs:", :left, 12))
+annotate!(p, 2.1, N-3, text("R2 FASTQs:", :left, 12))
+for (i, (R1, R2)) in enumerate(zip(R1s, R2s))
+    i > N-4 && break
+    annotate!(p, 0.1, N-3-i, text(basename(R1), :left, 12))
+    annotate!(p, 2.1, N-3-i, text(basename(R2), :left, 12))
+end
+if length(R1s) > N-4
+    annotate!(p, 2, 0, text("$(length(R1s)-N+4) FASTQ file(s) not shown", :center, 12))
+end
+savefig(p, joinpath(out_path, "filepaths.pdf"))
 
 ####################################################################################################
 
@@ -197,7 +215,7 @@ addprocs(length(R1s))
         return b1 + b2 * 4^9
     end
     @inline function decode_17(code::UInt64)::String
-        @fastmath @inbounds u = String([bases[(code >> n) & 3 + 1] for n in 0:2:32])
+        @fastmath @inbounds u = [bases[(code >> n) & 3 + 1] for n in 0:2:32]
         return String(u)
     end
 
@@ -519,18 +537,20 @@ const bc1_auto = count(e -> e >= uc1_auto, tab1 |> values |> collect)
 const bc2_auto = count(e -> e >= uc2_auto, tab2 |> values |> collect)
 
 # Manual cutoff
-# bc1_manual: passed in
-# bc2_manual: passed in
+# R1_barcodes: provided at command-line
+# R2_barcodes: provided at command-line
 function bc_to_uc(bc, table)
     kv = DataFrame(keys = collect(keys(table)), values = collect(values(table)))
     sort!(kv, :keys, rev=true)
-    kv[!, :cumsum] = cumsum(kv[!,:values])
+    kv[!, :cumsum] = cumsum(kv[!, :values])
     uc = kv[!, :keys][findfirst(x -> x >= bc, kv[!, :cumsum])]
     return uc
 end
 
-const uc1_manual = bc1_manual > 0 ? bc_to_uc(bc1_manual, tab1 |> values |> countmap) : bc1_manual
-const uc2_manual = bc2_manual > 0 ? bc_to_uc(bc2_manual, tab2 |> values |> countmap) : bc2_manual
+const uc1_manual = R1_barcodes > 0 ? bc_to_uc(bc1_manual, tab1 |> values |> countmap) : R1_barcodes
+const uc2_manual = R2_barcodes > 0 ? bc_to_uc(bc2_manual, tab2 |> values |> countmap) : R2_barcodes
+const bc1_manual = R1_barcodes > 0 ? count(e -> e >= uc1_manual, tab1 |> values |> collect) : R1_barcodes
+const bc2_manual = R2_barcodes > 0 ? count(e -> e >= uc2_manual, tab2 |> values |> collect) : R2_barcodes
 
 # Use manual cutoff if > 0
 if bc1_manual > 0 
@@ -579,6 +599,9 @@ function umi_density_plot(table, uc_auto, uc_manual, R)
     return p
 end
 
+p1 = umi_density_plot(tab1 |> values |> countmap, uc1_auto, uc1_manual, "R1")
+p3 = umi_density_plot(tab2 |> values |> countmap, uc2_auto, uc2_manual, "R2")
+
 function elbow_plot(y, uc_auto, uc_manual, bc_auto, bc_manual, R)
     sort!(y, rev=true)
     x = 1:length(y)
@@ -596,9 +619,6 @@ function elbow_plot(y, uc_auto, uc_manual, bc_auto, bc_manual, R)
     yticks!(p, [10^i for i in 0:ceil(log10(maximum(yp)))])
     return p
 end
-
-p1 = umi_density_plot(tab1 |> values |> countmap, uc1_auto, uc1_manual, "R1")
-p3 = umi_density_plot(tab2 |> values |> countmap, uc2_auto, uc2_manual, "R2")
 
 p2 = elbow_plot(tab1 |> values |> collect, uc1_auto, uc1_manual, bc1_auto, bc1_manual, "R1")
 p4 = elbow_plot(tab2 |> values |> collect, uc2_auto, uc2_manual, bc2_auto, bc2_manual, "R2")
@@ -630,8 +650,8 @@ print("Matching to barcode whitelist... ") ; flush(stdout)
 function match_barcode(df, tab1, tab2, metadata)
     metadata = merge(metadata, Dict("R1_exact"=>0, "R1_none"=>0, "R2_exact"=>0, "R2_none"=>0))
     
-    wl1 = Set{UInt64}([k for (k, v) in tab1 if v >= uc1])
-    wl2 = Set{UInt64}([k for (k, v) in tab2 if v >= uc2])
+    wl1 = Set{UInt64}([k for (k, v) in tab1 if v >= uc1]) ; @assert length(wl1) == bc1
+    wl2 = Set{UInt64}([k for (k, v) in tab2 if v >= uc2]) ; @assert length(wl2) == bc2
 
     m1 = [s1 in wl1 for s1 in df[!,:sb1_i]]
     m2 = [s2 in wl2 for s2 in df[!,:sb2_i]]
@@ -829,7 +849,7 @@ data = [
 ("", "Sequencing saturation", ""),
 ("", string(round((1 - (m["umis_filtered"] / m["reads_filtered"]))*100, digits=1))*"%", ""),
 ("", "Filtered UMIs", ""),
-("", f(m["umis_filtered"]), ""),
+(R1_barcodes > 0 ? "(manual)" : "", f(m["umis_filtered"]), R2_barcodes > 0 ? "(manual)" : ""),
 ("R1 UMI cutoff", "", "R2 UMI cutoff"),
 (f(m["R1_umicutoff"]), "", f(m["R2_umicutoff"])),
 ("R1 Barcodes", "R2:R1 ratio", "R2 Barcodes"),
@@ -856,7 +876,8 @@ savefig(p, joinpath(out_path, "metadata.pdf"))
 merge_pdfs([joinpath(out_path,"elbows.pdf"),
             joinpath(out_path,"metadata.pdf"),
             joinpath(out_path,"SNR.pdf"),
-            joinpath(out_path,"histograms.pdf")],
+            joinpath(out_path,"histograms.pdf"),
+            joinpath(out_path,"filepaths.pdf")],
             joinpath(out_path,"QC.pdf"), cleanup=true)
 
 # Save the metadata
