@@ -13,7 +13,7 @@ To make logging in easier, run these commands on your local machine:
 ```
 ssh-keygen -t rsa -b 4096 -f ~/.ssh/uger -N ""
 ssh-copy-id -i ~/.ssh/uger.pub $USER@login00.broadinstitute.org
-echo "\nHost l0\n\tHostName login00.broadinstitute.org\n\tUser $USER\n\tIdentityFile ~/.ssh/uger" >> ~/.ssh/config
+echo -e "\nHost l0\n\tHostName login00.broadinstitute.org\n\tUser $USER\n\tIdentityFile ~/.ssh/uger" >> ~/.ssh/config
 ```
 
 Now you should be able run `ssh l0` to log in without needing a password
