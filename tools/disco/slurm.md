@@ -1,10 +1,9 @@
 Introduction to login00
 -----------------------
 
-The login server `login00.broadinstitute.org` has SLURM enabled. We can use it to submit jobs to various nodes
- nodes that jobs can be submitted to
+The login server `login00.broadinstitute.org` has SLURM enabled. We can use it to submit jobs to various nodes that have large amounts of computing resources.
  
-You can login to this node using ssh:
+You can login to this server using ssh:
 
 ``` ssh login00.broadinstitute.org ```
 
@@ -13,6 +12,8 @@ To make logging in easier, run these commands on your local machine:
 ```
 ssh-keygen -t rsa -b 4096 -f ~/.ssh/uger -N ""
 ssh-copy-id -i ~/.ssh/uger.pub $USER@login00.broadinstitute.org
+```
+```
 echo -e "\nHost l0\n\tHostName login00.broadinstitute.org\n\tUser $USER\n\tIdentityFile ~/.ssh/uger" >> ~/.ssh/config
 ```
 
@@ -21,7 +22,7 @@ Now you should be able run `ssh l0` to log in without needing a password
 Introduction to nodes
 ---------------------
 
-There are a total of three partitions, each with their own set of nodes
+There are a total of three partitions, each with their own set of nodes:
 * disco
 * gpu
 * hpcx_macosko
@@ -39,6 +40,7 @@ The disco partition has 12 nodes:
 * slurm-bits-rh7-d004
 * slurm-bits-rh7-d005
 * slurm-bits-rh7-d006
+
 Available Features:
 `slurm-bits-d[001-006]`: RedHat8, container
 `slurm-bits-rh7-d[001-006]`: RedHat7, dotkit
@@ -48,6 +50,7 @@ The gpu partition has 3 GPU nodes:
 * slurm-gpu-d001
 * slurm-gpu-d002
 * slurm-gpu-d003
+
 Available Features:
 `slurm-gpu-d[001-003]`: RedHat8, container
 Each GPU node has 64 cores, 502GiB RAM, and 4 NVIDIA A30 with 24GiB VRAM
@@ -74,6 +77,8 @@ The rest of this tutorial will use `srun` due to its interactive
 This command will put you in a bash terminal on an available node:
 `srun --pty bash`
 
+specify partiution
+
 TODO: explain what this does, and the default parameters, mounted files
 
 By default, these are the resources:
@@ -94,7 +99,7 @@ Any modules loaded in the login server will propagate to the srun node
 Introduction to podman
 ----------------------
 
-There is no way to get root access on the Broad HPC cluster. Thus, all commands that required `sudo` such as `apt install` are unavailable. As such, we will instead be setting up our environment inside of a rootless podman container.
+Commands requiring root permisison cannot be run on the Broad HPC cluster. This means that all commands which require `sudo` such as `apt install` are unavailable. Therefore, we will instead be setting up our environment inside of a podman container.
 
 Inside a container, we have root access. We can install packages, configure an environment, and run code. Containers can be started and stopped like google VMs.
 
