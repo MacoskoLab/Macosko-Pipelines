@@ -547,20 +547,20 @@ function bc_to_uc(bc, table)
     return uc
 end
 
-const uc1_manual = R1_barcodes > 0 ? bc_to_uc(bc1_manual, tab1 |> values |> countmap) : R1_barcodes
-const uc2_manual = R2_barcodes > 0 ? bc_to_uc(bc2_manual, tab2 |> values |> countmap) : R2_barcodes
+const uc1_manual = R1_barcodes > 0 ? bc_to_uc(R1_barcodes, tab1 |> values |> countmap) : R1_barcodes
+const uc2_manual = R2_barcodes > 0 ? bc_to_uc(R2_barcodes, tab2 |> values |> countmap) : R2_barcodes
 const bc1_manual = R1_barcodes > 0 ? count(e -> e >= uc1_manual, tab1 |> values |> collect) : R1_barcodes
 const bc2_manual = R2_barcodes > 0 ? count(e -> e >= uc2_manual, tab2 |> values |> collect) : R2_barcodes
 
 # Use manual cutoff if > 0
-if bc1_manual > 0 
+if R1_barcodes > 0 
     const bc1 = bc1_manual
     const uc1 = uc1_manual
 else
     const bc1 = bc1_auto
     const uc1 = uc1_auto
 end
-if bc2_manual > 0 
+if R2_barcodes > 0 
     const bc2 = bc2_manual
     const uc2 = uc2_manual
 else
