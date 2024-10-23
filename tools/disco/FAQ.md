@@ -31,8 +31,11 @@ podman could not find "myimage". Run `podman images -a` to verify that "myimage"
 Can I share images between nodes?
 
 Yes. First same the image to a .tar file:
+
 ```podman save -o myimage.tar myimage```
+
 Then run this commmand to distribute it across all nodes:
+
 ```
 COMMAND="podman load -i myimage.tar"
 COMMAND="if command -v podman &> /dev/null; then $COMMAND; else echo podman not found; fi"
@@ -42,6 +45,7 @@ while read -r partition node <&3; do
   srun --partition=$partition --nodelist=$node bash -c "$COMMAND"
 done 3<<< "$PARTITION_NODE_LIST"
 ```
+
 ---
 
 Help! The `srun` session ended while "mycontainer" was still running and now the podman state is corrupted. How to fix?
