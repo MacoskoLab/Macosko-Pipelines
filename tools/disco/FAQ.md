@@ -14,6 +14,12 @@ A: `srun` will hang forever if you are already in a node - make sure you are on 
 
 ---
 
+Q: `podman: command not found`
+
+A: Make sure you are on a node with container support - this can be specified with `-C container`
+
+---
+
 Q: When I call `podman run` on "myimage", this happens:
 
 ```
@@ -24,6 +30,8 @@ Q: When I call `podman run` on "myimage", this happens:
 ```
 
 A: Podman could not find "myimage". Run `podman images -a` to verify that "myimage" exists. Podman images are not shared between nodes, so try making a copy or going to the node where the image was created.
+
+If you are trying to run a container, use TODO instead
 
 ---
 
@@ -50,6 +58,23 @@ Alternatively, you could just run this command to scp it directly:
 ```
 podman image scp
 ```
+
+---
+
+Q: What is the easiest way to transfer files in/out of a container?
+
+Option 1: use `-v` to share a folder inside the container with a folder outside the container
+
+Option 2: mount the container's entire filesystem in a user namespace shell:
+
+```
+podman unshare
+podman mount mycontainer
+```
+
+You should see a new directory in `/local` which contains the root file system of the container - you can now copy in/out any data that you need. Once finished, exit the shell:
+
+```exit```
 
 ---
 
