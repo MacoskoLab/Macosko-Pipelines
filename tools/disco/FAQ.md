@@ -64,9 +64,9 @@ To remove the broken container, you must remove the image the container was made
 
 ---
 
-Can I completely reset podman state?
+Q: Can I completely reset podman state?
 
-Yes. Run these commands on each node that has podman state:
+A: Yes. Run these commands on each node that has podman state:
 
 ```
 rm -rf /tmp/containers-user-$UID
