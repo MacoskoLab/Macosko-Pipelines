@@ -31,7 +31,7 @@ Q: When I call `podman run` on "myimage", this happens:
 
 A: Podman could not find "myimage". Run `podman images -a` to verify that "myimage" exists. Podman images are not shared between nodes, so try making a copy or going to the node where the image was created.
 
-If you are trying to run a container, use TODO instead
+Also, `podman run` is used to make a new container. To run an existing container, use `podman start` on a stopped container or `podman unpause` on a paused container.
 
 ---
 
@@ -72,9 +72,23 @@ podman unshare
 podman mount mycontainer
 ```
 
-You should see a new directory in `/local` which contains the root file system of the container - you can now copy in/out any data that you need. Once finished, exit the shell:
+You should see a directory printed to the terminal which contains the root file system of the container - you can now copy in/out any data that you need. Once finished, exit the shell:
 
 ```exit```
+
+---
+
+Q: How can I view container resource usage statistics
+
+Option 1: exec htop?
+
+Option 2: podman stats? podman top?
+
+---
+
+Q: Can I back up a container?
+
+Option 1:
 
 ---
 
