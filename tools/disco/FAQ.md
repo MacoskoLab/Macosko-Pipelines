@@ -2,21 +2,19 @@ Frequently Asked Questions
 
 ---
 
-```srun: command not found```
+Q: `srun: command not found`
 
-Make sure you are on login00.broadinstitute.org
-
----
-
-When I run `srun` it hangs forever - why?
-
-`srun` will hang forever if you are already in a node - make sure you are on login00.broadinstitute.org.
-
-Alternatively, the node may be busy. Try requesting requesting fewer resources or monitoring usage with TODO
+A: Make sure you are on login00.broadinstitute.org
 
 ---
 
-When I call `podman run` on "myimage", this happens:
+Q: When I run `srun` it hangs forever - why?
+
+A: `srun` will hang forever if you are already in a node - make sure you are on login00.broadinstitute.org. Alternatively, the node may be busy. Try requesting requesting fewer resources or monitoring usage with TODO
+
+---
+
+Q: When I call `podman run` on "myimage", this happens:
 
 ```
 ? Please select an image: 
@@ -24,13 +22,14 @@ When I call `podman run` on "myimage", this happens:
     registry.redhat.io/myimage:latest
     docker.io/library/myimage:latest
 ```
-podman could not find "myimage". Run `podman images -a` to verify that "myimage" exists. podman images are not shared between nodes, so try going to the node where the image was created.
+
+A: Podman could not find "myimage". Run `podman images -a` to verify that "myimage" exists. Podman images are not shared between nodes, so try making a copy or going to the node where the image was created.
 
 ---
 
-Can I share images between nodes?
+Q: Can I share images between nodes?
 
-Yes. First same the image to a .tar file:
+A: Yes. First same the image to a .tar file:
 
 ```podman save -o myimage.tar myimage```
 
