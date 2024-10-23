@@ -4,7 +4,7 @@ FROM debian:bookworm
 RUN apt-get update && apt-get install -y \
     sudo wget curl rsync zip unzip less tree    \
     vim nano tmux screen htop dstat socat       \
-    procps moreutils gnupg ssh git-all          \
+    procps moreutils gnupg iproute2 ssh git-all \
     libudunits2-dev libgdal-dev                 \
     gdebi-core build-essential pkg-config alien \
     libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev \
