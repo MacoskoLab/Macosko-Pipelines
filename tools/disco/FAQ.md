@@ -45,6 +45,12 @@ while read -r partition node <&3; do
 done 3<<< "$PARTITION_NODE_LIST"
 ```
 
+Alternatively, you could just run this command to scp it directly:
+
+```
+podman image scp
+```
+
 ---
 
 Help! The `srun` session ended while "mycontainer" was still running and now the podman state is corrupted. How to fix?
