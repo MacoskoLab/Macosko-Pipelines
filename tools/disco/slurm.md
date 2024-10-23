@@ -4,13 +4,19 @@ Introduction to login00
 The login server `login00.broadinstitute.org` has SLURM enabled. We can use it to submit jobs to various nodes
  nodes that jobs can be submitted to
  
-You can login to this 
-``` ssh ```
+You can login to this node using ssh:
 
-To make logging in easier, run these commands:
-(key propagate)
-(add to ~/.ssh/config)
-now you should just be able to type `ssh l0` to log in without needing a password
+``` ssh login00.broadinstitute.org ```
+
+To make logging in easier, run these commands on your local machine:
+
+```
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/uger -N ""
+ssh-copy-id -i ~/.ssh/uger.pub $USER@login00.broadinstitute.org
+echo "\nHost l0\n\tHostName login00.broadinstitute.org\n\tUser $USER\n\tIdentityFile ~/.ssh/uger" >> ~/.ssh/config
+```
+
+Now you should be able run `ssh l0` to log in without needing a password
 
 Introduction to nodes
 ---------------------
