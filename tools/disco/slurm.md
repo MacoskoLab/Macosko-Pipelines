@@ -42,8 +42,11 @@ The disco partition has 12 nodes:
 * slurm-bits-rh7-d006
 
 Available Features:
+
 `slurm-bits-d[001-006]`: RedHat8, container
+
 `slurm-bits-rh7-d[001-006]`: RedHat7, dotkit
+
 Each node has 128 cores and 755GiB RAM
 
 The gpu partition has 3 GPU nodes:
@@ -52,16 +55,21 @@ The gpu partition has 3 GPU nodes:
 * slurm-gpu-d003
 
 Available Features:
+
 `slurm-gpu-d[001-003]`: RedHat8, container
+
 Each GPU node has 64 cores, 502GiB RAM, and 4 NVIDIA A30 with 24GiB VRAM
 
 Finally, our lab has exclusive access to one giant node on the hpcx_macosko partition:
+
 `slurm-bits-bigmem-d002`: RedHat8, container
+
 This node has 64 cores and 4030GiB of RAM
 
 Type `sinfo` or `scontrol show nodes` to see this information in more detail
 
 `container` means the node has podman, apptainer, and singularity
+
 `dotkit` means the node has the familiar list of "use" modules (e.g. Google-Cloud-SDK)
 
 Introduction to SLURM
@@ -72,20 +80,17 @@ There are two ways to run jobs:
 `srun` runs the job interactively in the terminal. Output is printed in real-time and the job can be control-C'd to end. Closing the terminal will also end the job.
 `sbatch` submits the job to be handled by slurm. It runs in the background and writes output to a log file. The terminal can be safely closed. Analogous to qsub
 
-The rest of this tutorial will use `srun` due to its interactive
+The rest of this tutorial will use `srun` due to its interactive nature
 
 This command will put you in a bash terminal on an available node:
-`srun --pty bash`
 
-specify partiution
+```srun --pty bash```
 
-TODO: explain what this does, and the default parameters, mounted files
-
-By default, these are the resources:
+By default, these are the arguments:
 * --partition = disco
 * -t --time = 01:00:00 (1 hour)
 * -c --cpus-per-task = 1
-* --mem = 1G per CPU
+* --mem = 1G (per CPU)
 
 Here are some helpful commands:
 * `squeue -u $USER`: lists all your jobs
@@ -101,7 +106,7 @@ Introduction to podman
 
 Commands requiring root permisison cannot be run on the Broad HPC cluster. This means that all commands which require `sudo` such as `apt install` are unavailable. Therefore, we will instead be setting up our environment inside of a podman container.
 
-Inside a container, we have root access. We can install packages, configure an environment, and run code. Containers can be started and stopped like google VMs.
+Inside a container, we have root access. We can install packages, configure an environment, and run code.
 
 A container is sealed off from the surrounding environment.
 Inside has its own filesystem, process tree, and network stack. 
