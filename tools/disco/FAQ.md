@@ -28,6 +28,16 @@ Q: When I call `podman run` on "myimage", this happens:
     registry.redhat.io/myimage:latest
     docker.io/library/myimage:latest
 ```
+```
+Resolving "myimage" using unqualified-search registries (/etc/containers/registries.conf)
+Trying to pull registry.access.redhat.com/myimage:latest...
+Trying to pull registry.redhat.io/myimage:latest...
+Trying to pull docker.io/library/myimage:latest...
+Error: 3 errors occurred while pulling:
+ * initializing source docker://registry.access.redhat.com/myimage:latest: reading manifest latest in registry.access.redhat.com/myimage: name unknown: Repo not found
+ * initializing source docker://registry.redhat.io/myimage:latest: unable to retrieve auth token: invalid username/password: unauthorized: Please login to the Red Hat Registry using your Customer Portal credentials. Further instructions can be found here: https://access.redhat.com/RegistryAuthentication
+ * initializing source docker://myimage:latest: reading manifest latest in docker.io/library/myimage: requested access to the resource is denied
+```
 
 A: Podman could not find "myimage". Run `podman images -a` to verify that "myimage" exists. Podman images are not shared between nodes, so try making a copy or going to the node where the image was created.
 
