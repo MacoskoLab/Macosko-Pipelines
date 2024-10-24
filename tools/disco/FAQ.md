@@ -28,6 +28,7 @@ Q: When I call `podman run` on "myimage", this happens:
     registry.redhat.io/myimage:latest
     docker.io/library/myimage:latest
 ```
+or
 ```
 Resolving "myimage" using unqualified-search registries (/etc/containers/registries.conf)
 Trying to pull registry.access.redhat.com/myimage:latest...
