@@ -28,6 +28,32 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
     rm rstudio-server-2024.09.0-375-amd64.deb && \
     rstudio-server stop
 
+# Install R libraries
+# RUN R -e "install.packages(c('qs',          \
+#                              'glue',        \
+#                              'qpdf',        \
+#                              'dplyr',       \
+#                              'purrr',       \
+#                              'furrr',       \
+#                              'rlist',       \
+#                              'rdist',       \
+#                              'tidyr',       \
+#                              'hdf5r',       \
+#                              'dbscan',      \
+#                              'future',      \
+#                              'Seurat',      \
+#                              'cowplot',     \
+#                              'ggplot2',     \
+#                              'ggrastr',     \
+#                              'stringr',     \
+#                              'viridis',     \
+#                              'jsonlite',    \
+#                              'magrittr',    \
+#                              'gridExtra',   \
+#                              'SeuratObject'), repos='http://cran.rstudio.com/')"
+# RUN R -e "if (!require('BiocManager',quietly=T)) {install.packages('BiocManager',repos='http://cran.rstudio.com/')}; \
+#           BiocManager::install('rhdf5')"
+
 # Install python
 # Python 3.11.2 already installed
 RUN ln -s /usr/bin/python3 /usr/bin/python
