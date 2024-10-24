@@ -42,7 +42,9 @@ print(g("Running positioning on {len(data.list)} cells"))
 library(furrr)
 library(future)
 library(parallel)
-ncores = parallel::detectCores()
+
+install.packages("parallelly")
+ncores = parallelly::availableCores()
 plan(multisession, workers=ncores)
 
 # helper methods
