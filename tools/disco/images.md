@@ -22,14 +22,7 @@ List the built podman images:
 
 You should see a newly created image called "myimage"
 
-A few notes on the build:
-
-`-t myimage`: this is the name to give the image (tag?)
-`--squash`: podman stores a copy of the image after each step of the build - this is to make
-If you rebuild, the new image does not overwrite the old one. get the "latest" tag and the previous image become untagged. They take up space so Make sure to stop all containers using the old image and podman rmi it
-You'll also see a debian image which was pulled to be used as a base - this can be kept or removed with podman rmi <image>. It is blank.
-
-Podman images are stored in `/local/podman/containers-user-$UID`, and this folder is NOT shared across the various nodes. This means that you won't be able to make containers using this image on a different node. We can run a command (TODO)
+Podman images are stored in `/local/podman/containers-user-$UID`, and this folder is NOT shared across the various nodes. This means that you currently won't be able to make containers using this image on a different node. See the FAQ for a discussion on how to send a copy of the image to other nodes.
 
 Exit the srun session - this step is complete
 
