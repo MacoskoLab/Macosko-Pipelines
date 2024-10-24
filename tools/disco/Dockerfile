@@ -4,7 +4,7 @@ FROM debian:bookworm
 RUN apt-get update && apt-get install -y \
     sudo wget curl rsync zip unzip less tree    \
     vim nano tmux screen htop dstat socat       \
-    procps moreutils gnupg iproute2 ssh git-all \
+    procps moreutils gnupg ssh git-all          \
     libudunits2-dev libgdal-dev                 \
     gdebi-core build-essential pkg-config alien \
     libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev \
@@ -33,12 +33,12 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Install micromamba
-# RUN "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
-# RUN bash -c "curl -L micro.mamba.pm/install.sh"
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
 
-# Install jupyterlab
-RUN /bin/bash -c "source ~/.profile ; micromamba install -c conda-forge jupyterlab"
+# Install python packages
+RUN /bin/bash -c "source ~/.profile ; micromamba activate base ; \
+                  micromamba install -c conda-forge jupyterlab \
+                 "
 
 # Ensure the container doesn't exit immediately
-CMD ["tail", "-f", "/dev/null"]
+# CMD ["tail", "-f", "/dev/null"]
