@@ -78,6 +78,12 @@ You should see a directory printed to the terminal which contains the root file 
 
 ---
 
+Q: Can I change port (bindings) or volume (mounts) after creating the container?
+
+A: No. You need to create a new container using (?)
+
+---
+
 Q: How can I view container resource usage statistics
 
 Option 1: exec htop?
