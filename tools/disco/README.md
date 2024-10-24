@@ -4,5 +4,10 @@
 
 3\) Create a podman container `here`
 
-You can now run these commands:
+You can now add these functions to your .my.bashrc:
+
+```
+jupyterlab=""
+rstudio=""
+```
 
