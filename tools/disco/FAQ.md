@@ -53,11 +53,7 @@ while read -r partition node <&3; do
 done 3<<< "$PARTITION_NODE_LIST"
 ```
 
-Alternatively, you could just run this command to scp it directly:
-
-```
-podman image scp
-```
+Alternatively, you could just run `podman scp` this command to scp it directly
 
 ---
 
@@ -78,23 +74,9 @@ You should see a directory printed to the terminal which contains the root file 
 
 ---
 
-Q: Can I change port (bindings) or volume (mounts) after creating the container?
+Q: Can I change port bindings or volume mounts after creating the container?
 
-A: No. You need to create a new container using (?)
-
----
-
-Q: How can I view container resource usage statistics
-
-Option 1: exec htop?
-
-Option 2: podman stats? podman top?
-
----
-
-Q: Can I back up a container?
-
-Option 1:
+A: No. You need to create a new container 
 
 ---
 
