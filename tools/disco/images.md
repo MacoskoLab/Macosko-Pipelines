@@ -14,7 +14,7 @@ wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/m
 
 Build an image using this recipe: (should take about 5 minutes)
 
-```podman build --squash -t myimage .```
+```podman build -t myimage --build-arg PASSWORD=$USER .```
 
 List the built podman images:
 
@@ -34,8 +34,8 @@ Summary
 -------
 Log into `login00.broadinstitute.org` and run this command:
 ```
-srun --partition=hpcx_macosko --pty bash
+srun --partition=hpcx_macosko --mem 10G --pty bash
 wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
-podman build -t myimage  --build-arg PASSWORD=$USER .
+podman build -t myimage --build-arg PASSWORD=$USER .
 exit
 ```
