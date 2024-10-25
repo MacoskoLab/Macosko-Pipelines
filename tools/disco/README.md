@@ -20,12 +20,12 @@ PODMAN_RUN='exec podman run --rm -it --init                      \
 
 rstudio() {
     hostname | grep -qv login && echo "Must be on login server" && exit 1
-    srun --pty -X -C container -J rstudio -t 24:00:00 $@ bash -c "$GET_PORT ; $PODMAN_RUN $IMAGE rstudio"
+    srun --pty -X -C container -J rstudio --partition hpcx_macosko -t 24:00:00 $@ bash -c "$GET_PORT ; $PODMAN_RUN $IMAGE rstudio"
 }
 
 jupyterlab() {
     hostname | grep -qv login && echo "Must be on login server" && exit 1
-    srun --pty -X -C container -J jupyterlab -t 24:00:00 $@ bash -c "$GET_PORT ; $PODMAN_RUN $IMAGE jupyterlab"
+    srun --pty -X -C container -J jupyterlab --partition hpcx_macosko -t 24:00:00 $@ bash -c "$GET_PORT ; $PODMAN_RUN $IMAGE jupyterlab"
 }
 
 ```
@@ -37,3 +37,5 @@ You can start a `tmux` session and run any of these commands:
 ```jupyterlab```
 
 The username is `root` and the password is your username as it appears in `$USER`
+
+You can pass in `srun` arguments after the command, for example `rstudio -c 1 --mem 64G --time 72:00:00`
