@@ -36,6 +36,6 @@ Log into `login00.broadinstitute.org` and run this command:
 ```
 srun --partition=hpcx_macosko --pty bash
 wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
-podman build --squash -t myimage .
+podman build -t myimage  --build-arg PASSWORD=$USER .
 exit
 ```
