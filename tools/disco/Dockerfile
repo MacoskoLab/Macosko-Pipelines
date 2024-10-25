@@ -66,8 +66,17 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    numpy pandas scipy scikit-learn \
                    matplotlib seaborn plotly PyPDF2"
 
+# Create password for RStudio and JupyterLab
+ARG USER=root
+ARG PASSWORD=password
+# RStudio uses the linux password
+RUN echo "$USER:$PASSWORD" | chpasswd
+RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
+# JupyterLab uses a config file
+# RUN bash -lc "jupyter lab --generate-config && PYTHON_CMD='' && "  && python -c "from jupyter_server.auth import passwd; print(passwd('$PASSWORD'))" >> /root/.jupyter/jupyter_lab_config.py
+
 # Create bash functions
-RUN echo "\njupyterlab() {\n\tmicromamba activate base\n\tjupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --NotebookApp.password='' --Session.key='' --no-browser\n}" >> /root/.bashrc
+RUN echo "\njupyterlab() {\n\tmicromamba activate\n\tjupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
 RUN echo "\nrstudio() {\n\trstudio-server start\n\thtop\n}" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash", "-lc"]
