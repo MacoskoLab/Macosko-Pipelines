@@ -71,3 +71,4 @@ RUN echo "\njupyterlab() {\n\tmicromamba activate base\n\tjupyter lab --allow-ro
 RUN echo "\nrstudio() {\n\trstudio-server start\n\thtop\n}" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash", "-lc"]
+CMD ["/bin/bash"]
