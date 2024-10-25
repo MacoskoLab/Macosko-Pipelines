@@ -38,4 +38,4 @@ You can start a `tmux` session and run any of these commands:
 
 The username is `root` and the password is your username as it appears in `$USER`
 
-You can pass in `srun` arguments after the command, for example `rstudio -c 1 --mem 64G --time 72:00:00`
+You can pass in `srun` arguments after the command, for example `rstudio -c 1 --mem 64G --time 3-00:00:00`
