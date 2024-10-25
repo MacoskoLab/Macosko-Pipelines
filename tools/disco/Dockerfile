@@ -71,5 +71,4 @@ RUN /bin/bash -c "source ~/.profile ; micromamba activate base ; \
 RUN echo "\njupyterlab() {\n\tmicromamba activate base\n\tjupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --NotebookApp.password='' --Session.key='' --no-browser\n}" >> /root/.bashrc
 RUN echo "\nrstudio() {\n\trstudio-server start\n\thtop\n}" >> /root/.bashrc
 
-# Ensure the container doesn't exit immediately
-# CMD ["tail", "-f", "/dev/null"]
+ENTRYPOINT ["/bin/bash"]
