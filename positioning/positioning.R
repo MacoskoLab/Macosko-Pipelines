@@ -43,7 +43,7 @@ library(furrr)
 library(future)
 library(parallel)
 
-install.packages("parallelly")
+# install.packages("parallelly")
 ncores = parallelly::availableCores()
 plan(multisession, workers=ncores)
 
