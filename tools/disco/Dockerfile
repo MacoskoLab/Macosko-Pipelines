@@ -62,13 +62,12 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
 
 # Install python packages
-RUN /bin/bash -c "source ~/.profile ; micromamba activate base ; \
-                  micromamba install -c conda-forge jupyterlab \
-                  pandas \
-                  matplotlib"
+RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
+                   numpy pandas scipy scikit-learn \
+                   matplotlib seaborn plotly PyPDF2"
 
 # Create bash functions
 RUN echo "\njupyterlab() {\n\tmicromamba activate base\n\tjupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --NotebookApp.password='' --Session.key='' --no-browser\n}" >> /root/.bashrc
 RUN echo "\nrstudio() {\n\trstudio-server start\n\thtop\n}" >> /root/.bashrc
 
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/bin/bash", "-lc"]
