@@ -67,5 +67,19 @@ RUN /bin/bash -c "source ~/.profile ; micromamba activate base ; \
                   pandas \
                   matplotlib"
 
+# Create bash functions
+RUN cat << 'EOF' >> /root/.bashrc
+
+jupyterlab() {
+    micromamba activate base
+    jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --NotebookApp.password='' --Session.key='' --no-browser
+}
+rstudio() {
+    rstudio-server start
+    htop
+}
+
+EOF
+
 # Ensure the container doesn't exit immediately
 # CMD ["tail", "-f", "/dev/null"]
