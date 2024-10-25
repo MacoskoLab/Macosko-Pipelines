@@ -2,11 +2,11 @@ FROM debian:bookworm
 
 # Install system libraries
 RUN apt-get update && apt-get install -y \
-    sudo wget curl rsync zip unzip less tree    \
-    vim nano tmux screen htop dstat socat       \
-    procps moreutils gnupg iproute2 ssh git-all \
-    libudunits2-dev libgdal-dev                 \
-    gdebi-core build-essential pkg-config alien \
+    sudo wget curl rsync zip unzip less tree     \
+    vim nano tmux screen htop dstat socat expect \
+    procps moreutils gnupg iproute2 ssh git-all  \
+    libudunits2-dev libgdal-dev                  \
+    gdebi-core build-essential pkg-config alien  \
     libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev \
     apt-transport-https ca-certificates libssl-dev libxml2-dev zlib1g-dev \
     libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libcairo2-dev
@@ -73,11 +73,17 @@ ARG PASSWORD=password
 RUN echo "$USER:$PASSWORD" | chpasswd
 RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
 # JupyterLab uses a config file
-# RUN bash -lc "jupyter lab --generate-config && PYTHON_CMD='' && "  && python -c "from jupyter_server.auth import passwd; print(passwd('$PASSWORD'))" >> /root/.jupyter/jupyter_lab_config.py
+#PASSWORD=mshabet
+#RUN bash -lc "micromamba activate && jupyter lab --generate-config"
+#RUN bash -lc "micromamba activate && python -c 'from jupyter_server.auth import passwd; print(f\"c.ServerApp.password = \'{passwd($PASSWORD)}\'\")'" >> /root/.jupyter/jupyter_lab_config.py
+#/root/.jupyter/jupyter_lab_config.py
+#/root/.jupyter/jupyter_server_config.json
+#jupyter lab password - write to jupyter_server_config.json
+#RUN expect -c "spawn jupyter lab password; expect 'Enter password:'; send '$PASSWORD\r'; expect 'Verify password:'; send '$PASSWORD\r'; expect eof"
 
 # Create bash functions
 RUN echo "\njupyterlab() {\n\tmicromamba activate\n\tjupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
 RUN echo "\nrstudio() {\n\trstudio-server start\n\thtop\n}" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash", "-lc"]
-CMD ["/bin/bash"]
+CMD ["/bin/bash", "-i"]
