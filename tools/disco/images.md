@@ -3,7 +3,7 @@ Building an image
 
 First, we need to be on a node that supports the container feature. Let's open an interactive session on our partition:
 
-```srun --partition=hpcx_macosko --pty bash```
+```srun --partition=hpcx_macosko --mem=10G --pty bash```
 
 We've made an example Dockerfile to use for this tutorial. Download this file in your home directory:
 
