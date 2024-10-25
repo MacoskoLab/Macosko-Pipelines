@@ -68,13 +68,12 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
 
 # Create password for RStudio and JupyterLab
 ARG USER=root
-ARG PASSWORD=password2
+ARG PASSWORD=password
 # RStudio uses the linux password
 RUN echo "$USER:$PASSWORD" | chpasswd
 RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
 # JupyterLab uses a config file
-# RUN bash -lc "micromamba run python -c 'from jupyter_server.auth import passwd ; data = { \"IdentityProvider\": { \"hashed_password\": passwd(\"$PASSWORD\") } } ; with open(\"/root/.jupyter/jupyter_server_config.json\", \"w\") as f: json.dump(data, f, indent=2)'"
-RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$PASSWORD\r"; expect "Verify password:"; send "$PASSWORD\r"; expect eof'
+RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(PASSWORD)\r"; expect "Verify password:"; send "$env(PASSWORD)\r"; expect eof'
 
 # Create bash functions
 RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
