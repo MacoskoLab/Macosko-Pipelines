@@ -1,6 +1,15 @@
+### Quick Start guide
+
 1\) Read the background on [slurm](slurm.md)
 
-2\) Build a podman [image](images.md)
+2\) Build a podman image:
+
+```
+srun --partition=hpcx_macosko --mem 10G --pty bash
+wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
+podman build -t myimage --build-arg PASSWORD=$USER .
+exit
+```
 
 3\) Add these methods to your `.my.bashrc`:
 
