@@ -64,7 +64,7 @@ RUN curl -L micro.mamba.pm/install.sh | /bin/bash
 # Install python packages
 RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    numpy pandas scipy scikit-learn \
-                   matplotlib seaborn plotly PyPDF2"
+                   matplotlib seaborn plotly pypdf"
 
 # Create password for RStudio and JupyterLab
 ARG USER=root
@@ -77,8 +77,8 @@ RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Ent
 
 # Create bash functions
 RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
-RUN echo "\nrstudio() {\n\trstudio-server start\n\texec bash\n}" >> /root/.bashrc
+RUN echo "\nrstudio() {\n\trstudio-server start\n}" >> /root/.bashrc
 
-ENV LANG C.utf8
+ENV LC_ALL C.utf8
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
