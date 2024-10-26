@@ -40,7 +40,6 @@ jupyterlab() {
     hostname | grep -qv login && echo "Must be on login server" && exit 1
     srun --pty -X -C container -J jupyterlab --partition hpcx_macosko -t 24:00:00 $@ bash -c "$GET_PORT ; $PODMAN_RUN $IMAGE jupyterlab"
 }
-
 ```
 
 You can start a `tmux` session and run any of these commands:
