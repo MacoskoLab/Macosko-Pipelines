@@ -77,7 +77,7 @@ RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Ent
 
 # Create bash functions
 RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
-RUN echo "\nrstudio() {\n\trstudio-server start\n\tbash\n}" >> /root/.bashrc
+RUN echo "\nrstudio() {\n\trstudio-server start\n\texec bash\n}" >> /root/.bashrc
 
 ENV LANG C.utf8
 ENTRYPOINT ["/bin/bash", "-lc"]
