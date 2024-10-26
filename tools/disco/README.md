@@ -2,6 +2,10 @@
 
 1\) Read the background on [slurm](slurm.md)
 
+```
+ssh login00.broadinstitute.org
+```
+
 2\) Build a podman image:
 
 ```
