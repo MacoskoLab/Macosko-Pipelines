@@ -86,5 +86,8 @@ RUN printf "\njupyterlab() { \n\
     tmux new -s jupyterlab -d exec bash -ic \"micromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\" \n\
     exec bash \n}\n" >> /root/.bashrc
 
+RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
+RUN echo "\nrstudio() {\n\trstudio-server start\n\tsleep infinity\n}" >> /root/.bashrc
+
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
