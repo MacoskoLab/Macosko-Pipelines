@@ -73,7 +73,7 @@ export TMPDIR="/broad/macosko/$USER"
 echo 'Adding connections:'
 for NODE in $(sinfo -r -h -o "%n %f" | awk '$2 ~ /container/ {print $1}') ; do
     echo $NODE
-    podman system connection add --identity /home/unix/$USER/.ssh/id_rsa $node $USER@$node
+    podman system connection add --identity /home/unix/$USER/.ssh/id_rsa $NODE $USER@$NODE
 done
 podman system connection default $(hostname -s)
 
