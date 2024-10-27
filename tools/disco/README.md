@@ -19,7 +19,6 @@ podman build -f Dockerfile -t myimage --build-arg PASSWORD=$USER .
 exit
 ```
 
-
 3\) Add these methods to your `.my.bashrc`:
 
 ```
