@@ -64,6 +64,30 @@ while read -r partition node <&3; do
 done 3<<< "$PARTITION_NODE_LIST"
 ```
 
+Alternatively, you could just SCP it directly:
+
+```
+srun --partition=hpcx_macosko --mem 20G --pty bash
+export TMPDIR="/broad/macosko/$USER"
+
+echo 'Adding connections:'
+for NODE in $(sinfo -r -h -o "%n %f" | awk '$2 ~ /container/ {print $1}') ; do
+    echo $NODE
+    podman system connection add --identity /home/unix/$USER/.ssh/id_rsa $node $USER@$node
+done
+podman system connection default $(hostname -s)
+
+IMAGE='myimage'
+
+echo 'Distributing the image:'
+for NODE in $(sinfo -r -h -o "%n" | grep slurm-bits-d) ; do
+    echo $NODE
+    podman image scp "$(hostname -s)::$IMAGE" "$NODE::"
+done
+
+exit
+```
+
 ---
 
 Q: What is the easiest way to transfer files in/out of a container?
