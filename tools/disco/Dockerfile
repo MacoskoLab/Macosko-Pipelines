@@ -79,15 +79,8 @@ RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
 RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(PASSWORD)\r"; expect "Verify password:"; send "$env(PASSWORD)\r"; expect eof'
 
 # Create bash functions
-RUN printf "\nrstudio() { \n\
-    tmux new -s rstudio -d bash -ic \"rstudio-server start ; exec bash\" \n\
-    exec bash \n}\n" >> /root/.bashrc
-RUN printf "\njupyterlab() { \n\
-    tmux new -s jupyterlab -d exec bash -ic \"micromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\" \n\
-    exec bash \n}\n" >> /root/.bashrc
-
+RUN echo "\nrstudio() {\n\trstudio-server start\n\tread\n\texec bash\n}" >> /root/.bashrc
 RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
-RUN echo "\nrstudio() {\n\trstudio-server start\n\tsleep infinity\n}" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
