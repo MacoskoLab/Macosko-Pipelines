@@ -5,13 +5,13 @@
 ```
 ssh login00.broadinstitute.org
 ```
-
-2\) Build a podman image:
-
 ```
 mkdir -p /broad/macosko/$USER
 cd /broad/macosko/$USER
 ```
+
+2\) Build a podman image:
+
 ```
 srun --partition=hpcx_macosko --mem 10G --pty bash
 wget -O Dockerfile https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
