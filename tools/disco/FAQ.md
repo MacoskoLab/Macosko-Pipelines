@@ -64,8 +64,6 @@ while read -r partition node <&3; do
 done 3<<< "$PARTITION_NODE_LIST"
 ```
 
-Alternatively, you could just run `podman scp` this command to scp it directly
-
 ---
 
 Q: What is the easiest way to transfer files in/out of a container?
