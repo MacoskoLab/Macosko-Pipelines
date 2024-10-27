@@ -15,7 +15,7 @@ cd /broad/macosko/$USER
 ```
 srun --partition=hpcx_macosko --mem 10G --pty bash
 wget -O Dockerfile https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
-podman build -t myimage --build-arg PASSWORD=$USER .
+podman build -f Dockerfile -t myimage --build-arg PASSWORD=$USER .
 exit
 ```
 
