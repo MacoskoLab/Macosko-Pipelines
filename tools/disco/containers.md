@@ -3,72 +3,71 @@ Intro to containers
 
 Let's start a new srun session, this time giving us more time and memory:
 
+```
 srun --partition=hpcx_macosko --time 1-00:00:00 --mem 32G --pty bash
+```
 
-Finally, it's time to make a container. This command creates a new container:
+Finally, it's time to make a container. This command creates a new interactive container:
 
-podman create --name mycontainer --detach --init myimage
+```
+podman create -it --name mycontainer --init myimage
+```
 
---init enables the container to be run in the background
+You can list all podman containers with this command:
 
-You can list running podman containers with this command:
-
+```
 podman ps -a
+```
 
-You should see a new container created. Now let's attach to it:
+You should see a new container with the status "Created". Now let's start and attach to it:
 
-podman exec -it mycontainer /bin/bash
+```
+podman start -a mycontainer
+```
 
-You are now running a bash terminal inside the container! By default, you will be root with home directory /root. If you take a look around with ls you'll see that there is a whole new filesystem in here. Exit anytime:
+You are now running a bash terminal inside the container! By default, you will be root with home directory /root. If you take a look around with `ls` you'll see that there is a whole new filesystem in here. Exit anytime:
 
+```
 exit
+```
 
-If you podman ps you'll see that the container is still running. Run podman stop to halt the execution:
+The podman container automatically stops when the main process exits, regardless if there are background jobs running. If you started the container without `-a` you can manually stop it using `podman stop -t 0 mycontainer`
 
-podman stop -t 0 mycontainer
+In addition to `/local/podman/containers-user-$UID`, container data is stored in `/tmp/containers-user-$UID` and running containers are stored in `/tmp/podman-run-$UID`. Therefore, like images, containers are stored in node-specific directories and will not be available on other nodes.
 
-Stopped containers can be seen with podman ps --all. You can use podman start to restart the stopped container:
+While it is possible to treat the container as a compute instance - where you download your data and install packages into its filesystem, starting/stopping it each time you need it - this kind of stateful "pet" container is generally discouraged. Containers should be treated as immutable for the most part, so it's better to store your files and environment either as part of the image or on the host filesystem. Then, each time you want to start a session, you creating a new container from the base image.
 
-podman start mycontainer
-
-Any changes made to the container are persistent and will remain after restarting the container. . however, just like images, only this node has them. containers are stored in /local and /tmp/containers-user-$UID. Running containers /tmp/podman-run-$UID (running containers)
-
-podman stop -t 0 mycontainer
+```
 podman rm mycontainer
+```
 
-It is critical to ensure the container is stopped before the srun session ends. Otherwise, SLURM will forcefully kill the running container, which can cause the podman state to become corrupted and risks losing the container. If this happens see the instructions HERE The next section is what to do is that happens:
+This commands creates a new container, allows you to run code inside of it, then removes itself when completed:
 
-# Debugging 
+```
+podman run -it --rm --name mycontainer --init myimage
+```
 
-Sometimes podman stateSuppose the srun session ends while a container is still running, either due to the time limit or typing exit before the container is stopped
+By default, both the file system and networking stack of the container are completely isolated from the surrounding host environment.
 
-Use podman ps to list all containers
+You can bind mount external folders to the container using the -v flag:
 
-podman ps --all
+```
+podman run -it --rm --name mycontainer -v /broad/macosko/$USER:/broad/macosko/$USER --init myimage
+```
 
-If it lists a container as running, but you are not able to connect to it, then it means the srun session running the container was terminated before the container was stopped
+You can also map ports from the container to the host:
 
-podman exec -it mycontainer /bin/bash
-transport endpoint is not connected
+```
+podman run -it --rm --name mycontainer -p 8787:8787 --init myimage
+```
 
-At this point the container the podman state is out of sync - run this command to update it:
+See the Quick Start guide for a set of bash commands that automates the process of finding ports and starting containers
 
-podman system migrate
+If you've made a lot of changes to the container and want to use it as the base for next time, you can commit it to an image:
 
-By default, both the file system and networking stack of the container are completely isolated from the surrounding environment. This is inconvenient if we wish to access data in the external . In the next section we'll go over how to share information, as well as how to run RStudio or jupyterlab out of a container
-
-# Using containers
-
-You can mount external folders to the container using the -v flag
-
-any changes will be reflected and vice versa
-
-A few more bells and whistles:
-- prevents it from terminating
-- adds a signal handler
-
-below is the final command:
-
+```
+podman commit myimage newimage
+```
 
 Helpful links
 -------------
@@ -76,4 +75,4 @@ https://broad.service-now.com/kb_view.do?sys_kb_id=8923f956479aa91411484438946d4
 
 https://broad.service-now.com/kb_view.do?sysparm_article=KB0010821
 
-https://backstage.broadinstitute.org/docs/default/component/disco-docs/
+https://backstage.broadinstitute.org/docs/default/component/disco-docs/using-containers/
