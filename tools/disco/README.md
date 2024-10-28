@@ -35,7 +35,7 @@ PODMAN_RUN='exec podman run --rm -it --init                      \
             -p ${PORT_NUM:-}:8787                                \
             -w /broad/macosko/$USER'        
 
-PRINT_TRES='squeue -j $SLURM_JOB_ID -o "%5A %7T %12P %22N %4C %10m %10l"'
+PRINT_TRES='squeue -j $SLURM_JOB_ID -o "%5A %7T %12P %22N %4C %10m %11l"'
 DEFAULT_TRES='--partition hpcx_macosko -c 1 --mem 16G -t 24:00:00'
 
 rstudio() {
