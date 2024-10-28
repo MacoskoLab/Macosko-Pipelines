@@ -524,7 +524,7 @@ function determine_umi_cutoff(y)
     # find the steepest slope
     lx = log10.(x) ; ly = log10.(y)
     dydx = (ly[1:end-2] - ly[3:end]) ./ (lx[1:end-2] - lx[3:end])
-    min_uc = 10 ; max_uc = 5000 ; m = log10(min_uc) .<= ly[2:end-1] .<= log10(max_uc)
+    min_uc = 10 ; max_uc = 1000 ; m = log10(min_uc) .<= ly[2:end-1] .<= log10(max_uc)
     min_index = findall(m)[argmin(dydx[m])] + 1 + 2
     
     uc = round(Int64, 10^ly[min_index])
