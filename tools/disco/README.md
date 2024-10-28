@@ -36,15 +36,16 @@ PODMAN_RUN='exec podman run --rm -it --init                      \
             -w /broad/macosko/$USER'        
 
 PRINT_TRES='squeue -j $SLURM_JOB_ID -o "%5A %7T %12P %22N %4C %10m %10l"'
+DEFAULT_TRES='--partition hpcx_macosko -c 1 --mem 16G -t 24:00:00'
 
 rstudio() {
     hostname | grep -qv login && echo "Must be on login server" && return 1
-    srun --pty -X -C container -J rstudio --partition hpcx_macosko -t 24:00:00 $@ bash -c "$PRINT_TRES ; $GET_PORT ; $PODMAN_RUN $IMAGE rstudio"
+    srun --pty -X -C container -J rstudio $DEFAULT_TRES $@ bash -c "$PRINT_TRES ; $GET_PORT ; $PODMAN_RUN $IMAGE rstudio"
 }
 
 jupyterlab() {
     hostname | grep -qv login && echo "Must be on login server" && return 1
-    srun --pty -X -C container -J jupyterlab --partition hpcx_macosko -t 24:00:00 $@ bash -c "$PRINT_TRES ; $GET_PORT ; $PODMAN_RUN $IMAGE jupyterlab"
+    srun --pty -X -C container -J jupyterlab $DEFAULT_TRES $@ bash -c "$PRINT_TRES ; $GET_PORT ; $PODMAN_RUN $IMAGE jupyterlab"
 }
 ```
 
