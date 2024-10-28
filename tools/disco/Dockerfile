@@ -75,6 +75,8 @@ ARG PASSWORD=password
 # RStudio uses the linux password
 RUN echo "$USER:$PASSWORD" | chpasswd
 RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
+RUN echo "setwd('/broad/macosko/$PASSWORD/')" > /root/.Rprofile
+RUN echo '{\n  "sync_files_pane_working_dir": true\n}' > /etc/rstudio/rstudio-prefs.json
 # JupyterLab uses a config file
 RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(PASSWORD)\r"; expect "Verify password:"; send "$env(PASSWORD)\r"; expect eof'
 
