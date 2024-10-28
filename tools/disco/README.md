@@ -36,12 +36,12 @@ PODMAN_RUN='exec podman run --rm -it --init                      \
             -w /broad/macosko/$USER'        
 
 rstudio() {
-    hostname | grep -qv login && echo "Must be on login server" && exit 1
+    hostname | grep -qv login && echo "Must be on login server" && return 1
     srun --pty -X -C container -J rstudio --partition hpcx_macosko -t 24:00:00 $@ bash -c "$GET_PORT ; $PODMAN_RUN $IMAGE rstudio"
 }
 
 jupyterlab() {
-    hostname | grep -qv login && echo "Must be on login server" && exit 1
+    hostname | grep -qv login && echo "Must be on login server" && return 1
     srun --pty -X -C container -J jupyterlab --partition hpcx_macosko -t 24:00:00 $@ bash -c "$GET_PORT ; $PODMAN_RUN $IMAGE jupyterlab"
 }
 ```
