@@ -122,11 +122,13 @@ You should see a directory printed to the terminal which contains the root file 
 
 ---
 
-
 Q: Can I back up a container?
 
-Option 1: 
+Option 1: `podman commit` creates an image based on a changed container
 
+Option 2: `podman export` exports the filesystem of a container
+
+Option 3: `podman container clone` creates a copy of a container, recreating the original with an identical configuration
 
 ---
 
