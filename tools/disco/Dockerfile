@@ -14,9 +14,6 @@ RUN apt-get update && apt-get install -y \
     apt-transport-https ca-certificates libssl-dev libxml2-dev zlib1g-dev \
     libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libcairo2-dev
 
-# Install Google Cloud SDK
-RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
-
 # Install R
 RUN export R_VERSION=4.3.3 && \
     curl -O https://cdn.rstudio.com/r/debian-12/pkgs/r-${R_VERSION}_1_amd64.deb && \
