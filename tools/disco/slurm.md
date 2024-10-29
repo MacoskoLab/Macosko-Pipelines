@@ -86,16 +86,24 @@ This command will put you in a bash terminal on an available node:
 
 ```srun --pty bash```
 
-By default, these are the arguments:
-* --partition = disco
-* -t --time = 01:00:00 (1 hour)
-* -c --cpus-per-task = 1
-* --mem = 1G (per CPU)
+These options control the allocated resources:
+* -p, --partition: a specific partition for the resource allocation
+* -c, --cpus-per-task: number of cpus to be allocated per task
+* --mem: real memory required per node (default units are megabytes)
+* -t, --time: limit on the total run time of the job allocation
+
+These are their default values:
+* -p, --partition = disco
+* -c, --cpus-per-task = 1
+* --mem = 1G x number of CPUs
+* -t, --time = 01:00:00 (1 hour)
 
 Here are some helpful commands:
 * `squeue -u $USER`: lists all your jobs
 * `squeue -t RUNNING`: lists all running jobs
 * `scontrol show job <ID>`: lists information about a job
+* `sstat <ID>`: status information of a running job
+* `sacct --user $USER`:  displays accounting data for your jobs
 * `scancel <ID>`: cancels a job
 * `scancel -u $USER`: cancels all your jobs
 
