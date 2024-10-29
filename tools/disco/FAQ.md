@@ -27,6 +27,10 @@ A: Make sure you are on a node with container support - this can be specified wi
 Q: When I call `podman run` on "myimage", this happens:
 
 ```
+Error: myimage: image not known
+```
+or
+```
 ? Please select an image: 
   ▸ registry.access.redhat.com/myimage:latest
     registry.redhat.io/myimage:latest
