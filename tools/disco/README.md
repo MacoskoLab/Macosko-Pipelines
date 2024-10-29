@@ -30,7 +30,6 @@ GET_PORT='HOST_IP=$(hostname -i) ;
 
 PODMAN_RUN='exec podman run --rm -it --init --pull never         \
             -v /broad/macosko:/broad/macosko:ro                  \
-            -v /broad/macosko_storage:/broad/macosko_storage:ro  \
             -v /broad/macosko/$USER:/broad/macosko/$USER:rw      \
             -p ${PORT_NUM:-}:8787                                \
             -w /broad/macosko/$USER'        
