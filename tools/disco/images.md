@@ -18,7 +18,7 @@ Build an image using this recipe: (should take about 5 minutes)
 
 List the built podman images:
 
-```podman images -a```
+```podman images```
 
 You should see a newly created image called "myimage"
 
@@ -29,13 +29,3 @@ Exit the srun session - this step is complete
 ```exit```
 
 These commands do not have to be run again, unless you decide to update the Dockerfile. The image is now available on this node anytime to be used as a container template.
-
-Summary
--------
-Log into `login00.broadinstitute.org` and run this command:
-```
-srun --partition=hpcx_macosko --mem 10G --pty bash
-wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
-podman build -t myimage --build-arg PASSWORD=$USER .
-exit
-```
