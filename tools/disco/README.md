@@ -28,7 +28,7 @@ GET_PORT='HOST_IP=$(hostname -i) ;
           PORT_NUM=$(for port in {8000..9000}; do ss -an | grep -q :$port || { echo $port; break; }; done) ; 
           echo -e "****************\n$HOST_IP:$PORT_NUM\n****************"'
 
-PODMAN_RUN='exec podman run --rm -it --init                      \
+PODMAN_RUN='exec podman run --rm -it --init --pull never         \
             -v /broad/macosko:/broad/macosko:ro                  \
             -v /broad/macosko_storage:/broad/macosko_storage:ro  \
             -v /broad/macosko/$USER:/broad/macosko/$USER:rw      \
