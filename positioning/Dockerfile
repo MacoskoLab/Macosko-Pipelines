@@ -24,27 +24,26 @@ RUN wget -P /opt https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.1
     ln -s /opt/julia-1.10.5/bin/julia /usr/local/bin/julia
 
 # Install Julia libraries
-RUN julia -e 'using Pkg;                     \
-              Pkg.add(["CSV",                \
-                       "GZip",               \
-                       "SIMD",               \
-                       "HDF5",               \
-                       "Plots",              \
-                       "FASTX",              \
-                       "Peaks",              \
-                       "IJulia",             \
-                       "ArgParse",           \
-                       "CodecZlib",          \
-                       "PDFmerger",          \
-                       "IterTools",          \
-                       "StatsBase",          \
-                       "DataFrames",         \
-                       "StatsPlots",         \
-                       "StringViews",        \
-                       "Combinatorics",      \
-                       "Distributions",      \
-                       "LinearAlgebra",      \
-                       "LoopVectorization"])'
+RUN julia -e 'using Pkg;                \
+              Pkg.add(["CSV",           \
+                       "XAM",           \
+                       "GZip",          \
+                       "HDF5",          \
+                       "Plots",         \
+                       "FASTX",         \
+                       "Peaks",         \
+                       "IJulia",        \
+                       "ArgParse",      \
+                       "CodecZlib",     \
+                       "PDFmerger",     \
+                       "IterTools",     \
+                       "StatsBase",     \
+                       "DataFrames",    \
+                       "StatsPlots",    \
+                       "StringViews",   \
+                       "Combinatorics", \
+                       "Distributions", \
+                       "LinearAlgebra"])'
 
 # Install R
 RUN export R_VERSION=4.3.3 && \
