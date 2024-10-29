@@ -9,9 +9,11 @@ RUN apt-get update && apt-get install -y \
     vim nano tmux screen htop dstat socat expect \
     procps moreutils gnupg iproute2 ssh git-all  \
     libudunits2-dev libgdal-dev                  \
+    libncurses5-dev libncursesw5-dev             \
+    zlib1g-dev liblzma-dev libbz2-dev            \
     gdebi-core build-essential pkg-config alien  \
     libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev \
-    apt-transport-https ca-certificates libssl-dev libxml2-dev zlib1g-dev \
+    apt-transport-https ca-certificates libssl-dev libxml2-dev \
     libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libcairo2-dev
 
 # Install R
