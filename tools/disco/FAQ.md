@@ -46,6 +46,15 @@ Also, `podman run` is used to make a new container. To run an existing container
 
 ---
 
+Q: What are some helpful commands for managing podman?
+
+A:
+* `podman login`: Log in to a container registry (e.g. our GCP artifact registry)
+* `podman system df`: Show podman disk usage
+* `podman system prune`: Remove all unused pods, containers, images, networks, and volume data
+
+---
+
 Q: Can I share images between nodes?
 
 A: Yes. First same the image to a .tar file:
@@ -107,6 +116,13 @@ You should see a directory printed to the terminal which contains the root file 
 
 ---
 
+Q: Can I back up a container?
+
+Option 1: 
+
+
+---
+
 Q: Can I change port bindings or volume mounts after creating the container?
 
 A: No. You need to create a new container 
@@ -138,3 +154,5 @@ rm -rf /tmp/containers-user-$UID
 rm -rf /tmp/podman-run-$UID
 podman system reset
 ```
+
+Any containers found left in `podman ps --all --external` will have to be manually removed, then run `podman system reset` again
