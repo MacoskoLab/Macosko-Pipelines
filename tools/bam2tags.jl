@@ -29,12 +29,10 @@ const bampath = args["bam_path"]
 
 const outpath = args["out_path"]
 Base.Filesystem.mkpath(dirname(outpath))
-@assert isdir(dirname(outpath)) "ERROR: Output path could not be created"
-
-bampath="/home/nsachdev/trash/little.bam"
-outpath="hi/df.tsv.gz"
+dirname(outpath) != "" && @assert isdir(dirname(outpath)) "ERROR: Output path could not be created"
 
 # Get all the unique tags
+taghash(s) = Int(s[1]-48) + Int(s[2]-48)*75 + 1
 tagorder = ["NH","HI","NM","MD","AS","nM","jM","jI",
             "uT","RG",
             "CB","CR","CY","UB","UR","UY","TR",
@@ -44,23 +42,21 @@ println("Getting all unique tags...")
 cmd = pipeline(`samtools view "$bampath"`,`cut -f 12-`,`tr '\t' '\n'`,`cut -d':' -f 1`,`awk '!a[$0]++'`)
 uniquetags = [string(s) for s in split(strip(read(cmd, String)), '\n')]
 tags = [[tag for tag in tagorder if tag in uniquetags]; [tag for tag in uniquetags if tag ∉ tagorder]]
-taghash(s)::Int = Int(s[1]-64) + Int(s[2]-48)*58
-@assert taghash("A0") == 1
-indexes = zeros(Int, taghash("zz"))
-for (i,tag) in enumerate(tags)
+const indexes = zeros(Int, taghash("zz"))
+for (i, tag) in enumerate(tags)
     indexes[taghash(tag)] = i
 end
+const ntags = length(tags)
 
 # Parse the BAM
 println("Beginning loop...")
-n = length(tags)
 @time begin
     out = GzipCompressorStream(open(outpath, "w"))
-    write(out, join(tags,'\t') * '\n')
+    write(out, join(tags, '\t') * '\n')
     reader = open(BAM.Reader, bampath)
 
     for record in reader
-        row = fill("", n)
+        row = fill("", ntags)
         for tag in BAM.auxdata(record)
             row[indexes[taghash(tag[1])]] = string(tag[2])
         end
