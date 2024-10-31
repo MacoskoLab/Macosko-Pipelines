@@ -72,6 +72,7 @@ RUN R -e "install.packages(c('qs',          \
                              'ggrastr',     \
                              'stringr',     \
                              'viridis',     \
+                             'R.utils',     \
                              'jsonlite',    \
                              'magrittr',    \
                              'gridExtra',   \
