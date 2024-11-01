@@ -43,8 +43,7 @@ library(furrr)
 library(future)
 library(parallel)
 
-install.packages("parallelly")
-ncores = parallelly::availableCores()
+ncores = parallel::detectCores()
 plan(multisession, workers=ncores)
 
 # helper methods
