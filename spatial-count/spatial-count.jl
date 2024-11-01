@@ -18,8 +18,8 @@ using Combinatorics: combinations
 
 # fastq_path is the path to a directory containing all fastq files to read
 # puck_path is the path to a directory containing all puck files to use
-# Running this script will process all files in both directories and produce one output
-# - so be sure that these directories only contain the files for a specific run
+# By default, this script will process all files in both directories and produce one output
+# - to specify only some files in the directories, use -r and -s
 # out_path is the directory where the output SBcounts.h5 is written
 
 # Read the command-line arguments
@@ -46,6 +46,16 @@ function get_args()
     
     # Optional arguments
     @add_arg_table s begin
+        "--fastq_regex", "-r"
+        help = "Pattern to match FASTQ filenames"
+        arg_type = String
+        default = ".*"
+
+        "--puck_regex", "-s"
+        help = "Pattern to match puck filenames"
+        arg_type = String
+        default = ".*"
+        
         "--downsampling_level", "-p"
         help = "Level of downsampling"
         arg_type = Float64
@@ -57,23 +67,33 @@ end
 
 # Load the command-line arguments
 args = get_args()
-const fastq_path = args["fastq_path"]
-const puck_path = args["puck_path"]
-const out_path = args["out_path"]
-const prob = args["downsampling_level"]
 
+const fastq_path = args["fastq_path"]
 println("FASTQ path: "*fastq_path)
 @assert isdir(fastq_path) "ERROR: FASTQ path not found"
 @assert !isempty(readdir(fastq_path)) "ERROR: FASTQ path is empty"
 
+const puck_path = args["puck_path"]
 println("Puck path: "*puck_path)
 @assert isdir(puck_path) "ERROR: Puck path not found"
 @assert !isempty(readdir(puck_path)) "ERROR: Puck path is empty"
 
+const out_path = args["out_path"]
 println("Output path: "*out_path)
 Base.Filesystem.mkpath(out_path)
 @assert isdir(out_path) "ERROR: Output path could not be created"
 
+const fastq_regex = Regex(args["fastq_regex"])
+if fastq_regex != r".*"
+    println("FASTQ regex: $fastq_regex")
+end
+
+const puck_regex = Regex(args["puck_regex"])
+if puck_regex != r".*"
+    println("Puck regex: $puck_regex")
+end
+
+const prob = args["downsampling_level"]
 @assert 0 < prob <= 1 "ERROR: Invalid downsampling level $prob"
 if prob < 1
     println("Downsampling level: $prob")
@@ -86,7 +106,11 @@ println("") ; flush(stdout) ; GC.gc()
 ##### Load the puck data #######################################################
 
 # Load the pucks
-puck_paths = filter(x -> endswith(x, ".csv"), readdir(puck_path, join=true)) ; println("Pucks: ", basename.(puck_paths))
+puck_paths = readdir(puck_path, join=true)
+puck_paths = filter(puck -> endswith(puck, ".csv"), puck_paths)
+puck_paths = filter(puck -> occursin(puck_regex, puck), puck_paths)
+@assert length(puck_paths) > 0 "ERROR: No pucks found"
+println("Pucks: ", basename.(puck_paths))
 puckdfs = [rename(CSV.read(puck, DataFrame, header=false, types=[String, Float64, Float64]), [:sb,:x,:y]) for puck in puck_paths]
 
 # Get the spatial barcode length
@@ -129,8 +153,9 @@ println("") ; flush(stdout) ; GC.gc()
 ##### Load the FASTQ paths #####################################################
 
 # Load the FASTQ paths
-fastq_paths = readdir(fastq_path, join=true) ; println("FASTQs:")
+fastq_paths = readdir(fastq_path, join=true)
 fastq_paths = filter(fastq -> endswith(fastq, ".fastq.gz"), fastq_paths)
+fastq_paths = filter(fastq -> occursin(fastq_regex, fastq), fastq_paths)
 @assert length(fastq_paths) > 1 "ERROR: No FASTQ pairs found"
 const R1s = filter(s -> occursin("_R1_", s), fastq_paths) ; println("R1s: ", basename.(R1s))
 const R2s = filter(s -> occursin("_R2_", s), fastq_paths) ; println("R2s: ", basename.(R2s))
@@ -224,7 +249,7 @@ const bead = first(Set(bead_list))
 println("Bead type: $bead")
 
 if bead == "V10"
-    get_SB = get_V10
+    const get_SB = get_V10
     const UP = UP1
     const R2_len = 33
     if sb_len == 14 # for backwards compatibility
@@ -237,21 +262,21 @@ if bead == "V10"
         const sb2_len = 7
     end
 elseif bead == "V17"
-    get_SB = get_V17
+    const get_SB = get_V17
     const UP = UP1
     const R2_len = 35
     @assert sb_len == 17 "ERROR: Puck has $sb_len-bp barcodes, but V17 beads have 17-bp barcodes"
     const sb1_len = 9
     const sb2_len = 8
 elseif bead == "V15"
-    get_SB = get_V15
+    const get_SB = get_V15
     const UP = UP2
     const R2_len = 25
     @assert sb_len == 15 "ERROR: Puck has $sb_len-bp barcodes, but V15 beads have 15-bp barcodes"
     const sb1_len = 8
     const sb2_len = 7
 elseif bead == "V16"
-    get_SB = get_V16
+    const get_SB = get_V16
     const UP = UP2
     const R2_len = 27
     @assert sb_len == 17 "ERROR: Puck has $sb_len-bp barcodes, but V16 beads have 17-bp barcodes"
