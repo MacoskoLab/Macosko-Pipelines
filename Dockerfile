@@ -109,28 +109,51 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
     rm rstudio-server-2024.09.0-375-amd64.deb && \
     rstudio-server stop
 
+# Install core R libraries
+RUN R -e "install.packages(c('tidyverse', \
+                             'dplyr', 'tidyr', 'purrr', 'magrittr', \
+                             'future', 'furrr', 'parallel', 'parallelly', \
+                             'data.table', 'rlist', 'stringr', 'stringi', 'glue', \
+                             'ggplot2', 'ggrastr', 'cowplot', 'gridExtra', \
+                             'scCustomize', 'viridis', \
+                             'Seurat', 'SeuratObject', \
+                             'rdist', 'sf', 'dbscan', \
+                             'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2', \
+                             'devtools', 'remotes', 'R.utils', \
+                             'shiny'), \
+                             repos='http://cloud.r-project.org', \
+                             Ncpus=$(nproc)L)"
+# Install Bioconductor packages
+RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager', repos='http://cloud.r-project.org')}; \
+          BiocManager::install(c('IRanges', 'GenomicRanges', 'GenomicFeatures', 'GenomicAlignments', \
+                                 'ShortRead', 'Rsamtools', 'VariantAnnotation', 'rtracklayer', \
+                                 'AnnotationDbi', 'BiocParallel', 'rhdf5' \
+                                ), Ncpus=$(nproc)L)"
 
+# Install micromamba
+RUN curl -L micro.mamba.pm/install.sh | /bin/bash
 
+# Install python packages
+RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
+                   numpy pandas scipy scikit-learn \
+                   matplotlib seaborn plotly pypdf \
+                   networkx rustworkx igraph graph-tool \
+                   pynndescent umap-learn leidenalg"
 
-
-
-
-
-
-# Create password for RStudio and JupyterLab
+# Create configurations for RStudio and JupyterLab
 ARG USER=root
 ARG PASSWORD=password
 # RStudio uses the linux password
-RUN echo "$USER:$PASSWORD" | chpasswd
-RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
-RUN echo "setwd('/broad/macosko/$PASSWORD/')" > /root/.Rprofile
-RUN echo '{\n  "sync_files_pane_working_dir": true\n}' > /etc/rstudio/rstudio-prefs.json
+#RUN echo "$USER:$PASSWORD" | chpasswd
+#RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
+#RUN echo "setwd('/broad/macosko/$PASSWORD/')" > /root/.Rprofile
+#RUN echo '{\n  "sync_files_pane_working_dir": true\n}' > /etc/rstudio/rstudio-prefs.json
 # JupyterLab uses a config file
-RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(PASSWORD)\r"; expect "Verify password:"; send "$env(PASSWORD)\r"; expect eof'
+#RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(PASSWORD)\r"; expect "Verify password:"; send "$env(PASSWORD)\r"; expect eof'
 
 # Create bash functions
-RUN echo "\nrstudio() {\n\trstudio-server start\n\tread\n\texec bash\n}" >> /root/.bashrc
-RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
+#RUN echo "\nrstudio() {\n\trstudio-server start\n\tread\n\texec bash\n}" >> /root/.bashrc
+#RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
