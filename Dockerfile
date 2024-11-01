@@ -144,16 +144,16 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
 ARG USER=root
 ARG PASSWORD=password
 # RStudio uses the linux password
-#RUN echo "$USER:$PASSWORD" | chpasswd
-#RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
-#RUN echo "setwd('/broad/macosko/$PASSWORD/')" > /root/.Rprofile
-#RUN echo '{\n  "sync_files_pane_working_dir": true\n}' > /etc/rstudio/rstudio-prefs.json
+RUN echo "$USER:$PASSWORD" | chpasswd
+RUN echo "auth-minimum-user-id=0" >> /etc/rstudio/rserver.conf
+RUN echo "wd <- '/broad/macosko/$PASSWORD'\nif (dir.exists(wd)) {\n  setwd(wd)\n  pd <- file.path(wd, 'R-packages')\n  if (!dir.exists(pd)) {dir.create(pd)}\n  .libPaths(c(pd, .libPaths()))\n  if (length(.libPaths()) == 1) {print('WARNING: Could not set user package directory')}\n} else {\n  print('WARNING: User directory not found')\n}" > /root/.Rprofile
+RUN echo '{\n  "sync_files_pane_working_dir": true\n}' > /etc/rstudio/rstudio-prefs.json
 # JupyterLab uses a config file
-#RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(PASSWORD)\r"; expect "Verify password:"; send "$env(PASSWORD)\r"; expect eof'
+RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(PASSWORD)\r"; expect "Verify password:"; send "$env(PASSWORD)\r"; expect eof'
 
 # Create bash functions
-#RUN echo "\nrstudio() {\n\trstudio-server start\n\tread\n\texec bash\n}" >> /root/.bashrc
-#RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
+RUN echo "\nrstudio() {\n\trstudio-server start\n\tread\n\texec bash\n}" >> /root/.bashrc
+RUN echo "\njupyterlab() {\n\tmicromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\n}" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
