@@ -112,7 +112,7 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
 # Install core R libraries
 RUN R -e "install.packages(c('tidyverse', \
                              'dplyr', 'tidyr', 'purrr', 'magrittr', \
-                             'future', 'furrr', 'parallel', 'parallelly', \
+                             'future', 'furrr', 'parallelly', \
                              'data.table', 'rlist', 'stringr', 'stringi', 'glue', \
                              'ggplot2', 'ggrastr', 'cowplot', 'gridExtra', \
                              'scCustomize', 'viridis', \
