@@ -120,7 +120,7 @@ RUN R -e "install.packages(c('tidyverse', \
                              'rdist', 'sf', 'dbscan', \
                              'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2', \
                              'devtools', 'remotes', 'R.utils', \
-                             'shiny'), \
+                             'shiny', 'IRkernel'), \
                              repos='http://cloud.r-project.org', \
                              Ncpus=$(nproc)L)"
 # Install Bioconductor packages
@@ -129,6 +129,8 @@ RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager
                                  'ShortRead', 'Rsamtools', 'VariantAnnotation', 'rtracklayer', \
                                  'AnnotationDbi', 'BiocParallel', 'rhdf5' \
                                 ), Ncpus=$(nproc)L)"
+# Install IRkernel
+RUN R -e "IRkernel::installspec(user = FALSE)"
 
 # Install micromamba
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
