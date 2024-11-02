@@ -129,8 +129,6 @@ RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager
                                  'ShortRead', 'Rsamtools', 'VariantAnnotation', 'rtracklayer', \
                                  'AnnotationDbi', 'BiocParallel', 'rhdf5' \
                                 ), Ncpus=$(nproc)L)"
-# Install IRkernel
-RUN R -e "IRkernel::installspec(user = FALSE)"
 
 # Install micromamba
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
@@ -141,6 +139,9 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    matplotlib seaborn plotly pypdf \
                    networkx rustworkx igraph graph-tool \
                    pynndescent umap-learn leidenalg"
+
+# Install IRkernel
+RUN R -e "IRkernel::installspec(user = FALSE)"
 
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
