@@ -4,7 +4,7 @@ ENV LANGUAGE C.UTF-8
 ENV LC_ALL C.UTF-8
 
 # Install system libraries
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y         \
     sudo wget curl rsync zip unzip less tree     \
     vim nano tmux screen htop dstat socat expect \
     procps moreutils gnupg iproute2 ssh git-all  \
@@ -109,7 +109,7 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
     rm rstudio-server-2024.09.0-375-amd64.deb && \
     rstudio-server stop
 
-# Install core R libraries
+# Install R libraries
 RUN R -e "install.packages(c('tidyverse', \
                              'dplyr', 'tidyr', 'purrr', 'magrittr', \
                              'future', 'furrr', 'parallelly', \
