@@ -13,7 +13,8 @@ cd /broad/macosko/$USER
 2\) Build a podman image:
 
 ```
-srun --partition=hpcx_macosko --mem 10G --pty bash
+srun --partition=hpcx_macosko --mem 16G --pty bash
+podman load -i /broad/macosko/discopipeline/scripts/pipeline-image.tar
 wget -O Dockerfile https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
 podman build -f Dockerfile -t myimage --build-arg PASSWORD=$USER .
 exit
