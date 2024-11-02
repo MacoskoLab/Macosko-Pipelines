@@ -60,6 +60,5 @@ You can pass in arguments for `srun` after the command, for example:
 ```rstudio --mem 64G --time 3-00:00:00```
 
 The username is `root` and the password is your username as it appears in `$USER`
-
-R packages will be installed into /broad/macosko/$USER/R-packages
-
+* R packages will be installed into /broad/macosko/$USER/R-packages
+* micromamba root is /broad/macosko/$USER/micromamba
