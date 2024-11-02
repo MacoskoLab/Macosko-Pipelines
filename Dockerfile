@@ -145,3 +145,6 @@ RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
 
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
+
+# podman build -f Dockerfile -t pipeline-image .
+# podman save -o /broad/macosko/discopipeline/scripts/pipeline-image.tar pipeline-image:latest
