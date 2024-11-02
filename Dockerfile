@@ -141,7 +141,7 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    pynndescent umap-learn leidenalg"
 
 # Install IRkernel
-RUN R -e "IRkernel::installspec(user = FALSE)"
+RUN micromamba run R -e "IRkernel::installspec(user = FALSE)"
 
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
