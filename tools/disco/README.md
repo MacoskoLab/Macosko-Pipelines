@@ -16,7 +16,7 @@ cd /broad/macosko/$USER
 srun --partition=hpcx_macosko --mem 16G --pty bash
 podman load -i /broad/macosko/discopipeline/scripts/pipeline-image.tar
 wget -O Dockerfile https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
-podman build -f Dockerfile -t myimage --build-arg PASSWORD=$USER --squash .
+podman build -f Dockerfile -t myimage --build-arg USER=$USER --squash .
 exit
 ```
 
@@ -60,3 +60,6 @@ You can pass in arguments for `srun` after the command, for example:
 ```rstudio --mem 64G --time 3-00:00:00```
 
 The username is `root` and the password is your username as it appears in `$USER`
+
+R packages will be installed into /broad/macosko/$USER/R-packages
+
