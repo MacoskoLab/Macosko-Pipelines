@@ -7,7 +7,8 @@ ENV LC_ALL C.UTF-8
 RUN apt-get update && apt-get install -y         \
     sudo wget curl rsync zip unzip less tree     \
     vim nano tmux screen htop dstat socat expect \
-    procps moreutils gnupg iproute2 ssh git-all  \
+    procps moreutils gnupg ssh git-all           \
+    iproute2 net-tools lsof                      \
     libudunits2-dev libgdal-dev                  \
     libncurses5-dev libncursesw5-dev             \
     zlib1g-dev liblzma-dev libbz2-dev            \
@@ -134,17 +135,19 @@ RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
 
 # Install python packages
-RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
-                   numpy pandas scipy scikit-learn \
-                   matplotlib seaborn plotly pypdf \
-                   networkx rustworkx igraph graph-tool \
-                   pynndescent umap-learn leidenalg"
+# RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
+#                    numpy pandas scipy scikit-learn \
+#                    matplotlib seaborn plotly pypdf \
+#                    networkx rustworkx igraph graph-tool \
+#                    pynndescent umap-learn leidenalg"
 
-# Install IRkernel
-RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
+# # Install IRkernel
+# RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
 
-ENTRYPOINT ["/bin/bash", "-lc"]
-CMD ["/bin/bash", "-i"]
+# RUN /bin/bash -lc "micromamba clean --locks"
+
+# ENTRYPOINT ["/bin/bash", "-lc"]
+# CMD ["/bin/bash", "-i"]
 
 # podman build -f Dockerfile -t pipeline-image .
 # podman save -o /broad/macosko/discopipeline/scripts/pipeline-image.tar pipeline-image:latest
