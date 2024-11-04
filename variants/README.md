@@ -1,5 +1,5 @@
 bamscrape
-=========
+---------
 
 Records:
 * FLAG, RNAME, POS, MAPQ
