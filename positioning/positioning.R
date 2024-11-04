@@ -8,6 +8,7 @@ library(dbscan)
 library(dplyr)
 library(purrr)
 library(rdist)
+options(future.globals.maxSize = 1024 * 1024 * 1024)
 
 # DBSCAN hyperparameters
 eps.vec = c(50, 100)
