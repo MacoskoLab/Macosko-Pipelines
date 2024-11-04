@@ -16,8 +16,8 @@ RUN echo '{\n  "sync_files_pane_working_dir": true\n}' > /etc/rstudio/rstudio-pr
 ### Configure JupyterLab ###
 # Set password
 RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(USER)\r"; expect "Verify password:"; send "$env(USER)\r"; expect eof'
-# Set the mamba root to /broad/macosko/$USER/micromamba
-RUN sed -i "4i\  [ ! -d '/broad/macosko/$USER' ] && echo 'WARNING: User directory not found' || bash -ic 'micromamba shell init -s bash -r /broad/macosko/$USER/micromamba'" /root/.profile
+# Set the mamba root to /broad/macosko/$USER/micromamba if available
+RUN sed -i "4i\  [ ! -d '/broad/macosko/$USER' ] && echo 'WARNING: User directory not found' || bash -ic 'micromamba shell init -s bash -r /broad/macosko/$USER/micromamba' &> /dev/null" /root/.profile
 # (miscellaneous config)
 RUN /bin/bash -lc "micromamba run jupyter lab --generate-config && echo -e 'c.ServerApp.terminals_enabled = True\nc.FileContentsManager.delete_to_trash = False' >> /root/.jupyter/jupyter_lab_config.py"
 
@@ -31,9 +31,6 @@ RUN printf "\njupyterlab() { \n\
     micromamba list | grep -q jupyterlab || micromamba install -y jupyterlab \n\
     tmux new -s jupyterlab -d bash -ic \"micromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\" \n\
     exec bash \n}\n" >> /root/.bashrc
-
-# error    libmamba Could not lock non-existing path '/root/.mamba/pkgs'
-# ~/.profile verbosity | micromamba clean --locks
 
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
