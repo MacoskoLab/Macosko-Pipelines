@@ -62,3 +62,5 @@ You can pass in arguments for `srun` after the command, for example:
 The username is `root` and the password is your username as it appears in `$USER`
 * R packages will be installed into /broad/macosko/$USER/R-packages
 * micromamba root is /broad/macosko/$USER/micromamba
+
+If podman isn't working you may have to run `srun --partition=hpcx_macosko podman system migrate`
