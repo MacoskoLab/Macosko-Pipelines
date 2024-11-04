@@ -21,9 +21,9 @@ RUN sed -i "4i\  [ ! -d '/broad/macosko/$USER' ] && echo 'WARNING: User director
 # (miscellaneous config)
 RUN /bin/bash -lc "micromamba run jupyter lab --generate-config && echo -e 'c.ServerApp.terminals_enabled = True\nc.FileContentsManager.delete_to_trash = False' >> /root/.jupyter/jupyter_lab_config.py"
 
-# Create bash functions
+### Create bash functions ###
 RUN printf "\nrstudio() { \n\
-    pgrep -x rserver > /dev/null && echo 'ERROR: rserver is already running' && return 1 \n\
+    pgrep -x rserver > /dev/null && echo 'rserver is already running' && return 1 \n\
     rstudio-server start \n\
     exec bash \n}\n" >> /root/.bashrc
 RUN printf "\njupyterlab() { \n\
