@@ -18,7 +18,7 @@ Does not record:
 * Base quality at locations where the reference was matched
 
 summary
-=======
+-------
 
 For each (CB, UMI) tuple, find the dominant (RNAME, strand) and compute:
 * Number of reads and average MAPQ
