@@ -133,21 +133,20 @@ RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager
 
 # Install micromamba
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
+RUN /bin/bash -lc "micromamba clean --locks"
 
 # Install python packages
-# RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
-#                    numpy pandas scipy scikit-learn \
-#                    matplotlib seaborn plotly pypdf \
-#                    networkx rustworkx igraph graph-tool \
-#                    pynndescent umap-learn leidenalg"
+RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
+                   numpy pandas scipy scikit-learn \
+                   matplotlib seaborn plotly pypdf \
+                   networkx rustworkx igraph graph-tool \
+                   pynndescent umap-learn leidenalg"
 
-# # Install IRkernel
-# RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
+# Install IRkernel
+RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
 
-# RUN /bin/bash -lc "micromamba clean --locks"
-
-# ENTRYPOINT ["/bin/bash", "-lc"]
-# CMD ["/bin/bash", "-i"]
+ENTRYPOINT ["/bin/bash", "-lc"]
+CMD ["/bin/bash", "-i"]
 
 # podman build -f Dockerfile -t pipeline-image .
 # podman save -o /broad/macosko/discopipeline/scripts/pipeline-image.tar pipeline-image:latest
