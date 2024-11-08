@@ -212,7 +212,7 @@ impl UMIinfo {
     }
 }
 
-// extraxt the strand from the flag
+// extract the strand from the flag
 pub fn flag2strand(flag: u16) -> u8 {
   ((flag >> 4) & 1) as u8
 }
