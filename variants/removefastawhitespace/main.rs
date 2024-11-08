@@ -5,7 +5,7 @@ use std::io::{Read, BufRead, BufReader, Write};
 // run "samtools faidx <output_filename>" afterwards
 
 fn main() {
-    let filename: &str = "refdata-gex-GRCh38-2020-A.fa";
+    let filename: &str = "refdata-gex-GRCh38-2024-A.fa";
     let input_filename = ["fasta_whitespace", &filename].join("/");
     let output_filename = ["fasta_nowhitespace", &filename].join("/");
     
