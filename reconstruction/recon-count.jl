@@ -115,17 +115,17 @@ println("$(length(R1s)) pair(s) of FASTQs found\n")
 N = 30
 p = plot(xlim=(0, 4), ylim=(0, N+1), framestyle=:none, size=(7*100, 8*100),
          legend=false, xticks=:none, yticks=:none)
-annotate!(p, 0.1, N, text("Input directory: $fastq_path", :left, 12))
-annotate!(p, 0.1, N-1, text("Output directory: $out_path", :left, 12))
-annotate!(p, 0.1, N-3, text("R1 FASTQs:", :left, 12))
-annotate!(p, 2.1, N-3, text("R2 FASTQs:", :left, 12))
+annotate!(p, 0.1, N, text("Input directory: $fastq_path", :left, 9))
+annotate!(p, 0.1, N-1, text("Output directory: $out_path", :left, 9))
+annotate!(p, 0.1, N-3, text("R1 FASTQs:", :left, 9))
+annotate!(p, 2.1, N-3, text("R2 FASTQs:", :left, 9))
 for (i, (R1, R2)) in enumerate(zip(R1s, R2s))
     i > N-4 && break
-    annotate!(p, 0.1, N-3-i, text(basename(R1), :left, 12))
-    annotate!(p, 2.1, N-3-i, text(basename(R2), :left, 12))
+    annotate!(p, 0.1, N-3-i, text(basename(R1), :left, 9))
+    annotate!(p, 2.1, N-3-i, text(basename(R2), :left, 9))
 end
 if length(R1s) > N-4
-    annotate!(p, 2, 0, text("$(length(R1s)-N+4) FASTQ file(s) not shown", :center, 12))
+    annotate!(p, 2, 0, text("$(length(R1s)-N+4) FASTQ file(s) not shown", :center, 9))
 end
 savefig(p, joinpath(out_path, "filepaths.pdf"))
 
