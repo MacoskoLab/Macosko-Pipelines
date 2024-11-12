@@ -338,8 +338,8 @@ fn main() {
     sc_str.write_vector(&sc_group, "str_i");           // index into whitelist/sc (0-indexed)
     // write metadata
     let meta_group = file.create_group("metadata").expect(".h5 error");
-    meta_group.new_dataset_builder().with_data(&vec![VarLenAscii::from_ascii(&bam_path).expect("ascii error")]).create("bam_path").expect(".h5 error");
-    meta_group.new_dataset_builder().with_data(&vec![VarLenAscii::from_ascii(&fasta_path).expect("ascii error")]).create("fasta_path").expect(".h5 error");
+    meta_group.new_dataset_builder().with_data(&vec![VarLenAscii::from_ascii(bam_path).expect("ascii error")]).create("bam_path").expect(".h5 error");
+    meta_group.new_dataset_builder().with_data(&vec![VarLenAscii::from_ascii(fasta_path).expect("ascii error")]).create("fasta_path").expect(".h5 error");
     let names = vec!["reads","no_cb","no_ub","no_rname"];
     let reads = vec![read, no_cb, no_ub, no_rname];
     assert_all_same(&[names.len(), reads.len()]);
