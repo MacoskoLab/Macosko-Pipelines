@@ -1,15 +1,17 @@
 use std::fs::File;
+use std::path::Path;
 use itertools::izip;
 use std::str::from_utf8; //  return &str from &[u8]
 // for .fai
 use csv::ReaderBuilder;
 use std::collections::HashMap;
 // for bam
-use rust_htslib::bam::{self,Read};
+use rust_htslib::bam::{self, Read};
 use rust_htslib::bam::record::Cigar; // enum
 use rust_htslib::bam::record::CigarString; // struct Vec<Cigar>
 // for .h5
 use hdf5;
+use hdf5::types::VarLenAscii;
 
 mod helpers;
 use helpers::*;
@@ -30,28 +32,31 @@ const PA: &[u8] = b"pa";
 fn main() {
     // Read the BAM and FASTA path from the command line
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 3 {
-        panic!("Usage: bam_path fasta_path");
+    if args.len() != 4 {
+        panic!("Usage: bamscrape bam_path fasta_path out_dir");
     }
-    let bam_path = &args[1]; eprintln!("BAM path: {}", &bam_path);
-    let fasta_path = &args[2]; eprintln!("FASTA path: {}", &fasta_path);
-    let index_path = [&fasta_path, ".fai"].join("");
+    let bam_path = &args[1]; eprintln!("BAM path: {}", bam_path);
+    let fasta_path = &args[2]; eprintln!("FASTA path: {}", fasta_path);
+    let index_path = [fasta_path, ".fai"].join("");
+    let out_dir = Path::new(&args[3]); eprintln!("out dir: {}", out_dir.display());
+    std::fs::create_dir_all(out_dir).expect("ERROR: could not create out_dir");
+    assert!(out_dir.is_dir(), "ERROR: out_dir is not a directory");
     
     // Load the BAM
-    let mut bam = bam::Reader::from_path(&bam_path).expect("ERROR: BAM loading failed");
+    let mut bam = bam::Reader::from_path(bam_path).expect("ERROR: BAM loading failed");
     // Get the list of RNAMEs from the BAM header
-    let header = bam::Header::from_template(bam.header()).to_hashmap();
-    let sq: Vec<String> = header.get("SQ").expect("ERROR: could not find @SQ in the header")
-                                .iter().map(|e| e.get("SN").expect("SN key not found").clone())
-                                .collect();
+    let sq: Vec<String> = bam::Header::from_template(bam.header()).to_hashmap()
+                                       .get("SQ").expect("ERROR: could not find @SQ in the header")
+                                       .iter().map(|e| e.get("SN").expect("SN key not found").clone())
+                                       .collect();
 
     // Load the FASTA as a memory-mapped file
-    let fasta = File::open(&fasta_path).expect("ERROR: FASTA loading failed");
+    let fasta = File::open(fasta_path).expect("ERROR: FASTA loading failed");
     let mmap = unsafe { memmap2::Mmap::map(&fasta).expect("ERROR: Mmap failed") };
     
     // create a (RNAME -> fasta byte offset) map from the .fai file
     let mut index_file = ReaderBuilder::new().delimiter(b'\t').has_headers(false)
-                                             .from_reader(File::open(&index_path)
+                                             .from_reader(File::open(index_path)
                                              .expect("ERROR: could not open .fai file"));
     let mut map: HashMap<String, usize> = HashMap::new();
     for result in index_file.records() {
@@ -66,10 +71,10 @@ fn main() {
     // - sq is a Vec<String> that maps tid -> RNAME
     // - map is a HashMap<String, usize> that maps RNAME -> fasta byte
     // - mmap is a Mmap containing the fasta
-    assert!(sq.len() == map.len()); // techincally don't need
+    assert!(sq.len() == map.len()); // technically don't need
     assert!(mmap.len() <= SeqPos::MAX as usize, "ERROR: SeqPos is too small to fit the .fa file");
-    assert!(std::mem::size_of::<usize>() == 8, "ERROR: not running on a 64-bit machine"); // it might work on 32-bit but I have not tested it
-    assert_eq!(mmap[0..10000].iter().filter(|&&b| b == b'\n').count(), 1, "ERROR: remove newlines from fasta sequences!");
+    assert!(std::mem::size_of::<usize>() == 8, "ERROR: not running on a 64-bit machine"); // it might work on 32-bit but I haven't tested it
+    assert_eq!(mmap.iter().filter(|&&b| b == b'\n').count(), map.len() * 2, "ERROR: remove newlines from fasta sequences!");
     map.values().for_each(|&v| assert!(v > 0 && mmap[v-1] == b'\n', "ERROR: the .fai file is not accurate to the .fa"));
     
     // Create string whitelists
@@ -196,8 +201,8 @@ fn main() {
         data_rname_i.push(rname_i); // usize [3]
         data_pos.push(pos); // SeqPos [4]
         data_mapq.push(mapq); // u8 [5]
-        data_cb.push(cb_whitelist.get(&cb)); // WLi CB
-        data_ub.push(ub_whitelist.get(&ub)); // WLi UB
+        data_cb.push(cb_whitelist.get(cb)); // WLi CB
+        data_ub.push(ub_whitelist.get(ub)); // WLi UB
         data_xf.push(xf); // u8 xf
         data_re.push(re); // u8 RE
         data_ts.push(ts); // usize ts
@@ -213,9 +218,9 @@ fn main() {
             match cigar {
                 Cigar::Match(v) => { // M
                     let n = *v as usize ;
-                    let seq_iter = (&seq[seq_i..(seq_i + n)]).iter();
-                    let ref_iter = (&mmap[mmap_i..(mmap_i + n)]).iter();
-                    for (i, (&seq_byte, &ref_byte)) in izip!(seq_iter,ref_iter).enumerate() {
+                    let seq_iter = seq[seq_i..(seq_i + n)].iter();
+                    let ref_iter = mmap[mmap_i..(mmap_i + n)].iter();
+                    for (i, (&seq_byte, &ref_byte)) in izip!(seq_iter, ref_iter).enumerate() {
                         if seq_byte != ref_byte {
                             snv_read.push(read);
                             snv_pos.push(mmap_i + i - byte);
@@ -227,9 +232,6 @@ fn main() {
                     match_read.push(read);
                     match_start.push(mmap_i - byte);
                     match_end.push(mmap_i + n - byte);
-                    // println!("{:?}", cigarstring) ;
-                    // println!("{:?}", from_utf8(&seq[seq_i..(seq_i + n)]).expect("E") ) ;
-                    // println!("{:?}", from_utf8(&mmap[mmap_i..(mmap_i + n)]).expect("E") ) ;
                     seq_i += n;
                     mmap_i += n;
                 },
@@ -273,7 +275,7 @@ fn main() {
     eprintln!("Saving results...");
     
     // write string whitelists to an .h5 file
-    let file = hdf5::File::create("whitelists.h5").expect("Could not create .h5 output file");
+    let file = hdf5::File::create(out_dir.join("whitelists.h5")).expect("Could not create .h5 output file");
     cb_whitelist.into_vector().write_vector(&file, "cb");   // list of all observed cell barcodes
     ub_whitelist.into_vector().write_vector(&file, "ub");   // list of all observed UMI barcodes
     ins_whitelist.into_vector().write_vector(&file, "ins"); // list of all inserted strings
@@ -281,10 +283,10 @@ fn main() {
     sq.write_vector(&file,"rname");                         // list of all observed RNAME
     
     // write reads data to an .h5 file
-    let file = hdf5::File::create("reads.h5").expect("Could not create .h5 output file");
+    let file = hdf5::File::create(out_dir.join("reads.h5")).expect("Could not create .h5 output file");
     // write general data
     let data_group = file.create_group("data").expect(".h5 error");
-    assert_all_same(&[data_read.len(), data_flag.len(), data_rname_i.len(), data_pos.len(), data_mapq.len(), data_cb.len(), data_ub.len(),data_xf.len(),data_re.len(),data_ts.len(),data_pa.len()]);
+    assert_all_same(&[data_read.len(), data_flag.len(), data_rname_i.len(), data_pos.len(), data_mapq.len(), data_cb.len(), data_ub.len(), data_xf.len(), data_re.len(), data_ts.len(), data_pa.len()]);
     data_read.write_vector(&data_group, "read");       // bam line number (1-indexed)
     data_flag.write_vector(&data_group, "flag");       // FLAG
     data_rname_i.write_vector(&data_group, "rname_i"); // RNAME index (0-indexed)
@@ -336,11 +338,13 @@ fn main() {
     sc_str.write_vector(&sc_group, "str_i");           // index into whitelist/sc (0-indexed)
     // write metadata
     let meta_group = file.create_group("metadata").expect(".h5 error");
+    meta_group.new_dataset_builder().with_data(&vec![VarLenAscii::from_ascii(&bam_path).expect("ascii error")]).create("bam_path").expect(".h5 error");
+    meta_group.new_dataset_builder().with_data(&vec![VarLenAscii::from_ascii(&fasta_path).expect("ascii error")]).create("fasta_path").expect(".h5 error");
     let names = vec!["reads","no_cb","no_ub","no_rname"];
     let reads = vec![read, no_cb, no_ub, no_rname];
     assert_all_same(&[names.len(), reads.len()]);
-    names.write_vector(&meta_group, "names");
-    reads.write_vector(&meta_group, "reads");
+    names.write_vector(&meta_group, "read_type");
+    reads.write_vector(&meta_group, "read_count");
     
     eprintln!("Done!");
 }
