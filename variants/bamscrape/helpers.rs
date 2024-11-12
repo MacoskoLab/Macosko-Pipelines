@@ -27,7 +27,7 @@ impl Whitelist {
             Some(&val) => val,
             None => {
                 let n: WLi = self.map.len().try_into().expect("ERROR: WLi is too small");
-                self.map.insert(string.to_string(), n);
+                self.map.insert(string.to_owned(), n);
                 n
             }
         }
@@ -36,6 +36,7 @@ impl Whitelist {
     pub fn into_vector(self) -> Vec<String> {
         let mut pairs = self.map.into_iter().collect::<Vec<(String, WLi)>>();
         pairs.sort_by(|a, b| a.1.cmp(&b.1));
+        assert!(pairs.iter().enumerate().all(|(i1, &(_, i2))| i1 == i2 as usize));
         pairs.into_iter().map(|(key, _)| key).collect::<Vec<String>>()
     }
 }
@@ -46,7 +47,7 @@ pub trait WriteVector {
 }
 impl<T: PrimInt> WriteVector for [T] {
     fn write_vector(&self, group: &hdf5::Group, name: &str) {
-        let max: u64 = self.iter().max().expect("ERROR: blank").to_u64().expect("ERROR: not u64");
+        let max: u128 = self.iter().max().expect("ERROR: blank").to_u128().expect("ERROR: not u128");
         match max {
             0..=255            => group.new_dataset_builder().with_data(&self.into_iter().map(|x| x.to_u8().expect("ERROR: not u8")).collect::<Vec<u8>>()).create(name).expect(".h5 error"),
             256..=65535        => group.new_dataset_builder().with_data(&self.into_iter().map(|x| x.to_u16().expect("ERROR: not u16")).collect::<Vec<u16>>()).create(name).expect(".h5 error"),
@@ -57,7 +58,7 @@ impl<T: PrimInt> WriteVector for [T] {
 }
 impl<T: AsRef<[u8]>> WriteVector for Vec<T> {
     fn write_vector(&self, group: &hdf5::Group, name: &str) {
-        let vec: Vec<VarLenAscii> = self.into_iter().map(|s| VarLenAscii::from_ascii(s).expect("ERROR: non-ascii character")).collect();
+        let vec: Vec<VarLenAscii> = self.iter().map(|s| VarLenAscii::from_ascii(s).expect("ERROR: non-ascii character")).collect();
         group.new_dataset_builder().with_data(&vec).create(name).expect(".h5 error");
     }
 }
