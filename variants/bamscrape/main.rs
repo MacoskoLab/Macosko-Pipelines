@@ -15,9 +15,9 @@ mod helpers;
 use helpers::*;
 
 // Set data sizes
-type ReadNum = u32; // BAM line number
+type ReadNum = u64;   // BAM line number
 type SeqPos = usize;  // fasta byte position (must keep at usize)
-type WLi = u32; // whitelist index (number of possible whitelist strings)
+type WLi = u32;       // whitelist index (max number of possible whitelist strings - used for CB, UB, ins, sc)
 
 // Set bam tags
 const CB: &[u8] = b"CB";
@@ -68,7 +68,7 @@ fn main() {
     // - mmap is a Mmap containing the fasta
     assert!(sq.len() == map.len()); // techincally don't need
     assert!(mmap.len() <= SeqPos::MAX as usize, "ERROR: SeqPos is too small to fit the .fa file");
-    assert!(std::mem::size_of::<usize>() == 8, "ERROR: not running on a 64-bit machine");
+    assert!(std::mem::size_of::<usize>() == 8, "ERROR: not running on a 64-bit machine"); // it might work on 32-bit but I have not tested it
     assert_eq!(mmap[0..10000].iter().filter(|&&b| b == b'\n').count(), 1, "ERROR: remove newlines from fasta sequences!");
     map.values().for_each(|&v| assert!(v > 0 && mmap[v-1] == b'\n', "ERROR: the .fai file is not accurate to the .fa"));
     
