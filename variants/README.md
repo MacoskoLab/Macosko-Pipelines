@@ -1,7 +1,7 @@
 bamscrape
 ---------
 
-Records:
+For each read in the BAM, this script records:
 * FLAG, RNAME, POS, MAPQ
 * BAM tags: CB, UB, xf, RE, ts, pa
 * Alternate base + quality at discrepancies between the matching interval and reference
@@ -10,7 +10,7 @@ Records:
 * Reference skips (pos, len)
 * Matching intervals (start, end)
 * Soft-clipped sequences (pos, str)
-* Metadata: total number of reads, #reads without CB, #reads without UB, #reads without RNAME
+* Metadata: #reads, #reads without CB, #reads without UB, #reads without RNAME
 
 Does not record:
 * Anything about unmapped reads
@@ -23,8 +23,10 @@ summary
 
 For each (CB, UMI) tuple, find the dominant (RNAME, strand) and compute:
 * Number of reads and average MAPQ
-* Number of HQ and LQ reads for each SNV, as well as the total overlaps
+* Number of HQ and LQ reads for each SNV, as well as the total number of covers
 * Union of matching intervals
 
 Does not compute:
-* Anything related to insertions, deletions, reference skips, and soft-clipped sequences
+* Anything related to insertions, deletions, reference skips, or soft-clipped sequences
+* Anything related to non-CB/UB tags (xf, RE, ts, pa)
+* Anything about the FLAG (except the strand)
