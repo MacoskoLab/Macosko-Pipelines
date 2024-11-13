@@ -7,7 +7,7 @@ use crate::WLi;
 pub fn assert_all_same(vec: &[usize]) {
     if let Some(first) = vec.first() {
         for element in vec.iter() {
-            assert!(element == first, "ERROR: not all lengths are the same");
+            assert_eq!(element, first, "ERROR: not all lengths are the same");
         }
     }
 }
