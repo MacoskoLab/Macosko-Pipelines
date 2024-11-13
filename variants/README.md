@@ -25,6 +25,7 @@ For each (CB, UMI) tuple, find the dominant (RNAME, strand) and compute:
 * Number of reads and average MAPQ
 * Number of HQ and LQ reads for each SNV, as well as the total number of covers
 * Union of matching intervals
+* Metadata: #reads chimeric, #umis chimeric
 
 Does not compute:
 * Anything related to insertions, deletions, reference skips, or soft-clipped sequences
