@@ -9,6 +9,98 @@ pub type WLi = u32;
 pub type RNAMEi = u16;
 pub type SNVi = usize;
 
+// Data structure that aggregates all the information of a UMI
+pub struct UMIinfo {
+    pub reads: ReadNum,
+    pub mapq: Vec<u8>,
+    pub snv_i: HashMap<(SNVi, SeqPos), (ReadNum, ReadNum)>, // (snv_i, pos) -> (hq, lq)
+    pub matches: Vec<(SeqPos, SeqPos)>, // (start, end)
+}
+impl UMIinfo {
+    pub fn new() -> Self {
+        Self { reads: 0, mapq: Vec::new(), snv_i: HashMap::new(), matches: Vec::new() }
+    }
+    
+    // collapse match intervals into a consensus range
+    pub fn merge_intervals(&self) -> Vec<(SeqPos, SeqPos)> {
+        let mut intervals = self.matches.clone();
+        intervals.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut merged_intervals: Vec<(SeqPos, SeqPos)> = Vec::new();
+        for interval in intervals {
+            if let Some(last) = merged_intervals.last_mut() {
+                if interval.0 <= last.1 {
+                    last.1 = last.1.max(interval.1); // extend the current interval
+                } else {
+                    merged_intervals.push(interval); // no overlap, add a new interval
+                }
+            } else {
+                merged_intervals.push(interval); // first interval
+            }
+        }
+        return merged_intervals
+    }
+    
+    // get the average value of a list of u8 (used for computing average mapq)
+    pub fn mapq_avg(&self) -> u8 {
+        let sum: u64 = self.mapq.iter().map(|&val| u64::from(val)).sum();
+        let len: u64 = self.mapq.len() as u64;
+        let avg = (sum + len/2) / len;
+        return avg as u8
+    }
+}
+
+// Data structure that enables storing "indexes into a list of SNV" instead of "SNV"
+pub struct SNVTable {
+    map: HashMap<(RNAMEi, SeqPos, u8), SNVi> // (rname_i, pos, alt) -> snv_i
+}
+impl SNVTable {
+    // create an empty whitelist
+    pub fn new() -> Self {
+        Self { map: HashMap::new() }
+    }
+    // return the index of the string in the whitelist (add if needed)
+    pub fn get(&mut self, snv: &(RNAMEi, SeqPos, u8)) -> SNVi {
+        match self.map.get(snv) {
+            Some(&val) => val,
+            None => {
+                let n: SNVi = self.map.len();
+                self.map.insert(*snv, n);
+                n
+            }
+        }
+    }
+    // return a tuple of vectors (in order)
+    pub fn into_vectors(self) -> (Vec<SNVi>, Vec<RNAMEi>, Vec<SeqPos>, Vec<u8>) {
+        let mut pairs: Vec<((RNAMEi, SeqPos, u8), SNVi)> = self.map.into_iter().collect();
+        pairs.sort_by(|a, b| a.1.cmp(&b.1));
+        let mut vec_snv_i: Vec<SNVi> = Vec::new();
+        let mut vec_rname_i: Vec<RNAMEi> = Vec::new();
+        let mut vec_pos: Vec<SeqPos> = Vec::new();
+        let mut vec_alt: Vec<u8> = Vec::new();
+        for ((rname_i, pos, alt), snv_i) in pairs {
+            vec_snv_i.push(snv_i);
+            vec_rname_i.push(rname_i);
+            vec_pos.push(pos);
+            vec_alt.push(alt);
+        }
+        return (vec_snv_i, vec_rname_i, vec_pos, vec_alt)
+    }
+}
+
+// extract the strand from the flag
+pub fn flag2strand(flag: u16) -> u8 {
+  ((flag >> 4) & 1) as u8
+}
+
+// helper method to assert that all elements of a vector are the same
+pub fn assert_all_same(vec: &[usize]) {
+    if let Some(first) = vec.first() {
+        for element in vec.iter() {
+            assert_eq!(element, first, "ERROR: not all lengths are the same");
+        }
+    }
+}
+
 /* DATA */
 pub struct DataEntry {
     pub read: ReadNum,
@@ -102,102 +194,6 @@ pub fn load_matches(file: &hdf5::File) -> Vec<MatchEntry> {
                   .collect::<Vec<MatchEntry>>();
     
     return matches;
-}
-
-
-
-// Data structure that enables storing "indexes into a list of SNV" instead of "SNV"
-pub struct SNVTable {
-    map: HashMap<(RNAMEi, SeqPos, u8), SNVi> // (rname_i, pos, alt) -> snv_i
-}
-impl SNVTable {
-    // create an empty whitelist
-    pub fn new() -> Self {
-        Self { map: HashMap::new() }
-    }
-    // return the index of the string in the whitelist (add if needed)
-    pub fn get(&mut self, snv: &(RNAMEi, SeqPos, u8)) -> SNVi {
-        match self.map.get(snv) {
-            Some(&val) => val,
-            None => {
-                let n: SNVi = self.map.len();
-                self.map.insert(*snv, n);
-                n
-            }
-        }
-    }
-    // return a tuple of vectors (in order)
-    pub fn into_vectors(self) -> (Vec<usize>, Vec<RNAMEi>, Vec<SeqPos>, Vec<u8>) {
-        let mut pairs: Vec<((RNAMEi, SeqPos, u8), usize)> = self.map.into_iter().collect();
-        pairs.sort_by(|a, b| a.1.cmp(&b.1));
-        let mut vec_snv_i: Vec<usize> = Vec::new();
-        let mut vec_rname_i: Vec<RNAMEi> = Vec::new();
-        let mut vec_pos: Vec<SeqPos> = Vec::new();
-        let mut vec_alt: Vec<u8> = Vec::new();
-        for ((rname_i, pos, alt), snv_i) in pairs {
-            vec_snv_i.push(snv_i);
-            vec_rname_i.push(rname_i);
-            vec_pos.push(pos);
-            vec_alt.push(alt);
-        }
-        return (vec_snv_i, vec_rname_i, vec_pos, vec_alt)
-    }
-}
-
-// Data structure that aggregates all the information of a UMI
-pub struct UMIinfo {
-    pub reads: ReadNum,
-    pub mapq: Vec<u8>,
-    pub snv_i: HashMap<(SNVi, SeqPos), (ReadNum, ReadNum)>, // (snv_i, pos) -> (hq, lq)
-    pub start: Vec<SeqPos>,
-    pub end: Vec<SeqPos>,
-}
-impl UMIinfo {
-    pub fn new() -> Self {
-        Self { reads: 0, mapq: Vec::new(), snv_i: HashMap::new(), start: Vec::new(), end: Vec::new() }
-    }
-}
-
-// extract the strand from the flag
-pub fn flag2strand(flag: u16) -> u8 {
-  ((flag >> 4) & 1) as u8
-}
-
-// helper method to get the average value of a list of u8 (used for computing average mapq)
-pub fn average_round_u8(values: &[u8]) -> u8 {
-    let sum: u64 = values.iter().map(|&val| u64::from(val)).sum();
-    let len = values.len() as u64;
-    let avg = (sum + len/2) / len;
-    return avg as u8
-}
-
-// helper method to assert that all elements of a vector are the same
-pub fn assert_all_same(vec: &[usize]) {
-    if let Some(first) = vec.first() {
-        for element in vec.iter() {
-            assert_eq!(element, first, "ERROR: not all lengths are the same");
-        }
-    }
-}
-
-// given a series of ranges, collapse into a consensus range
-pub fn merge_intervals(starts: &Vec<SeqPos>, ends: &Vec<SeqPos>) -> Vec<(SeqPos, SeqPos)> {
-    assert_eq!(starts.len(), ends.len());
-    let mut intervals: Vec<(SeqPos, SeqPos)> = izip!(starts, ends).map(|(&start, &end)| (start, end)).collect();
-    intervals.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let mut merged_intervals: Vec<(SeqPos, SeqPos)> = Vec::new();
-    for interval in intervals {
-        if let Some(last) = merged_intervals.last_mut() {
-            if interval.0 <= last.1 {
-                last.1 = last.1.max(interval.1); // extend the current interval
-            } else {
-                merged_intervals.push(interval); // no overlap, add a new interval
-            }
-        } else {
-            merged_intervals.push(interval); // first interval
-        }
-    }
-    return merged_intervals
 }
 
 // Enables downsizing and writing to .h5
