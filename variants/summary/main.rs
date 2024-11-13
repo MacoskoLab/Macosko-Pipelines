@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use itertools::izip;
 use hdf5;
 
 mod helpers;
@@ -40,7 +39,7 @@ fn main() {
     let mut snv_table = SNVTable::new();
     // Create snv structures (umi) (snv_i) (hq) (lq) (total)
     let mut snv_umi: Vec<ReadNum> = Vec::new();
-    let mut snv_snv_i: Vec<usize> = Vec::new();
+    let mut snv_snv_i: Vec<SNVi> = Vec::new();
     let mut snv_hq: Vec<ReadNum> = Vec::new();
     let mut snv_lq: Vec<ReadNum> = Vec::new();
     let mut snv_total: Vec<ReadNum> = Vec::new();
@@ -57,7 +56,7 @@ fn main() {
     // Initial state
     let mut curr_cb: WLi = data.get(0).expect("ERROR: empty").cb_i;
     let mut curr_ub: WLi = data.get(0).expect("ERROR: empty").ub_i;
-    let mut umi_dict: HashMap<(RNAMEi, u8), UMIinfo> = HashMap::new(); // (rname_i, strand) -> (reads, mapq, snv_i, start, end)
+    let mut umi_dict: HashMap<(RNAMEi, u8), UMIinfo> = HashMap::new(); // (rname_i, strand) -> (reads, mapq, snv_i, matches)
     // Loop through the reads
     let mut umi: ReadNum = 0;
     let mut snv_idx = 0;
@@ -79,18 +78,17 @@ fn main() {
               data_rname_i.push(rname_i);
               data_strand.push(strand);
               data_reads.push(umi_info.reads);
-              data_mapq_avg.push(average_round_u8(&umi_info.mapq));
+              data_mapq_avg.push(umi_info.mapq_avg());
               // write aggregate snv
               for ((snv_i, pos), (hq, lq)) in umi_info.snv_i.iter() {
                   snv_umi.push(umi);
                   snv_snv_i.push(*snv_i);
                   snv_hq.push(*hq);
                   snv_lq.push(*lq);
-                  snv_total.push(izip!(&umi_info.start, &umi_info.end).filter(|(&s, &e)| *pos >= s && *pos < e).count() as ReadNum);
+                  snv_total.push(umi_info.matches.iter().filter(|&(s, e)| *pos >= *s && *pos < *e).count() as ReadNum);
               }
               // write aggregate matches
-              let merged_intervals = merge_intervals(&umi_info.start, &umi_info.end);
-              for interval in merged_intervals {
+              for interval in umi_info.merge_intervals() {
                 match_umi.push(umi);
                 match_start.push(interval.0);
                 match_end.push(interval.1);
@@ -122,8 +120,9 @@ fn main() {
         
         // collect matches data
         while matches_idx < matches.len() && matches[matches_idx].read == d.read { // matches is (read, start, end)
-            umi_info.start.push(matches[matches_idx].start);
-            umi_info.end.push(matches[matches_idx].end);
+            let start = matches[matches_idx].start;
+            let end = matches[matches_idx].end;
+            umi_info.matches.push((start, end));
             matches_idx += 1;
         }
     }
