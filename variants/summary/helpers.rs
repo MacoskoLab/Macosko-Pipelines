@@ -7,18 +7,17 @@ pub type ReadNum = u64;
 pub type SeqPos = u32;
 pub type WLi = u32;
 pub type RNAMEi = u16;
-pub type SNVi = usize;
 
 // Data structure that aggregates all the information of a UMI
 pub struct UMIinfo {
     pub reads: ReadNum,
     pub mapq: Vec<u8>,
-    pub snv_i: HashMap<(SNVi, SeqPos), (ReadNum, ReadNum)>, // (snv_i, pos) -> (hq, lq)
+    pub snv: HashMap<(SeqPos, u8), (ReadNum, ReadNum)>, // (pos, alt) -> (hq, lq)
     pub matches: Vec<(SeqPos, SeqPos)>, // (start, end)
 }
 impl UMIinfo {
     pub fn new() -> Self {
-        Self { reads: 0, mapq: Vec::new(), snv_i: HashMap::new(), matches: Vec::new() }
+        Self { reads: 0, mapq: Vec::new(), snv: HashMap::new(), matches: Vec::new() }
     }
     
     // collapse match intervals into a consensus range
@@ -46,44 +45,6 @@ impl UMIinfo {
         let len: u64 = self.mapq.len() as u64;
         let avg = (sum + len/2) / len;
         return avg as u8
-    }
-}
-
-// Data structure that enables storing "indexes into a list of SNV" instead of "SNV"
-pub struct SNVTable {
-    map: HashMap<(RNAMEi, SeqPos, u8), SNVi> // (rname_i, pos, alt) -> snv_i
-}
-impl SNVTable {
-    // create an empty whitelist
-    pub fn new() -> Self {
-        Self { map: HashMap::new() }
-    }
-    // return the index of the string in the whitelist (add if needed)
-    pub fn get(&mut self, snv: &(RNAMEi, SeqPos, u8)) -> SNVi {
-        match self.map.get(snv) {
-            Some(&val) => val,
-            None => {
-                let n: SNVi = self.map.len();
-                self.map.insert(*snv, n);
-                n
-            }
-        }
-    }
-    // return a tuple of vectors (in order)
-    pub fn into_vectors(self) -> (Vec<SNVi>, Vec<RNAMEi>, Vec<SeqPos>, Vec<u8>) {
-        let mut pairs: Vec<((RNAMEi, SeqPos, u8), SNVi)> = self.map.into_iter().collect();
-        pairs.sort_by(|a, b| a.1.cmp(&b.1));
-        let mut vec_snv_i: Vec<SNVi> = Vec::new();
-        let mut vec_rname_i: Vec<RNAMEi> = Vec::new();
-        let mut vec_pos: Vec<SeqPos> = Vec::new();
-        let mut vec_alt: Vec<u8> = Vec::new();
-        for ((rname_i, pos, alt), snv_i) in pairs {
-            vec_snv_i.push(snv_i);
-            vec_rname_i.push(rname_i);
-            vec_pos.push(pos);
-            vec_alt.push(alt);
-        }
-        return (vec_snv_i, vec_rname_i, vec_pos, vec_alt)
     }
 }
 
@@ -142,7 +103,6 @@ pub fn load_data(file: &hdf5::File) -> Vec<DataEntry> {
 pub struct SNVEntry {
     pub read: ReadNum,
     pub pos: SeqPos,
-    //pub ref: u8,
     pub alt: u8,
     pub qual: u8,
 }
