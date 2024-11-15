@@ -2,6 +2,7 @@ FROM debian:bookworm
 ENV LANG C.UTF-8
 ENV LANGUAGE C.UTF-8
 ENV LC_ALL C.UTF-8
+RUN echo "\numask 002" >> /etc/profile
 
 # Install system libraries
 RUN apt-get update && apt-get install -y         \
