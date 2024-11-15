@@ -70,9 +70,9 @@ fn main() {
     // - sq is a Vec<String> that maps tid -> RNAME
     // - map is a HashMap<String, usize> that maps RNAME -> fasta byte
     // - mmap is a Mmap containing the fasta
-    assert!(sq.len() == map.len()); // technically don't need
     assert!(mmap.len() <= SeqPos::MAX as usize, "ERROR: SeqPos is too small to fit the .fa file");
-    assert!(std::mem::size_of::<usize>() == 8, "ERROR: not running on a 64-bit machine"); // it might work on 32-bit but I haven't tested it
+    assert_eq!(std::mem::size_of::<usize>(), 8, "ERROR: not running on a 64-bit machine"); // it might work on 32-bit but I haven't tested it
+    assert_eq!(sq.len(), map.len(), "ERROR: number of BAM header reference sequences does not match number of .fai sequences"); // technically don't need
     assert_eq!(mmap.iter().filter(|&&b| b == b'\n').count(), map.len() * 2, "ERROR: remove newlines from fasta sequences!");
     map.values().for_each(|&v| assert!(v > 0 && mmap[v-1] == b'\n', "ERROR: the .fai file is not accurate to the .fa"));
     
