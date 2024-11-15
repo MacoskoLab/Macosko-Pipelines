@@ -61,9 +61,10 @@ fn main() {
     let mut umi_dict: HashMap<(RNAMEi, u8), UMIinfo> = HashMap::new(); // (rname_i, strand) -> (reads, mapq, snv, matches)
     // Loop through the reads
     let mut umi: ReadNum = 0;
-    let mut snv_idx = 0;
-    let mut matches_idx = 0;
+    let mut snv_idx: usize = 0;
+    let mut matches_idx: usize = 0;
     for d in data { // d is (read, flag, rname_i, mapq, cb_i, ub_i)
+    
         if (d.cb_i != curr_cb) || (d.ub_i != curr_ub) {
           // remove chimerism, take dominant RNAME
           let total_reads: ReadNum = umi_dict.values().map(|record| record.reads).sum();
