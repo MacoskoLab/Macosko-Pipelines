@@ -11,7 +11,6 @@ use rust_htslib::bam::record::Cigar; // enum
 use rust_htslib::bam::record::CigarString; // struct Vec<Cigar>
 // for .h5
 use hdf5;
-use hdf5::types::VarLenAscii;
 
 mod helpers;
 use helpers::*;
@@ -71,9 +70,9 @@ fn main() {
     // - sq is a Vec<String> that maps tid -> RNAME
     // - map is a HashMap<String, usize> that maps RNAME -> fasta byte
     // - mmap is a Mmap containing the fasta
-    assert!(std::mem::size_of::<usize>() == 8, "ERROR: not running on a 64-bit machine"); // it might work on 32-bit but I haven't tested it
+    assert!(sq.len() == map.len()); // technically don't need
     assert!(mmap.len() <= SeqPos::MAX as usize, "ERROR: SeqPos is too small to fit the .fa file");
-    assert_eq!(sq.len(), map.len(), "WARNING: number of BAM header reference sequences does not match number of .fai sequences"); // technically don't need
+    assert!(std::mem::size_of::<usize>() == 8, "ERROR: not running on a 64-bit machine"); // it might work on 32-bit but I haven't tested it
     assert_eq!(mmap.iter().filter(|&&b| b == b'\n').count(), map.len() * 2, "ERROR: remove newlines from fasta sequences!");
     map.values().for_each(|&v| assert!(v > 0 && mmap[v-1] == b'\n', "ERROR: the .fai file is not accurate to the .fa"));
     
@@ -184,8 +183,8 @@ fn main() {
         
         // get the RNAME [3]
         let tid: i32 = record.tid();
-        if tid < 0 { no_rname+=1 ; continue } // tid is -1 if no alignment
-        if cb=="" || ub=="" { continue } // at this point, continue if there is not enough information to record the record
+        if tid < 0 { no_rname += 1 ; continue } // tid is -1 if no alignment
+        if cb == "" || ub == "" { continue }  // at this point, continue if there is not enough information to record the line
         let rname_i = tid as usize;
         let rname: &str = &sq[rname_i];
         let byte: usize = *map.get(rname).expect(&format!("ERROR: '{rname}' not found in fasta index file"));
@@ -338,8 +337,8 @@ fn main() {
     sc_str.write_vector(&sc_group, "str_i");           // index into whitelist/sc (0-indexed)
     // write metadata
     let meta_group = file.create_group("metadata").expect(".h5 error");
-    meta_group.new_dataset_builder().with_data(&vec![VarLenAscii::from_ascii(bam_path).expect("ascii error")]).create("bam_path").expect(".h5 error");
-    meta_group.new_dataset_builder().with_data(&vec![VarLenAscii::from_ascii(fasta_path).expect("ascii error")]).create("fasta_path").expect(".h5 error");
+    vec![bam_path].write_vector(&meta_group, "bam_path");
+    vec![fasta_path].write_vector(&meta_group, "fasta_path");
     let names = vec!["reads","no_cb","no_ub","no_rname"];
     let reads = vec![read, no_cb, no_ub, no_rname];
     assert_all_same(&[names.len(), reads.len()]);
