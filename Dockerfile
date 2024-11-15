@@ -24,6 +24,9 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
 # (Python 3.11.2 already installed)
 RUN sudo ln -s /usr/bin/python3 /usr/bin/python
 
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
 # Install Samtools
 RUN wget -P /opt https://github.com/samtools/samtools/releases/download/1.21/samtools-1.21.tar.bz2 && \
     tar -xjvf /opt/samtools-1.21.tar.bz2 -C /opt && \
@@ -64,9 +67,8 @@ RUN git clone https://github.com/soedinglab/MMseqs2.git /opt/MMseqs2 && \
     make && \
     make install && \
     ln -s /opt/MMseqs2/build/bin/mmseqs /usr/local/bin/mmseqs
-
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# Install DuckDB
+# RUN https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip
 
 # Install Julia
 RUN wget -P /opt https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.5-linux-x86_64.tar.gz && \
@@ -108,7 +110,7 @@ RUN export R_VERSION=4.3.3 && \
 RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09.0-375-amd64.deb && \
     echo y | gdebi rstudio-server-2024.09.0-375-amd64.deb && \
     rm rstudio-server-2024.09.0-375-amd64.deb && \
-    rstudio-server stop
+    rstudio-server stop && sleep 1
 
 # Install R libraries
 RUN R -e "install.packages(c('tidyverse', \
@@ -121,7 +123,7 @@ RUN R -e "install.packages(c('tidyverse', \
                              'rdist', 'sf', 'dbscan', \
                              'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2', \
                              'devtools', 'remotes', 'R.utils', \
-                             'shiny', 'IRkernel'), \
+                             'shiny', 'IRkernel', 'duckdb'), \
                              repos='http://cloud.r-project.org', \
                              Ncpus=$(nproc)L)"
 # Install Bioconductor packages
@@ -140,7 +142,8 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    numpy pandas scipy scikit-learn \
                    matplotlib seaborn plotly pypdf \
                    networkx rustworkx igraph graph-tool \
-                   pynndescent umap-learn leidenalg"
+                   pynndescent umap-learn leidenalg \
+                   python-duckdb"
 
 # Install IRkernel
 RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
