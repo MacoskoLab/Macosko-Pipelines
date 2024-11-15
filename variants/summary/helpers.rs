@@ -135,7 +135,6 @@ pub fn load_snv(file: &hdf5::File) -> Vec<SNVEntry> {
 }
 
 /* MATCHES */
-#[derive(Debug)]
 pub struct MatchEntry {
     pub read: ReadNum,
     pub start: SeqPos,
