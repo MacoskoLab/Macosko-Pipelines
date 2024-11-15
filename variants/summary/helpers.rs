@@ -8,6 +8,8 @@ pub type SeqPos = u32;
 pub type WLi = u32;
 pub type RNAMEi = u16;
 
+const FLAG_QC: u16 = 4 + 256 + 512 + 2048; // disallowed FLAG bits
+
 // Data structure that aggregates all the information of a UMI
 pub struct UMIinfo {
     pub reads: ReadNum,
@@ -50,7 +52,9 @@ impl UMIinfo {
 
 // extract the strand from the flag
 pub fn flag2strand(flag: u16) -> u8 {
-  ((flag >> 4) & 1) as u8
+  let x10 = (flag >> 4) & 1;
+  let x80 = (flag >> 7) & 1; // for Illumina paired-end sequencing
+  (x10 ^ x80) as u8
 }
 
 // helper method to assert that all elements of a vector are the same
@@ -88,9 +92,10 @@ pub fn load_data(file: &hdf5::File) -> Vec<DataEntry> {
     let data_ub_i: Vec<WLi> = file.dataset("data/ub_i").expect("not found").read_raw().expect("E");
     
     // Assert
-    let mut set = HashSet::new(); for &value in &data_read { assert!(set.insert(value)); }
     assert_all_same(&[data_read.len(), data_flag.len(), data_rname_i.len(), data_mapq.len(), data_cb_i.len(), data_ub_i.len()]);
-    
+    assert!(data_flag.iter().all(|&flag| flag & FLAG_QC == 0), "ERROR: disallowed records in data"); // TODO: filter instead of erroring
+    let mut set = HashSet::new(); for &value in &data_read { assert!(set.insert(value)); } // BAM line number must be unique - used as database key
+
     // Zip
     let data = izip!(data_read, data_flag, data_rname_i, data_mapq, data_cb_i, data_ub_i)
                .map(|(i, f, r, m, c, u)| DataEntry{read: i, flag: f, rname_i: r, mapq: m, cb_i: c, ub_i: u})
@@ -130,6 +135,7 @@ pub fn load_snv(file: &hdf5::File) -> Vec<SNVEntry> {
 }
 
 /* MATCHES */
+#[derive(Debug)]
 pub struct MatchEntry {
     pub read: ReadNum,
     pub start: SeqPos,
@@ -165,10 +171,10 @@ impl<T: PrimInt> WriteVector for [T] {
         if self.len() == 0 {return ()}
         let max: u128 = self.iter().max().expect("ERROR: blank").to_u128().expect("ERROR: not u128");
         match max {
-            0..=255            => group.new_dataset_builder().deflate(1).with_data(&self.into_iter().map(|x| x.to_u8().expect("ERROR: not u8")).collect::<Vec<u8>>()).create(name).expect(".h5 error"),
-            256..=65535        => group.new_dataset_builder().deflate(1).with_data(&self.into_iter().map(|x| x.to_u16().expect("ERROR: not u16")).collect::<Vec<u16>>()).create(name).expect(".h5 error"),
-            65536..=4294967295 => group.new_dataset_builder().deflate(1).with_data(&self.into_iter().map(|x| x.to_u32().expect("ERROR: not u32")).collect::<Vec<u32>>()).create(name).expect(".h5 error"),
-            _                  => group.new_dataset_builder().deflate(1).with_data(&self.into_iter().map(|x| x.to_u64().expect("ERROR: not u64")).collect::<Vec<u64>>()).create(name).expect(".h5 error"),
+            0..=255            => group.new_dataset_builder().deflate(1).with_data(&self.iter().map(|x| x.to_u8().expect("ERROR: not u8")).collect::<Vec<u8>>()).create(name).expect(".h5 error"),
+            256..=65535        => group.new_dataset_builder().deflate(1).with_data(&self.iter().map(|x| x.to_u16().expect("ERROR: not u16")).collect::<Vec<u16>>()).create(name).expect(".h5 error"),
+            65536..=4294967295 => group.new_dataset_builder().deflate(1).with_data(&self.iter().map(|x| x.to_u32().expect("ERROR: not u32")).collect::<Vec<u32>>()).create(name).expect(".h5 error"),
+            _                  => group.new_dataset_builder().deflate(1).with_data(&self.iter().map(|x| x.to_u64().expect("ERROR: not u64")).collect::<Vec<u64>>()).create(name).expect(".h5 error"),
         };
     }
 }
