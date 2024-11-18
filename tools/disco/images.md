@@ -23,7 +23,7 @@ List the built podman images:
 
 You should see a newly created image called "myimage"
 
-Podman images are stored in `/local/podman/containers-user-$UID`, and this folder is NOT shared across the various nodes. This means that you currently won't be able to make containers using this image on a different node. See the FAQ for a discussion on how to send a copy of the image to other nodes.
+Podman images are stored in `/local/podman/containers-user-$UID`, and this folder is NOT shared across the various nodes. This means that you won't be able to make containers using this image on a different node. See the FAQ for a discussion on how to send a copy of the image to other nodes.
 
 Exit the srun session - this step is complete
 
