@@ -14,7 +14,7 @@ wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/m
 
 Build an image using this recipe: (should take about 5 minutes)
 
-```podman build -t myimage --build-arg PASSWORD=$USER .```
+```podman build -t myimage --build-arg USER=$USER .```
 
 List the built podman images:
 
