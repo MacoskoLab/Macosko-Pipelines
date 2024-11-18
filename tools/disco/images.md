@@ -8,13 +8,14 @@ First, we need to be on a node that supports the container feature. Let's open a
 We've made an example Dockerfile to use for this tutorial. Download this file in your home directory:
 
 ```
+mkdir -p /broad/macosko/$USER
 cd /broad/macosko/$USER
-wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
+wget -O Dockerfile https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/tools/disco/Dockerfile
 ```
 
 Build an image using this recipe: (should take about 5 minutes)
 
-```podman build -t myimage --build-arg USER=$USER .```
+```podman build -f Dockerfile -t myimage --build-arg USER=$USER --squash .```
 
 List the built podman images:
 
