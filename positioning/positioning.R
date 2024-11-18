@@ -44,7 +44,7 @@ library(furrr)
 library(future)
 library(parallel)
 
-ncores = parallel::detectCores()
+ncores = parallelly::availableCores()
 plan(multisession, workers=ncores)
 
 # helper methods
