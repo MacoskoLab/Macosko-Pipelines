@@ -277,6 +277,9 @@ load_puckdf <- function(f) {
   
   # load puck metadata
   meta <- metadata
+  meta$puck_info$puck_name = as.character(f("lists/puck_list"))
+  meta$puck_info$num_beads = map_int(puckdfs, nrow)
+  
   meta$puck_info %<>% c(puck_name = as.character(f("lists/puck_list")),
                         num_beads = map_int(puckdfs, nrow))
   
