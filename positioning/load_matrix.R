@@ -280,9 +280,6 @@ load_puckdf <- function(f) {
   meta$puck_info$puck_name = as.character(f("lists/puck_list"))
   meta$puck_info$num_beads = map_int(puckdfs, nrow)
   
-  meta$puck_info %<>% c(puck_name = as.character(f("lists/puck_list")),
-                        num_beads = map_int(puckdfs, nrow))
-  
   # remove duplicated or low-quality beads
   sb_len = nchar(puckdf$sb[1]) ; mc_tol = round(sb_len*0.75) ; lr_tol = round(sb_len*0.5)
   meta$puck_info$num_dup = map_int(puckdfs, ~sum(.$sb %in% dups))
