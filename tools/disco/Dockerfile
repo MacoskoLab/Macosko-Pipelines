@@ -24,14 +24,13 @@ RUN /bin/bash -lc "micromamba run jupyter lab --generate-config && echo -e 'c.Se
 ### Create bash functions ###
 RUN printf "\nrstudio() { \n\
     pgrep -x rserver > /dev/null && echo 'rserver is already running' && return 1 \n\
-    rstudio-server start \n\
-    exec bash \n}\n" >> /root/.bashrc
+    rstudio-server start \n}\n" >> /root/.bashrc
 RUN printf "\njupyterlab() { \n\
     [ ! -d \$MAMBA_ROOT_PREFIX ] && echo 'ERROR: mamba root could not be found' && return 1 \n\ 
     pgrep -x jupyter-lab > /dev/null && echo 'jupyter-lab is already running' && return 1 \n\
     micromamba list | grep -q jupyterlab || micromamba install -y jupyterlab python=3.11.2 \n\
     tmux new -s jupyterlab -d bash -ic \"micromamba run -n \${1:-base} jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\" \n\
-    exec bash -ic 'micromamba activate \${1:-base}' \n}\n" >> /root/.bashrc
+    micromamba activate \${1:-base} \n}\n" >> /root/.bashrc
 
-ENTRYPOINT ["/bin/bash", "-lc"]
+ENTRYPOINT ["/bin/bash", "-lic"]
 CMD ["/bin/bash", "-i"]
