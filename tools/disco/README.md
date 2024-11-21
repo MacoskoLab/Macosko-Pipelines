@@ -40,12 +40,12 @@ DEFAULT_TRES='--partition hpcx_macosko --mem 16G -t 24:00:00'
 
 rstudio() {
     hostname | grep -qv login && echo "Must be on login server" && return 1
-    srun --pty -X -C container -J rstudio $DEFAULT_TRES $@ bash -c "$PRINT_TRES ; $GET_PORT ; $PODMAN_RUN $IMAGE rstudio"
+    srun --pty -X -C container -J rstudio $DEFAULT_TRES $@ bash -c "$PRINT_TRES ; $GET_PORT ; $PODMAN_RUN $IMAGE 'rstudio ; exec bash -i'"
 }
 
 jupyterlab() {
     hostname | grep -qv login && echo "Must be on login server" && return 1
-    srun --pty -X -C container -J jupyterlab $DEFAULT_TRES $@ bash -c "$PRINT_TRES ; $GET_PORT ; $PODMAN_RUN $IMAGE jupyterlab"
+    srun --pty -X -C container -J jupyterlab $DEFAULT_TRES $@ bash -c "$PRINT_TRES ; $GET_PORT ; $PODMAN_RUN $IMAGE 'jupyterlab ; exec bash -i'"
 }
 ```
 
