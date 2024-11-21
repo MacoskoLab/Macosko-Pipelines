@@ -32,5 +32,5 @@ RUN printf "\njupyterlab() { \n\
     tmux new -s jupyterlab -d bash -ic \"micromamba run -n \${1:-base} jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\" \n\
     micromamba activate \${1:-base} \n}\n" >> /root/.bashrc
 
-ENTRYPOINT ["/bin/bash", "-lic"]
+ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
