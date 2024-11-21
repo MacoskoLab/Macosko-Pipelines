@@ -30,7 +30,7 @@ RUN printf "\njupyterlab() { \n\
     [ ! -d \$MAMBA_ROOT_PREFIX ] && echo 'ERROR: mamba root could not be found' && return 1 \n\ 
     pgrep -x jupyter-lab > /dev/null && echo 'jupyter-lab is already running' && return 1 \n\
     micromamba list | grep -q jupyterlab || micromamba install -y jupyterlab python=3.11.2 \n\
-    tmux new -s jupyterlab -d bash -ic \"micromamba run jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\" \n\
+    tmux new -s jupyterlab -d bash -ic \"micromamba run -n ${1:-base} jupyter lab --allow-root --ip='*' --port='8787' --NotebookApp.token='' --no-browser\" \n\
     exec bash \n}\n" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash", "-lc"]
