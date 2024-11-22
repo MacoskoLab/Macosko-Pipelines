@@ -60,7 +60,7 @@ RUN R -e "BiocManager::install(c( \
         Ncpus=$(nproc)L)"
 
 RUN R -e "install.packages(c( \
-            'Seurat', 'jackstraw', 'caret') \
+            'Seurat', 'jackstraw', 'caret'), \
         repos='http://cloud.r-project.org', \
         Ncpus=$(nproc)L)"
 
@@ -73,7 +73,7 @@ RUN R -e "install.packages(c( \
         Ncpus=$(nproc)L)"
 
 RUN R -e "BiocManager::install(c( \
-            'impute', 'preprocessCore', 'GO.db', 'scater', EnsDb.Hsapiens.v86) \
+            'impute', 'preprocessCore', 'GO.db', 'scater', EnsDb.Hsapiens.v86), \
         Ncpus=$(nproc)L)"
 
 RUN mkdir -p ~/sc-online && \
