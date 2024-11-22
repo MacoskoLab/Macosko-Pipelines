@@ -57,7 +57,6 @@ RUN R -e "BiocManager::install(c( \
             'EnsDb.Hsapiens.v75', 'monocle', 'org.Hs.eg.db', 'DropletUtils', 'scran', 'zoo', \
             'mixtools', 'rbokeh', 'DT', 'NMF', 'pheatmap', 'R2HTML', 'Rtsne', 'doMC', 'doRNG', \
             'EnsDb.Mmusculus.v79', 'SC3', 'PCAtools'), \
-        repos='http://cloud.r-project.org', \
         Ncpus=$(nproc)L)"
 
 RUN R -e "install.packages(c( \
@@ -75,7 +74,6 @@ RUN R -e "install.packages(c( \
 
 RUN R -e "BiocManager::install(c( \
             'impute', 'preprocessCore', 'GO.db', 'scater', EnsDb.Hsapiens.v86) \
-        repos='http://cloud.r-project.org', \
         Ncpus=$(nproc)L)"
 
 RUN mkdir -p ~/sc-online && \
