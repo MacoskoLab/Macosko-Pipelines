@@ -42,7 +42,7 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
 # Install R libraries based on order of operations an packages found in 
 # https://app.terra.bio/#workspaces/fbrihuman/sconline_integrative_analysis/analysis/launch/Settingup_sconline_source.ipynb
 RUN R -e "install.packages('devtools', repos='http://cloud.r-project.org', Ncpus=$(nproc)L)"
-RUN R -e "install_version('XML', version = '3.98-1.17', repos = 'http://cran.us.r-project.org', Ncpus=$(nproc)L)"
+RUN R -e "devtools::install_version('XML', version = '3.98-1.17', repos = 'http://cran.us.r-project.org', Ncpus=$(nproc)L)"
 
 
 RUN R -e "install.packages(c( \
