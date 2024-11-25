@@ -72,7 +72,7 @@ RUN R -e "BiocManager::install(c( \
         Ncpus=$(nproc)L)"
 
 RUN R -e "install.packages(c( \
-            'Seurat', 'jackstraw', 'caret'), \
+            'Seurat', 'jackstraw', 'caret', 'IRkernel'), \
         repos='http://cloud.r-project.org', \
         Ncpus=$(nproc)L)"
 
