@@ -4,14 +4,6 @@ ENV LANGUAGE C.UTF-8
 ENV LC_ALL C.UTF-8
 RUN echo "\numask 002" >> /etc/profile
 
-# Add a build argument for the service account key
-ARG SERVICE_ACCOUNT_KEY
-ENV GOOGLE_APPLICATION_CREDENTIALS=/broad/macosko/gcloud/velina-208320-bead39436991.json 
-
-# Copy the key during the build
-RUN gcloud auth activate-service-account --key-file=/broad/macosko/gcloud/velina-208320-bead39436991.json && \
-    gcloud config set project velina-208320
-
 # Install system libraries
 RUN apt-get update && apt-get install -y         \
     sudo wget curl rsync zip unzip less tree     \
@@ -28,6 +20,14 @@ RUN apt-get update && apt-get install -y         \
 
 # Install Google Cloud SDK
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
+
+# Copy the key during the build
+RUN gcloud auth activate-service-account --key-file=/broad/macosko/gcloud/velina-208320-bead39436991.json && \
+    gcloud config set project velina-208320
+
+RUN mkdir -p ~/sc-online && \
+    gcloud storage cp -r gs://fc-71ac3b81-2441-4171-8038-baf653634620/code ~/sc-online && \
+    gcloud storage cp -r gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles ~/sc-online
 
 # Install python
 # (Python 3.11.2 already installed)
@@ -83,10 +83,6 @@ RUN R -e "install.packages(c( \
 RUN R -e "BiocManager::install(c( \
             'impute', 'preprocessCore', 'GO.db', 'scater', 'EnsDb.Hsapiens.v86'), \
         Ncpus=$(nproc)L)"
-
-RUN mkdir -p ~/sc-online && \
-    gcloud storage cp -r gs://fc-71ac3b81-2441-4171-8038-baf653634620/code ~/sc-online && \
-    gcloud storage cp -r gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles ~/sc-online
 
 # Install micromamba
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
