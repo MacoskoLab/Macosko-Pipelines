@@ -28,9 +28,10 @@ COPY velina-208320-bead39436991.json /root/velina-208320-key.json
 RUN gcloud auth activate-service-account --key-file=/root/velina-208320-key.json && \
     gcloud config set project velina-208320
 
+# copied from fc-71ac3b81-2441-4171-8038-baf653634620
 RUN mkdir -p ~/sc-online && \
-    gcloud storage cp -r gs://fc-71ac3b81-2441-4171-8038-baf653634620/code ~/sc-online && \
-    gcloud storage cp -r gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles ~/sc-online
+    gcloud storage cp -r gs://macosko_data/sc-online/code ~/sc-online && \
+    gcloud storage cp -r gs://macosko_data/sc-online/serverFiles ~/sc-online
 
 # Install python
 # (Python 3.11.2 already installed)
