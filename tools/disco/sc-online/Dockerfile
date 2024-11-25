@@ -22,10 +22,10 @@ RUN apt-get update && apt-get install -y         \
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
 
 # Copy the key into the image
-COPY velina-208320-9d1f69c497cb.json /root/velina-208320-9d1f69c497cb.json
+COPY velina-208320-bead39436991.json /root/velina-208320-key.json
 
 # Authenticate
-RUN gcloud auth activate-service-account --key-file=/root/velina-208320-9d1f69c497cb.json && \
+RUN gcloud auth activate-service-account --key-file=/root/velina-208320-key.json && \
     gcloud config set project velina-208320
 
 RUN mkdir -p ~/sc-online && \
