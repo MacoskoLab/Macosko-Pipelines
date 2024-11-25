@@ -37,8 +37,6 @@ RUN mkdir -p ~/sc-online && \
 # (Python 3.11.2 already installed)
 RUN sudo ln -s /usr/bin/python3 /usr/bin/python
 
-RUN apt-get install -y python3-pip
-
 # Install R (version in sc-online notebooks is 4.2.1 https://app.terra.bio/#workspaces/fbrihuman/sconline_integrative_analysis/analysis/launch/Settingup_sconline_source.ipynb)
 RUN export R_VERSION=4.2.1 && \
     curl -O https://cdn.rstudio.com/r/debian-12/pkgs/r-${R_VERSION}_1_amd64.deb && \
