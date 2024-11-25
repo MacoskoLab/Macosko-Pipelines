@@ -4,6 +4,15 @@ ENV LANGUAGE C.UTF-8
 ENV LC_ALL C.UTF-8
 RUN echo "\numask 002" >> /etc/profile
 
+# Add a build argument for the service account key
+ARG SERVICE_ACCOUNT_KEY
+ENV GOOGLE_APPLICATION_CREDENTIALS=/broad/macosko/gcloud/velina-208320-bead39436991.json 
+
+# Copy the key during the build
+RUN echo "$SERVICE_ACCOUNT_KEY" > /broad/macosko/gcloud/velina-208320-bead39436991.json  && \
+    gcloud auth activate-service-account --key-file=/broad/macosko/gcloud/velina-208320-bead39436991.json && \
+    gcloud config set project velina-208320
+
 # Install system libraries
 RUN apt-get update && apt-get install -y         \
     sudo wget curl rsync zip unzip less tree     \
