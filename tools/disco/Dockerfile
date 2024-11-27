@@ -1,11 +1,10 @@
 # Define a build argument with a default value
 ARG BASE_IMAGE=pipeline-image:latest
+ARG USER=REQUIRED
+RUN [ "$USER" != "REQUIRED" ]
 
 # Use the build argument in the FROM instruction
 FROM ${BASE_IMAGE}
-
-ARG USER=REQUIRED
-RUN [ "$USER" != "REQUIRED" ]
 
 ### Configure RStudio ###
 # Set password
