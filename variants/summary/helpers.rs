@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use num_traits::int::PrimInt;
 use itertools::izip;
 
 pub type ReadNum = u64;
@@ -82,7 +81,7 @@ pub fn load_data(file: &hdf5::File) -> Vec<DataEntry> {
     assert!(file.dataset("data/mapq").expect("not found").dtype().expect(".h5 error").size() <= size_of::<u8>(), "ERROR: u8 too small");
     assert!(file.dataset("data/cb_i").expect("not found").dtype().expect(".h5 error").size() <= size_of::<WLi>(), "ERROR: WLi too small");
     assert!(file.dataset("data/ub_i").expect("not found").dtype().expect(".h5 error").size() <= size_of::<WLi>(), "ERROR: WLi too small");
-
+    
     // Load
     let data_read: Vec<ReadNum> = file.dataset("data/read").expect("not found").read_raw().expect("E");
     let data_flag: Vec<u16> = file.dataset("data/flag").expect("not found").read_raw().expect("E");
@@ -95,7 +94,7 @@ pub fn load_data(file: &hdf5::File) -> Vec<DataEntry> {
     assert_all_same(&[data_read.len(), data_flag.len(), data_rname_i.len(), data_mapq.len(), data_cb_i.len(), data_ub_i.len()]);
     assert!(data_flag.iter().all(|&flag| flag & FLAG_QC == 0), "ERROR: disallowed records in data"); // TODO: filter instead of erroring
     let mut set = HashSet::new(); for &value in &data_read { assert!(set.insert(value)); } // BAM line number must be unique - used as database key
-
+    
     // Zip
     let data = izip!(data_read, data_flag, data_rname_i, data_mapq, data_cb_i, data_ub_i)
                .map(|(i, f, r, m, c, u)| DataEntry{read: i, flag: f, rname_i: r, mapq: m, cb_i: c, ub_i: u})
@@ -149,7 +148,7 @@ pub fn load_matches(file: &hdf5::File) -> Vec<MatchEntry> {
     let match_read: Vec<ReadNum> = file.dataset("match/read").expect("not found").read_raw().expect("E");
     let match_start: Vec<SeqPos> = file.dataset("match/start").expect("not found").read_raw().expect("E");
     let match_end: Vec<SeqPos> = file.dataset("match/end").expect("not found").read_raw().expect("E");
-
+    
     // Assert
     assert_all_same(&[match_read.len(), match_start.len(), match_end.len()]);
     
@@ -159,21 +158,4 @@ pub fn load_matches(file: &hdf5::File) -> Vec<MatchEntry> {
                   .collect::<Vec<MatchEntry>>();
     
     return matches;
-}
-
-// Enables downsizing and writing to .h5
-pub trait WriteVector {
-    fn write_vector(&self, group: &hdf5::Group, name: &str);
-}
-impl<T: PrimInt> WriteVector for [T] {
-    fn write_vector(&self, group: &hdf5::Group, name: &str) {
-        if self.len() == 0 {return ()}
-        let max: u128 = self.iter().max().expect("ERROR: blank").to_u128().expect("ERROR: not u128");
-        match max {
-            0..=255            => group.new_dataset_builder().deflate(1).with_data(&self.iter().map(|x| x.to_u8().expect("ERROR: not u8")).collect::<Vec<u8>>()).create(name).expect(".h5 error"),
-            256..=65535        => group.new_dataset_builder().deflate(1).with_data(&self.iter().map(|x| x.to_u16().expect("ERROR: not u16")).collect::<Vec<u16>>()).create(name).expect(".h5 error"),
-            65536..=4294967295 => group.new_dataset_builder().deflate(1).with_data(&self.iter().map(|x| x.to_u32().expect("ERROR: not u32")).collect::<Vec<u32>>()).create(name).expect(".h5 error"),
-            _                  => group.new_dataset_builder().deflate(1).with_data(&self.iter().map(|x| x.to_u64().expect("ERROR: not u64")).collect::<Vec<u64>>()).create(name).expect(".h5 error"),
-        };
-    }
 }
