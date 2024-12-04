@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 hdf5 = "0.8.1"
 itertools = "0.12.1"
-num-traits = "0.2.18"
+arrow = "53.3.0"
+parquet = "53.3.0"
