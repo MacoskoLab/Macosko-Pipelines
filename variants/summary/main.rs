@@ -1,6 +1,14 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::fs::File;
 use hdf5;
+
+use arrow::record_batch::RecordBatch;
+use arrow::array::{UInt64Array, UInt32Array, UInt16Array, UInt8Array};
+use arrow::array::ArrayRef;
+use std::sync::Arc;
+use arrow::datatypes::Schema;
+use parquet::arrow::ArrowWriter;
 
 mod helpers;
 use helpers::*;
@@ -30,6 +38,7 @@ fn main() {
     snv.sort_by_key(|e| order_map.get(&e.read).unwrap());
     matches.sort_by_key(|e| order_map.get(&e.read).unwrap());
     
+    // PROCESS READS //
     eprintln!("Processing reads...");
     
     // Create data structures (umi) (cb_i) (ub_i) (rname_i) (strand) (reads) (mapq_avg)
@@ -136,40 +145,58 @@ fn main() {
     assert!(snv_idx == snv.len());
     assert!(matches_idx == matches.len());
     
+    // SAVE RESULTS //
     eprintln!("Saving output...");
     
-    // Create umis.h5 file
+    // Create .parquet files
     let out_dir = Path::new(&args[1]).parent().unwrap();
-    let file = hdf5::File::create(out_dir.join("umis.h5")).expect("Could not create .h5 output file");
+    let data_file = File::create(&out_dir.join("data.parquet")).expect("Could not create data.parquet output file");
+    let snv_file = File::create(&out_dir.join("snv.parquet")).expect("Could not create snv.parquet output file");
+    let match_file = File::create(&out_dir.join("match.parquet")).expect("Could not create match.parquet output file");
+    
+    // Pack metadata
+    let metadata: HashMap<String, String> = HashMap::from([
+        ("chimeric_reads".to_string(), chimeric_reads.to_string()),
+        ("chimeric_umis".to_string(), chimeric_umis.to_string())
+    ]);
+    
     // Write general data
-    let data_group = file.create_group("data").expect(".h5 error");
-    assert_all_same(&[data_umi.len(), data_cb_i.len(), data_ub_i.len(), data_rname_i.len(), data_strand.len(), data_reads.len(), data_mapq_avg.len()]);
-    data_umi.write_vector(&data_group, "umi");           // umi number (key)
-    data_cb_i.write_vector(&data_group, "cb_i");         // cb whitelist index (0-indexed)
-    data_ub_i.write_vector(&data_group, "ub_i");         // ub whitelist index (0-indexed)
-    data_rname_i.write_vector(&data_group, "rname_i");   // rname whitelist index (0-indexed)
-    data_strand.write_vector(&data_group, "strand");     // 0 normal, 1 means reverse complemented
-    data_reads.write_vector(&data_group, "reads");       // number of reads for the umi
-    data_mapq_avg.write_vector(&data_group, "mapq_avg"); // integer average mapq for all reads of the umi
-    // Write the SNV data
-    let snv_group = file.create_group("snv").expect(".h5 error");
-    assert_all_same(&[snv_umi.len(), snv_pos.len(), snv_alt.len(), snv_hq.len(), snv_lq.len(), snv_total.len()]);
-    snv_umi.write_vector(&snv_group, "umi");         // umi number (key)
-    snv_pos.write_vector(&snv_group, "pos");         // POS of SNV
-    snv_alt.write_vector(&snv_group, "alt");         // ALT base
-    snv_hq.write_vector(&snv_group, "hq");           // number of high-quality reads
-    snv_lq.write_vector(&snv_group, "lq");           // number of low-quality reads
-    snv_total.write_vector(&snv_group, "total");     // number of total reads observing its POS
+    let data_batch = RecordBatch::try_from_iter(vec![
+        ("umi", Arc::new(UInt64Array::from(data_umi)) as ArrayRef),          // umi number (key)
+        ("cb_i", Arc::new(UInt32Array::from(data_cb_i)) as ArrayRef),        // cb whitelist index (0-indexed)
+        ("ub_i", Arc::new(UInt32Array::from(data_ub_i)) as ArrayRef),        // ub whitelist index (0-indexed)
+        ("rname_i", Arc::new(UInt16Array::from(data_rname_i)) as ArrayRef),  // rname whitelist index (0-indexed)
+        ("strand", Arc::new(UInt8Array::from(data_strand)) as ArrayRef),     // 0 normal, 1 means reverse complemented
+        ("reads", Arc::new(UInt64Array::from(data_reads)) as ArrayRef),      // number of reads for the umi
+        ("mapq_avg", Arc::new(UInt8Array::from(data_mapq_avg)) as ArrayRef), // integer average mapq for all reads of the umi
+    ]).unwrap();
+    let data_schema = Schema::new_with_metadata(data_batch.schema().fields().clone(), metadata);
+    let mut writer = ArrowWriter::try_new(data_file, Arc::new(data_schema), None).unwrap();
+    writer.write(&data_batch).unwrap();
+    writer.close().unwrap();
+    
+    // Write the snv data
+    let snv_batch = RecordBatch::try_from_iter(vec![
+        ("umi", Arc::new(UInt64Array::from(snv_umi)) as ArrayRef),     // umi number (key)
+        ("pos", Arc::new(UInt32Array::from(snv_pos)) as ArrayRef),     // POS of SNV
+        ("alt", Arc::new(UInt8Array::from(snv_alt)) as ArrayRef),      // ALT base
+        ("hq", Arc::new(UInt64Array::from(snv_hq)) as ArrayRef),       // number of high-quality reads
+        ("lq", Arc::new(UInt64Array::from(snv_lq)) as ArrayRef),       // number of low-quality reads
+        ("total", Arc::new(UInt64Array::from(snv_total)) as ArrayRef), // number of total reads observing its POS
+    ]).unwrap();
+    let mut writer = ArrowWriter::try_new(snv_file, snv_batch.schema(), None).unwrap();
+    writer.write(&snv_batch).unwrap();
+    writer.close().unwrap();
+    
     // Write the matches data
-    let match_group = file.create_group("match").expect(".h5 error");
-    assert_all_same(&[match_umi.len(), match_start.len(), match_end.len()]);
-    match_umi.write_vector(&match_group, "umi");     // umi number (key)
-    match_start.write_vector(&match_group, "start"); // 0-indexed position of range start (inclusive)
-    match_end.write_vector(&match_group, "end");     // 0-indexed position of range end (exclusive)
-    // Write metadata
-    let meta_group = file.create_group("metadata").expect(".h5 error");
-    vec![chimeric_reads].write_vector(&meta_group, "reads_chimeric");
-    vec![chimeric_umis].write_vector(&meta_group, "umis_chimeric");
+    let match_batch = RecordBatch::try_from_iter(vec![
+        ("umi", Arc::new(UInt64Array::from(match_umi)) as ArrayRef),     // umi number (key)
+        ("start", Arc::new(UInt32Array::from(match_start)) as ArrayRef), // 0-indexed position of range start (inclusive)
+        ("end", Arc::new(UInt32Array::from(match_end)) as ArrayRef),     // 0-indexed position of range end (exclusive)
+    ]).unwrap();
+    let mut writer = ArrowWriter::try_new(match_file, match_batch.schema(), None).unwrap();
+    writer.write(&match_batch).unwrap();
+    writer.close().unwrap();
     
     eprintln!("Done!");
 }
