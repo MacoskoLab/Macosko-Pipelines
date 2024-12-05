@@ -2,16 +2,21 @@ use std::path::Path;
 use std::fs::File;
 use std::io::{Read, BufRead, BufReader, Write};
 
-// run "samtools faidx <output_filename>" afterwards
-
 fn main() {
-    let filename: &str = "refdata-gex-GRCh38-2024-A.fa";
-    let input_filename = ["fasta_whitespace", &filename].join("/");
-    let output_filename = ["fasta_nowhitespace", &filename].join("/");
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2 {
+        panic!("Usage: removefastawhitespace fasta.fa");
+    }
+    
+    // define input/output paths
+    assert!(Path::new("fasta_whitespace").is_dir(), "fasta_whitespace not found");
+    assert!(Path::new("fasta_nowhitespace").is_dir(), "fasta_nowhitespace not found");
+    let input_filename = ["fasta_whitespace", &args[1]].join("/");
+    let output_filename = ["fasta_nowhitespace", &args[1]].join("/");
     
     // make sure input exists (and output doesn't exist)
-    assert!(Path::new(&input_filename).exists(), "ERROR: input fasta file does not exist");
-    assert!(!Path::new(&output_filename).exists(), "ERROR: output fasta file already exists");
+    assert!(Path::new(&input_filename).exists(), "ERROR: input fasta file does not exist ({})", &args[1]);
+    assert!(!Path::new(&output_filename).exists(), "ERROR: output fasta file already exists ({})", &args[1]);
     
     // make sure the input file is just text and newlines
     let reader = BufReader::new(File::open(&input_filename).expect("ERROR: could not load input fasta"));
@@ -28,6 +33,8 @@ fn main() {
     let infile = File::open(&input_filename).expect("ERROR: could not load input fasta");
     let mut outfile = File::create(&output_filename).expect("ERROR: could not create output");
     let mut buffer = String::new(); // for fasta sequences
+    
+    eprintln!("Removing whitespace...");
     
     // loop
     for line_result in BufReader::new(infile).lines() {
@@ -67,4 +74,6 @@ fn main() {
         }
     }
     assert!(numheader*2 == numlines, "ERROR: number of lines is not number of headers x 2");
+    
+    eprintln!("Done! Run this command to create the fasta index file:\nsamtools faidx fasta_nowhitespace/{}", &args[1]);
 }
