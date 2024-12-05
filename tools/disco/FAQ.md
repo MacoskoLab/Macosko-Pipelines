@@ -176,7 +176,8 @@ A: Yes. Run these commands on each node that has podman state:
 ```
 rm -rf /tmp/containers-user-$UID
 rm -rf /tmp/podman-run-$UID
-podman system reset
+podman rmi -a -f
+echo y | podman system reset
 ```
 
 Any containers found left in `podman ps --all --external` will have to be manually removed, then run `podman system reset` again
