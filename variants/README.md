@@ -32,10 +32,7 @@ Does not compute:
 * Anything related to non-CB/UB tags (xf, RE, ts, pa)
 * Anything about the FLAG (except the strand)
 
-umis.h5
--------
-
-data
+**data.parquet**
 * umi - umi number (used as database key)
 * cb_i - whitelists.h5 cb index (0-indexed)
 * ub_i - whitelists.h5 ub index (0-indexed)
@@ -44,7 +41,7 @@ data
 * reads - number of BAM records collapsed into the umi
 * mapq_avg - average MAPQ for all reads for the umi, rounded to nearest integer
 
-snv
+**snv.parquet**
 * umi - umi number (used as database key)
 * pos - position of SNV
 * alt - ALT base
@@ -52,11 +49,11 @@ snv
 * lq - low-quality observations (#reads where snv base quality ≤ QUAL_CUTOFF)
 * total - total number of reads covering the snv position
 
-match
+**match.parquet**
 * umi - umi number (used as database key)
 * start - 0-indexed position of matching interval start (inclusive)
 * end - 0-indexed position of range end (exclusive)
 
-metadata
+**metadata**
 * reads_chimeric - number of reads not belonging to a dominant (RNAME, strand) for a (CB, UB)
 * umis_chimeric - number of (CB, UB) tuples discarded for not having a dominant (RNAME, strand)
