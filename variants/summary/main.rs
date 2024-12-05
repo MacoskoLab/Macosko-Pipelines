@@ -64,58 +64,13 @@ fn main() {
     let mut chimeric_reads: ReadNum = 0;
     let mut chimeric_umis: ReadNum = 0;
 
-    // Initial state
-    let mut curr_cb: WLi = data.get(0).expect("ERROR: empty").cb_i;
-    let mut curr_ub: WLi = data.get(0).expect("ERROR: empty").ub_i;
-    let mut umi_dict: HashMap<(RNAMEi, u8), UMIinfo> = HashMap::new(); // (rname_i, strand) -> (reads, mapq, snv, matches)
     // Loop through the reads
     let mut umi: ReadNum = 0;
     let mut snv_idx: usize = 0;
     let mut matches_idx: usize = 0;
-    for d in data { // d is (read, flag, rname_i, mapq, cb_i, ub_i)
+    let mut umi_dict: HashMap<(RNAMEi, u8), UMIinfo> = HashMap::new(); // (rname_i, strand) -> (reads, mapq, snv, matches)
+    for (data_idx, d) in data.iter().enumerate() { // d is (read, flag, rname_i, mapq, cb_i, ub_i)
     
-        if (d.cb_i != curr_cb) || (d.ub_i != curr_ub) {
-          // remove chimerism, take dominant RNAME
-          let total_reads: ReadNum = umi_dict.values().map(|record| record.reads).sum();
-          let max_reads: ReadNum = umi_dict.values().map(|record| record.reads).max().unwrap();
-          if umi_dict.values().filter(|record| record.reads == max_reads).count() > 1 { // if two RNAME tie for max read support, discard the whole umi
-              chimeric_reads += total_reads;
-              chimeric_umis += 1;
-          } else { // get the RNAME with the most read support
-              let (&(rname_i, strand), umi_info) = umi_dict.iter().max_by_key(|entry| entry.1.reads).unwrap();
-              // write aggregate data
-              data_umi.push(umi);
-              data_cb_i.push(curr_cb); 
-              data_ub_i.push(curr_ub);
-              data_rname_i.push(rname_i);
-              data_strand.push(strand);
-              data_reads.push(umi_info.reads);
-              data_mapq_avg.push(umi_info.mapq_avg());
-              // write aggregate snv
-              for ((pos, alt), (hq, lq)) in umi_info.snv.iter() {
-                  snv_umi.push(umi);
-                  snv_pos.push(*pos);
-                  snv_alt.push(*alt);
-                  snv_hq.push(*hq);
-                  snv_lq.push(*lq);
-                  snv_total.push(umi_info.matches.iter().filter(|&(s, e)| *pos >= *s && *pos < *e).count() as ReadNum);
-              }
-              // write aggregate matches
-              for interval in umi_info.merge_intervals() {
-                match_umi.push(umi);
-                match_start.push(interval.0);
-                match_end.push(interval.1);
-              }
-              // write metadata
-              chimeric_reads += total_reads - umi_info.reads;
-              umi += 1;
-          }
-          // reset umi struct
-          umi_dict = HashMap::new();
-          curr_cb = d.cb_i;
-          curr_ub = d.ub_i;
-        }
-        
         // get the UMIinfo for the current (rname_i, strand)
         let umi_info: &mut UMIinfo = umi_dict.entry((d.rname_i, flag2strand(d.flag))).or_insert(UMIinfo::new()); 
         
@@ -141,6 +96,61 @@ fn main() {
             umi_info.matches.push((start, end));
             matches_idx += 1;
         }
+        
+        // check if there are more reads to aggregate
+        if data_idx+1 < data.len() && d.cb_i == data[data_idx+1].cb_i && d.ub_i == data[data_idx+1].ub_i {
+            continue
+        }
+        
+        // if two (RNAME, strand) tie for max read support, discard the whole umi
+        let total_reads: ReadNum = umi_dict.values().map(|record| record.reads).sum();
+        let max_reads: ReadNum = umi_dict.values().map(|record| record.reads).max().unwrap();
+        if umi_dict.values().filter(|ui| ui.reads == max_reads).count() > 1 { 
+            chimeric_reads += total_reads;
+            chimeric_umis += 1;
+            umi_dict = HashMap::new();
+            continue
+        }
+        
+        // save the (RNAME, strand) with the most read support
+        let (&(rname_i, strand), umi_info) = umi_dict.iter().max_by_key(|entry| entry.1.reads).unwrap();
+        umi += 1;
+        
+        // write aggregate data
+        data_umi.push(umi);
+        data_cb_i.push(d.cb_i); 
+        data_ub_i.push(d.ub_i);
+        data_rname_i.push(rname_i);
+        data_strand.push(strand);
+        data_reads.push(umi_info.reads);
+        data_mapq_avg.push(umi_info.mapq_avg());
+        
+        // write aggregate snv
+        for (&(pos, alt), &(hq, lq)) in umi_info.snv.iter() {
+            snv_umi.push(umi);
+            snv_pos.push(pos);
+            snv_alt.push(alt);
+            snv_hq.push(hq);
+            snv_lq.push(lq);
+            snv_total.push(umi_info.matches.iter()
+                                           .filter(|(s, e)| pos >= *s && pos < *e)
+                                           .count()
+                                           .try_into()
+                                           .expect("snv_total data type too small"));
+        }
+        
+        // write aggregate matches
+        for interval in umi_info.merge_intervals() {
+          match_umi.push(umi);
+          match_start.push(interval.0);
+          match_end.push(interval.1);
+        }
+        
+        // update metadata
+        chimeric_reads += total_reads - umi_info.reads;
+        
+        // reset umi struct
+        umi_dict = HashMap::new();
     }
     assert!(snv_idx == snv.len());
     assert!(matches_idx == matches.len());
