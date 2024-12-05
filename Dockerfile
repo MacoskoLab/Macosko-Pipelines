@@ -5,14 +5,15 @@ ENV LC_ALL C.UTF-8
 RUN echo "\numask 002" >> /etc/profile
 
 # Install system libraries
-RUN apt-get update && apt-get install -y         \
-    sudo wget curl rsync zip unzip less tree     \
-    vim nano tmux screen htop dstat socat expect \
-    procps moreutils gnupg ssh git-all           \
-    iproute2 net-tools lsof                      \
-    libudunits2-dev libgdal-dev                  \
-    libncurses5-dev libncursesw5-dev             \
-    zlib1g-dev liblzma-dev libbz2-dev            \
+RUN apt-get update && apt-get install -y  \
+    sudo zip unzip less tree expect       \
+    wget curl rsync socat                 \
+    vim nano tmux screen htop ncdu dstat  \ 
+    procps moreutils gnupg ssh git-all    \
+    iproute2 net-tools lsof               \
+    libudunits2-dev libgdal-dev           \
+    libncurses5-dev libncursesw5-dev      \
+    zlib1g-dev liblzma-dev libbz2-dev     \
     gdebi-core build-essential cmake pkg-config alien \
     libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev \
     apt-transport-https ca-certificates libssl-dev libxml2-dev \
@@ -24,9 +25,6 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
 # Install python
 # (Python 3.11.2 already installed)
 RUN sudo ln -s /usr/bin/python3 /usr/bin/python
-
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # Install Samtools
 RUN wget -P /opt https://github.com/samtools/samtools/releases/download/1.21/samtools-1.21.tar.bz2 && \
@@ -69,7 +67,13 @@ RUN git clone https://github.com/soedinglab/MMseqs2.git /opt/MMseqs2 && \
     make install && \
     ln -s /opt/MMseqs2/build/bin/mmseqs /usr/local/bin/mmseqs
 # Install DuckDB
-# RUN https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip
+RUN wget -P /opt https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip && \
+    unzip /opt/duckdb_cli-linux-amd64.zip -d /opt && \
+    rm /opt/duckdb_cli-linux-amd64.zip && \
+    ln -s /opt/duckdb /usr/local/bin/duckdb
+    
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # Install Julia
 RUN wget -P /opt https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.5-linux-x86_64.tar.gz && \
@@ -143,12 +147,34 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    numpy pandas scipy scikit-learn \
                    matplotlib seaborn plotly pypdf \
                    networkx rustworkx igraph graph-tool \
-                   pynndescent umap-learn leidenalg \
+                   umap-learn pynndescent sparse_dot_topn leidenalg \
                    python-duckdb"
 
 # Install IRkernel
 RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
 
+# Install rust tools
+RUN . /root/.cargo/env && \
+    wget -P /opt/bamscrape/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/bamscrape/main.rs && \
+    wget -P /opt/bamscrape/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/bamscrape/helpers.rs && \
+    wget -P /opt/bamscrape     https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/bamscrape/Cargo.toml && \
+    cd /opt/bamscrape && \
+    cargo build --release && \
+    ln -s /opt/bamscrape/target/release/bamscrape /usr/local/bin/bamscrape
+RUN . /root/.cargo/env && \
+    wget -P /opt/aggread/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/aggread/main.rs && \
+    wget -P /opt/aggread/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/aggread/helpers.rs && \
+    wget -P /opt/aggread     https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/aggread/Cargo.toml && \
+    cd /opt/aggread && \
+    cargo build --release && \
+    ln -s /opt/aggread/target/release/aggread /usr/local/bin/aggread
+RUN . /root/.cargo/env && \
+    wget -P /opt/removefastawhitespace/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/removefastawhitespace/main.rs && \
+    wget -P /opt/removefastawhitespace     https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/removefastawhitespace/Cargo.toml && \
+    cd /opt/removefastawhitespace && \
+    cargo build --release && \
+    ln -s /opt/removefastawhitespace/target/release/removefastawhitespace /usr/local/bin/removefastawhitespace
+    
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
 
