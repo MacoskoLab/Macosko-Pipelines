@@ -18,6 +18,8 @@ RUN echo '{\n  "sync_files_pane_working_dir": true\n}' > /etc/rstudio/rstudio-pr
 RUN expect -c 'spawn bash -lc "micromamba run jupyter lab password"; expect "Enter password:"; send "$env(USER)\r"; expect "Verify password:"; send "$env(USER)\r"; expect eof'
 # Set the mamba root to /broad/macosko/$USER/micromamba if available
 RUN sed -i "4i\  [ ! -d '/broad/macosko/$USER' ] && echo 'WARNING: User directory not found' || bash -ic 'micromamba shell init -s bash -r /broad/macosko/$USER/micromamba' &> /dev/null" /root/.profile
+# Set default theme to JupyterLab Dark
+RUN DIR='/root/.jupyter/lab/user-settings/@jupyterlab/apputils-extension' && mkdir -p "$DIR" && echo '{\n  "theme": "JupyterLab Dark"\n}' > "$DIR/themes.jupyterlab-settings"
 # (miscellaneous config)
 RUN /bin/bash -lc "micromamba run jupyter lab --generate-config && echo -e 'c.ServerApp.terminals_enabled = True\nc.FileContentsManager.delete_to_trash = False' >> /root/.jupyter/jupyter_lab_config.py"
 
