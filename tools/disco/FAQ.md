@@ -52,6 +52,15 @@ A: Podman could not find "myimage". Run `podman images -a` to verify that "myima
 
 ---
 
+Q: How can I log podman into GCP?
+
+1. `ssh login00.broadinstitute.org`
+2. `use Google-Cloud-SDK`
+3. srun/ssh into the podman node
+4. `gcloud auth print-access-token --quiet | podman login -u oauth2accesstoken --password-stdin us-central1-docker.pkg.dev`
+
+---
+
 Q: What are some helpful commands for managing podman?
 
 A:
