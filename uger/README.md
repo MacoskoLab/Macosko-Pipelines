@@ -1,8 +1,4 @@
 ## Podman commands
-Log in:
-```
-use Google-Cloud-SDK
-COMMAND="gcloud auth print-access-token --quiet | podman login -u oauth2accesstoken --password-stdin us-central1-docker.pkg.dev"
 ```
 List the images:
 ```
