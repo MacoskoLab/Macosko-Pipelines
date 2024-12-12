@@ -280,11 +280,11 @@ fn main() {
     // Write the snv data
     let snv_batch = RecordBatch::try_from_iter(vec![
         ("umi", Arc::new(UInt64Array::from(snv_umi)) as ArrayRef),       // umi number (key)
-        ("pos", Arc::new(UInt32Array::from(snv_pos)) as ArrayRef),       // POS of SNV
+        ("pos", Arc::new(UInt32Array::from(snv_pos)) as ArrayRef),       // 0-indexed position of SNV
         ("alt", Arc::new(UInt8Array::from(snv_alt)) as ArrayRef),        // ALT base
         ("hq", Arc::new(UInt64Array::from(snv_hq)) as ArrayRef),         // number of reads with high-quality alt base
         ("lq", Arc::new(UInt64Array::from(snv_lq)) as ArrayRef),         // number of reads with low-quality alt base
-        ("covers", Arc::new(UInt64Array::from(snv_covers)) as ArrayRef), // number of reads observing its POS
+        ("covers", Arc::new(UInt64Array::from(snv_covers)) as ArrayRef), // number of reads observing its pos
     ]).unwrap();
     let mut writer = ArrowWriter::try_new(snv_file, snv_batch.schema(), None).unwrap();
     writer.write(&snv_batch).unwrap();
