@@ -15,10 +15,17 @@ pub struct UMIinfo {
     pub mapq: Vec<u8>,
     pub snv: HashMap<(SeqPos, u8), (ReadNum, ReadNum)>, // (pos, alt) -> (hq, lq)
     pub matches: Vec<(SeqPos, SeqPos)>, // (start, end)
+    pub ins: HashMap<(SeqPos, WLi), ReadNum>, // (pos, str_i) -> obs
+    pub del: HashMap<(SeqPos, SeqPos), ReadNum>, // (pos, len) -> obs
 }
 impl UMIinfo {
     pub fn new() -> Self {
-        Self { reads: 0, mapq: Vec::new(), snv: HashMap::new(), matches: Vec::new() }
+        Self { reads: 0,
+               mapq: Vec::new(),
+               snv: HashMap::new(),
+               matches: Vec::new(),
+               ins: HashMap::new(),
+               del: HashMap::new() }
     }
     
     // collapse match intervals into a consensus range
@@ -83,12 +90,12 @@ pub fn load_data(file: &hdf5::File) -> Vec<DataEntry> {
     assert!(file.dataset("data/ub_i").expect("not found").dtype().expect(".h5 error").size() <= size_of::<WLi>(), "ERROR: WLi too small");
     
     // Load
-    let data_read: Vec<ReadNum> = file.dataset("data/read").expect("not found").read_raw().expect("E");
-    let data_flag: Vec<u16> = file.dataset("data/flag").expect("not found").read_raw().expect("E");
-    let data_rname_i: Vec<RNAMEi> = file.dataset("data/rname_i").expect("not found").read_raw().expect("E");
-    let data_mapq: Vec<u8> = file.dataset("data/mapq").expect("not found").read_raw().expect("E");
-    let data_cb_i: Vec<WLi> = file.dataset("data/cb_i").expect("not found").read_raw().expect("E");
-    let data_ub_i: Vec<WLi> = file.dataset("data/ub_i").expect("not found").read_raw().expect("E");
+    let data_read: Vec<ReadNum> = file.dataset("data/read").expect("not found").read_raw().unwrap();
+    let data_flag: Vec<u16> = file.dataset("data/flag").expect("not found").read_raw().unwrap();
+    let data_rname_i: Vec<RNAMEi> = file.dataset("data/rname_i").expect("not found").read_raw().unwrap();
+    let data_mapq: Vec<u8> = file.dataset("data/mapq").expect("not found").read_raw().unwrap();
+    let data_cb_i: Vec<WLi> = file.dataset("data/cb_i").expect("not found").read_raw().unwrap();
+    let data_ub_i: Vec<WLi> = file.dataset("data/ub_i").expect("not found").read_raw().unwrap();
     
     // Assert
     assert_all_same(&[data_read.len(), data_flag.len(), data_rname_i.len(), data_mapq.len(), data_cb_i.len(), data_ub_i.len()]);
@@ -117,10 +124,10 @@ pub fn load_snv(file: &hdf5::File) -> Vec<SNVEntry> {
     assert!(file.dataset("snv/qual").expect("not found").dtype().expect(".h5 error").size() <= size_of::<u8>(), "ERROR: u8 too small");
     
     // Load
-    let snv_read: Vec<ReadNum> = file.dataset("snv/read").expect("not found").read_raw().expect("E");
-    let snv_pos: Vec<SeqPos> = file.dataset("snv/pos").expect("not found").read_raw().expect("E");
-    let snv_alt: Vec<u8> = file.dataset("snv/alt").expect("not found").read_raw().expect("E");
-    let snv_qual: Vec<u8> = file.dataset("snv/qual").expect("not found").read_raw().expect("E");
+    let snv_read: Vec<ReadNum> = file.dataset("snv/read").expect("not found").read_raw().unwrap();
+    let snv_pos: Vec<SeqPos> = file.dataset("snv/pos").expect("not found").read_raw().unwrap();
+    let snv_alt: Vec<u8> = file.dataset("snv/alt").expect("not found").read_raw().unwrap();
+    let snv_qual: Vec<u8> = file.dataset("snv/qual").expect("not found").read_raw().unwrap();
     
     // Assert
     assert_all_same(&[snv_read.len(), snv_pos.len(), snv_alt.len(), snv_qual.len()]);
@@ -145,9 +152,9 @@ pub fn load_matches(file: &hdf5::File) -> Vec<MatchEntry> {
     assert!(file.dataset("match/end").expect("not found").dtype().expect(".h5 error").size() <= size_of::<SeqPos>(), "ERROR: SeqPos too small");
     
     // Load
-    let match_read: Vec<ReadNum> = file.dataset("match/read").expect("not found").read_raw().expect("E");
-    let match_start: Vec<SeqPos> = file.dataset("match/start").expect("not found").read_raw().expect("E");
-    let match_end: Vec<SeqPos> = file.dataset("match/end").expect("not found").read_raw().expect("E");
+    let match_read: Vec<ReadNum> = file.dataset("match/read").expect("not found").read_raw().unwrap();
+    let match_start: Vec<SeqPos> = file.dataset("match/start").expect("not found").read_raw().unwrap();
+    let match_end: Vec<SeqPos> = file.dataset("match/end").expect("not found").read_raw().unwrap();
     
     // Assert
     assert_all_same(&[match_read.len(), match_start.len(), match_end.len()]);
@@ -158,4 +165,58 @@ pub fn load_matches(file: &hdf5::File) -> Vec<MatchEntry> {
                   .collect::<Vec<MatchEntry>>();
     
     return matches;
+}
+
+/* INSERTIONS */
+pub struct InsEntry {
+    pub read: ReadNum,
+    pub pos: SeqPos,
+    pub str_i: WLi,
+}
+pub fn load_insertions(file: &hdf5::File) -> Vec<InsEntry> {
+    assert!(file.dataset("ins/read").expect("not found").dtype().expect(".h5 error").size() <= size_of::<ReadNum>(), "ERROR: ReadNum too small");
+    assert!(file.dataset("ins/pos").expect("not found").dtype().expect(".h5 error").size() <= size_of::<SeqPos>(), "ERROR: SeqPos too small");
+    assert!(file.dataset("ins/str_i").expect("not found").dtype().expect(".h5 error").size() <= size_of::<WLi>(), "ERROR: WLi too small");
+    
+    // Load
+    let ins_read: Vec<ReadNum> = file.dataset("ins/read").expect("not found").read_raw().unwrap();
+    let ins_pos: Vec<SeqPos> = file.dataset("ins/pos").expect("not found").read_raw().unwrap();
+    let ins_str_i: Vec<WLi> = file.dataset("ins/str_i").expect("not found").read_raw().unwrap();
+    
+    // Assert
+    assert_all_same(&[ins_read.len(), ins_pos.len(), ins_str_i.len()]);
+    
+    // Zip
+    let ins = izip!(ins_read, ins_pos, ins_str_i)
+              .map(|(i, p, s)| InsEntry{read: i, pos: p, str_i: s})
+              .collect::<Vec<InsEntry>>();
+    
+    return ins;
+}
+
+/* DELETIONS */
+pub struct DelEntry {
+    pub read: ReadNum,
+    pub pos: SeqPos,
+    pub len: SeqPos,
+}
+pub fn load_deletions(file: &hdf5::File) -> Vec<DelEntry> {
+    assert!(file.dataset("del/read").expect("not found").dtype().expect(".h5 error").size() <= size_of::<ReadNum>(), "ERROR: ReadNum too small");
+    assert!(file.dataset("del/pos").expect("not found").dtype().expect(".h5 error").size() <= size_of::<SeqPos>(), "ERROR: SeqPos too small");
+    assert!(file.dataset("del/len").expect("not found").dtype().expect(".h5 error").size() <= size_of::<SeqPos>(), "ERROR: SeqPos too small");
+    
+    // Load
+    let del_read: Vec<ReadNum> = file.dataset("del/read").expect("not found").read_raw().unwrap();
+    let del_pos: Vec<SeqPos> = file.dataset("del/pos").expect("not found").read_raw().unwrap();
+    let del_len: Vec<SeqPos> = file.dataset("del/len").expect("not found").read_raw().unwrap();
+    
+    // Assert
+    assert_all_same(&[del_read.len(), del_pos.len(), del_len.len()]);
+    
+    // Zip
+    let del = izip!(del_read, del_pos, del_len)
+              .map(|(i, p, l)| DelEntry{read: i, pos: p, len: l})
+              .collect::<Vec<DelEntry>>();
+    
+    return del;
 }
