@@ -16,7 +16,7 @@ mod helpers;
 use helpers::*;
 
 const QUAL_CUTOFF: u8 = 30; // 2 12 26 34
-const BUFF_CUTOFF: SeqPos = 10;
+const BUFF_CUTOFF: SeqPos = 15;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -56,7 +56,7 @@ fn main() {
     let mut data_strand: Vec<u8> = Vec::new();
     let mut data_reads: Vec<ReadNum> = Vec::new();
     let mut data_mapq_avg: Vec<u8> = Vec::new();
-    // Create snv structures (umi) (pos) (alt) (hq) (lq) (total)
+    // Create snv structures (umi) (pos) (alt) (hq) (lq) (covers)
     let mut snv_umi: Vec<ReadNum> = Vec::new();
     let mut snv_pos: Vec<SeqPos> = Vec::new();
     let mut snv_alt: Vec<u8> = Vec::new();
@@ -267,7 +267,7 @@ fn main() {
         ("umi", Arc::new(UInt64Array::from(data_umi)) as ArrayRef),          // umi number (key)
         ("cb", Arc::new(data_cb) as ArrayRef),                               // cell barcode
         ("ub", Arc::new(data_ub) as ArrayRef),                               // UMI barcode
-        ("rname", Arc::new(data_rname) as ArrayRef),                       // RNAME
+        ("rname", Arc::new(data_rname) as ArrayRef),                         // RNAME
         ("strand", Arc::new(UInt8Array::from(data_strand)) as ArrayRef),     // 0 normal, 1 means reverse complemented
         ("reads", Arc::new(UInt64Array::from(data_reads)) as ArrayRef),      // number of reads for the umi
         ("mapq_avg", Arc::new(UInt8Array::from(data_mapq_avg)) as ArrayRef), // integer average mapq for all reads of the umi
