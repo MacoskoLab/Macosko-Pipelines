@@ -5,6 +5,8 @@ use hdf5;
 
 use arrow::record_batch::RecordBatch;
 use arrow::array::{UInt64Array, UInt32Array, UInt16Array, UInt8Array};
+use arrow::array::{UInt32DictionaryArray, UInt16DictionaryArray};
+use arrow::array::StringArray;
 use arrow::array::ArrayRef;
 use std::sync::Arc;
 use arrow::datatypes::Schema;
@@ -14,6 +16,7 @@ mod helpers;
 use helpers::*;
 
 const QUAL_CUTOFF: u8 = 30; // 2 12 26 34
+const BUFF_CUTOFF: SeqPos = 10;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -29,6 +32,8 @@ fn main() {
     let mut data = load_data(&file);       // Vec<DataEntry>  (read, flag, rname_i, mapq, cb_i, ub_i)
     let mut snv = load_snv(&file);         // Vec<SNVEntry>   (read, pos, alt, qual)
     let mut matches = load_matches(&file); // Vec<MatchEntry> (read, start, end)
+    let mut ins = load_insertions(&file);  // Vec<InsEntry> (read, pos, str_i)
+    let mut del = load_deletions(&file);   // Vec<DelEntry> (read, pos, len)
     
     eprintln!("Sorting reads...");
     
@@ -37,6 +42,8 @@ fn main() {
     let order_map: HashMap<ReadNum, usize> = data.iter().enumerate().map(|(i, e)| (e.read, i)).collect();
     snv.sort_by_key(|e| order_map.get(&e.read).unwrap());
     matches.sort_by_key(|e| order_map.get(&e.read).unwrap());
+    ins.sort_by_key(|e| order_map.get(&e.read).unwrap());
+    del.sort_by_key(|e| order_map.get(&e.read).unwrap());
     
     // PROCESS READS //
     eprintln!("Processing reads...");
@@ -55,11 +62,25 @@ fn main() {
     let mut snv_alt: Vec<u8> = Vec::new();
     let mut snv_hq: Vec<ReadNum> = Vec::new();
     let mut snv_lq: Vec<ReadNum> = Vec::new();
-    let mut snv_total: Vec<ReadNum> = Vec::new();
+    let mut snv_covers: Vec<ReadNum> = Vec::new();
     // Create matches structures (umi) (start) (end)
     let mut match_umi: Vec<ReadNum> = Vec::new();
     let mut match_start: Vec<SeqPos> = Vec::new();
     let mut match_end: Vec<SeqPos> = Vec::new();
+    // Create insertion structures
+    let mut ins_umi: Vec<ReadNum> = Vec::new();
+    let mut ins_pos: Vec<SeqPos> = Vec::new();
+    let mut ins_str_i: Vec<WLi> = Vec::new();
+    let mut ins_obs: Vec<ReadNum> = Vec::new();
+    let mut ins_hq: Vec<ReadNum> = Vec::new();
+    let mut ins_lq: Vec<ReadNum> = Vec::new();
+    // Create deletion structures
+    let mut del_umi: Vec<ReadNum> = Vec::new();
+    let mut del_pos: Vec<SeqPos> = Vec::new();
+    let mut del_len: Vec<SeqPos> = Vec::new();
+    let mut del_obs: Vec<ReadNum> = Vec::new();
+    let mut del_hq: Vec<ReadNum> = Vec::new();
+    let mut del_lq: Vec<ReadNum> = Vec::new();
     // Create metadata structures
     let mut chimeric_reads: ReadNum = 0;
     let mut chimeric_umis: ReadNum = 0;
@@ -68,6 +89,8 @@ fn main() {
     let mut umi: ReadNum = 0;
     let mut snv_idx: usize = 0;
     let mut matches_idx: usize = 0;
+    let mut ins_idx: usize = 0;
+    let mut del_idx: usize = 0;
     let mut umi_dict: HashMap<(RNAMEi, u8), UMIinfo> = HashMap::new(); // (rname_i, strand) -> (reads, mapq, snv, matches)
     for (data_idx, d) in data.iter().enumerate() { // d is (read, flag, rname_i, mapq, cb_i, ub_i)
     
@@ -95,6 +118,22 @@ fn main() {
             let end = matches[matches_idx].end;
             umi_info.matches.push((start, end));
             matches_idx += 1;
+        }
+        
+        // collect insertion data
+        while ins_idx < ins.len() && ins[ins_idx].read == d.read { // ins is (read, pos, str_i)
+            let pos = ins[ins_idx].pos;
+            let str_i = ins[ins_idx].str_i;
+            *umi_info.ins.entry((pos, str_i)).or_insert(0) += 1;
+            ins_idx += 1;
+        }
+        
+        // collect deletion data
+        while del_idx < del.len() && del[del_idx].read == d.read { // del is (read, pos, len)
+            let pos = del[del_idx].pos;
+            let len = del[del_idx].len;
+            *umi_info.del.entry((pos, len)).or_insert(0) += 1;
+            del_idx += 1;
         }
         
         // check if there are more reads to aggregate
@@ -132,18 +171,48 @@ fn main() {
             snv_alt.push(alt);
             snv_hq.push(hq);
             snv_lq.push(lq);
-            snv_total.push(umi_info.matches.iter()
-                                           .filter(|(s, e)| pos >= *s && pos < *e)
-                                           .count()
-                                           .try_into()
-                                           .expect("snv_total data type too small"));
+            snv_covers.push(umi_info.matches.iter()
+                                            .filter(|(s, e)| pos >= *s && pos < *e)
+                                            .count().try_into().expect("snv_covers data type too small"));
         }
         
         // write aggregate matches
         for interval in umi_info.merge_intervals() {
-          match_umi.push(umi);
-          match_start.push(interval.0);
-          match_end.push(interval.1);
+            match_umi.push(umi);
+            match_start.push(interval.0);
+            match_end.push(interval.1);
+        }
+        
+        // write aggregate insertions
+        for (&(pos, str_i), &obs) in umi_info.ins.iter() {
+            ins_umi.push(umi);
+            ins_pos.push(pos);
+            ins_str_i.push(str_i);
+            ins_obs.push(obs);
+            let covers_all: ReadNum = umi_info.matches.iter()
+                                              .filter(|(s, e)| *s < pos && *e > pos)
+                                              .count().try_into().unwrap();
+            let covers_hq: ReadNum = umi_info.matches.iter()
+                                             .filter(|(s, e)| *s + BUFF_CUTOFF < pos && *e - BUFF_CUTOFF > pos)
+                                             .count().try_into().unwrap();
+            ins_hq.push(covers_hq);
+            ins_lq.push(covers_all - covers_hq);
+        }
+        
+        // write aggregate deletions
+        for (&(pos, len), &obs) in umi_info.del.iter() {
+            del_umi.push(umi);
+            del_pos.push(pos);
+            del_len.push(len);
+            del_obs.push(obs);
+            let covers_all: ReadNum = umi_info.matches.iter()
+                                              .filter(|(s, e)| *s < pos && *e > pos)
+                                              .count().try_into().unwrap();
+            let covers_hq: ReadNum = umi_info.matches.iter()
+                                             .filter(|(s, e)| *s + BUFF_CUTOFF < pos && *e - BUFF_CUTOFF > pos)
+                                             .count().try_into().unwrap();
+            del_hq.push(covers_hq);
+            del_lq.push(covers_all - covers_hq);
         }
         
         // update metadata
@@ -154,15 +223,30 @@ fn main() {
     }
     assert!(snv_idx == snv.len());
     assert!(matches_idx == matches.len());
+    assert!(ins_idx == ins.len());
+    assert!(del_idx == del.len());
+    
+    std::mem::drop(data);
+    std::mem::drop(snv);
+    std::mem::drop(matches);
+    std::mem::drop(ins);
+    std::mem::drop(del);
     
     // SAVE RESULTS //
     eprintln!("Saving output...");
     
-    // Create .parquet files
-    let out_dir = Path::new(&args[1]).parent().unwrap();
-    let data_file = File::create(&out_dir.join("data.parquet")).expect("Could not create data.parquet output file");
-    let snv_file = File::create(&out_dir.join("snv.parquet")).expect("Could not create snv.parquet output file");
-    let match_file = File::create(&out_dir.join("match.parquet")).expect("Could not create match.parquet output file");
+    // Turn index+whitelist into arrow dictionary
+    use hdf5::types::VarLenAscii;
+    let cb: Vec<VarLenAscii> = file.dataset("whitelists/cb").expect("not found").read_raw().unwrap();
+    let ub: Vec<VarLenAscii> = file.dataset("whitelists/ub").expect("not found").read_raw().unwrap();
+    let ins: Vec<VarLenAscii> = file.dataset("whitelists/ins").expect("not found").read_raw().unwrap();
+    // "whitelists/sc"
+    let rname: Vec<VarLenAscii> = file.dataset("whitelists/rname").expect("not found").read_raw().unwrap();
+    
+    let data_cb = UInt32DictionaryArray::new(UInt32Array::from(data_cb_i), Arc::new(StringArray::from_iter_values(cb)) as ArrayRef);
+    let data_ub = UInt32DictionaryArray::new(UInt32Array::from(data_ub_i), Arc::new(StringArray::from_iter_values(ub)) as ArrayRef);
+    let data_rname = UInt16DictionaryArray::new(UInt16Array::from(data_rname_i), Arc::new(StringArray::from_iter_values(rname)) as ArrayRef);
+    let ins_str = UInt32DictionaryArray::new(UInt32Array::from(ins_str_i), Arc::new(StringArray::from_iter_values(ins)) as ArrayRef);
     
     // Pack metadata
     let metadata: HashMap<String, String> = HashMap::from([
@@ -170,12 +254,20 @@ fn main() {
         ("chimeric_umis".to_string(), chimeric_umis.to_string())
     ]);
     
+    // Create .parquet files
+    let out_dir = Path::new(&args[1]).parent().unwrap();
+    let data_file = File::create(&out_dir.join("data.parquet")).expect("Could not create data.parquet output file");
+    let snv_file = File::create(&out_dir.join("snv.parquet")).expect("Could not create snv.parquet output file");
+    let match_file = File::create(&out_dir.join("match.parquet")).expect("Could not create match.parquet output file");
+    let ins_file = File::create(&out_dir.join("ins.parquet")).expect("Could not create ins.parquet output file");
+    let del_file = File::create(&out_dir.join("del.parquet")).expect("Could not create del.parquet output file");
+    
     // Write general data
     let data_batch = RecordBatch::try_from_iter(vec![
         ("umi", Arc::new(UInt64Array::from(data_umi)) as ArrayRef),          // umi number (key)
-        ("cb_i", Arc::new(UInt32Array::from(data_cb_i)) as ArrayRef),        // cb whitelist index (0-indexed)
-        ("ub_i", Arc::new(UInt32Array::from(data_ub_i)) as ArrayRef),        // ub whitelist index (0-indexed)
-        ("rname_i", Arc::new(UInt16Array::from(data_rname_i)) as ArrayRef),  // rname whitelist index (0-indexed)
+        ("cb", Arc::new(data_cb) as ArrayRef),                               // cell barcode
+        ("ub", Arc::new(data_ub) as ArrayRef),                               // UMI barcode
+        ("rname", Arc::new(data_rname) as ArrayRef),                       // RNAME
         ("strand", Arc::new(UInt8Array::from(data_strand)) as ArrayRef),     // 0 normal, 1 means reverse complemented
         ("reads", Arc::new(UInt64Array::from(data_reads)) as ArrayRef),      // number of reads for the umi
         ("mapq_avg", Arc::new(UInt8Array::from(data_mapq_avg)) as ArrayRef), // integer average mapq for all reads of the umi
@@ -187,12 +279,12 @@ fn main() {
     
     // Write the snv data
     let snv_batch = RecordBatch::try_from_iter(vec![
-        ("umi", Arc::new(UInt64Array::from(snv_umi)) as ArrayRef),     // umi number (key)
-        ("pos", Arc::new(UInt32Array::from(snv_pos)) as ArrayRef),     // POS of SNV
-        ("alt", Arc::new(UInt8Array::from(snv_alt)) as ArrayRef),      // ALT base
-        ("hq", Arc::new(UInt64Array::from(snv_hq)) as ArrayRef),       // number of high-quality reads
-        ("lq", Arc::new(UInt64Array::from(snv_lq)) as ArrayRef),       // number of low-quality reads
-        ("total", Arc::new(UInt64Array::from(snv_total)) as ArrayRef), // number of total reads observing its POS
+        ("umi", Arc::new(UInt64Array::from(snv_umi)) as ArrayRef),       // umi number (key)
+        ("pos", Arc::new(UInt32Array::from(snv_pos)) as ArrayRef),       // POS of SNV
+        ("alt", Arc::new(UInt8Array::from(snv_alt)) as ArrayRef),        // ALT base
+        ("hq", Arc::new(UInt64Array::from(snv_hq)) as ArrayRef),         // number of reads with high-quality alt base
+        ("lq", Arc::new(UInt64Array::from(snv_lq)) as ArrayRef),         // number of reads with low-quality alt base
+        ("covers", Arc::new(UInt64Array::from(snv_covers)) as ArrayRef), // number of reads observing its POS
     ]).unwrap();
     let mut writer = ArrowWriter::try_new(snv_file, snv_batch.schema(), None).unwrap();
     writer.write(&snv_batch).unwrap();
@@ -206,6 +298,32 @@ fn main() {
     ]).unwrap();
     let mut writer = ArrowWriter::try_new(match_file, match_batch.schema(), None).unwrap();
     writer.write(&match_batch).unwrap();
+    writer.close().unwrap();
+    
+    // Write the insertion data
+    let ins_batch = RecordBatch::try_from_iter(vec![
+        ("umi", Arc::new(UInt64Array::from(ins_umi)) as ArrayRef), // umi number (key)
+        ("pos", Arc::new(UInt32Array::from(ins_pos)) as ArrayRef), // 0-indexed position of reference base after insertion
+        ("str", Arc::new(ins_str) as ArrayRef),                    // inserted string
+        ("obs", Arc::new(UInt64Array::from(ins_obs)) as ArrayRef), // number of reads with this insertion
+        ("hq", Arc::new(UInt64Array::from(ins_hq)) as ArrayRef),   // number of reads that did NOT observe the insertion (high confidence)
+        ("lq", Arc::new(UInt64Array::from(ins_lq)) as ArrayRef),   // number of reads that did NOT observe the insertion (low confidence)
+    ]).unwrap();
+    let mut writer = ArrowWriter::try_new(ins_file, ins_batch.schema(), None).unwrap();
+    writer.write(&ins_batch).unwrap();
+    writer.close().unwrap();
+    
+    // Write the deletion data
+    let del_batch = RecordBatch::try_from_iter(vec![
+        ("umi", Arc::new(UInt64Array::from(del_umi)) as ArrayRef), // umi number (key)
+        ("pos", Arc::new(UInt32Array::from(del_pos)) as ArrayRef), // 0-indexed position of first deleted reference base
+        ("len", Arc::new(UInt32Array::from(del_len)) as ArrayRef), // deletion length
+        ("obs", Arc::new(UInt64Array::from(del_obs)) as ArrayRef), // number of reads with this deletion
+        ("hq", Arc::new(UInt64Array::from(del_hq)) as ArrayRef),   // number of reads that did NOT observe the deletion (high confidence)
+        ("lq", Arc::new(UInt64Array::from(del_lq)) as ArrayRef),   // number of reads that did NOT observe the deletion (low confidence)
+    ]).unwrap();
+    let mut writer = ArrowWriter::try_new(del_file, del_batch.schema(), None).unwrap();
+    writer.write(&del_batch).unwrap();
     writer.close().unwrap();
     
     eprintln!("Done!");
