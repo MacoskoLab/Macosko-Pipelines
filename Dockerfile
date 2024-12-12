@@ -162,12 +162,12 @@ RUN . /root/.cargo/env && \
     cargo build --release && \
     ln -s /opt/bamscrape/target/release/bamscrape /usr/local/bin/bamscrape
 RUN . /root/.cargo/env && \
-    wget -P /opt/aggread/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/aggread/main.rs && \
-    wget -P /opt/aggread/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/aggread/helpers.rs && \
-    wget -P /opt/aggread     https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/aggread/Cargo.toml && \
-    cd /opt/aggread && \
+    wget -P /opt/read2umi/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/read2umi/main.rs && \
+    wget -P /opt/read2umi/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/read2umi/helpers.rs && \
+    wget -P /opt/read2umi     https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/read2umi/Cargo.toml && \
+    cd /opt/read2umi && \
     cargo build --release && \
-    ln -s /opt/aggread/target/release/aggread /usr/local/bin/aggread
+    ln -s /opt/read2umi/target/release/read2umi /usr/local/bin/read2umi
 RUN . /root/.cargo/env && \
     wget -P /opt/removefastawhitespace/src https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/removefastawhitespace/main.rs && \
     wget -P /opt/removefastawhitespace     https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/variants/removefastawhitespace/Cargo.toml && \
