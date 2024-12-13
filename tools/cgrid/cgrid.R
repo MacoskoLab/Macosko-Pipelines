@@ -581,18 +581,18 @@ select_points <- function(df) {
 }
 
 # Returns spline x,y dataframe
-anno_spline <- function(df) {
-  pts <- anno_points(df, lines=F, splines=T)
+anno_spline <- function(df, cex=1) {
+  pts <- anno_points(df, lines=F, splines=T, cex=cex)
   if (is.null(pts)) {return(data.frame(matrix(ncol=2, nrow=0)) %>% setNames(c("x","y")))}
   if (nrow(pts)<2) {return(pts)}
   return(make.spline(pts))
 }
 
 # Returns list of spline x,y dataframes
-anno_splines <- function(df) {
+anno_splines <- function(df, cex=1) {
   dfs <- list()
   repeat {
-    pts <- anno_points(df, lines=F, splines=T, previous_splines=dfs)
+    pts <- anno_points(df, lines=F, splines=T, previous_splines=dfs, cex=cex)
     if (is.null(pts) || nrow(pts)<2) {break}
     dfs %<>% list.append(make.spline(pts))
   }
