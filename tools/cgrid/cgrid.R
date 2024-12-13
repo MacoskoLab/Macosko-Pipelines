@@ -115,11 +115,14 @@ xy2dr <- function(xy, spl, res=1000) {
       j = ifelse(dists[i-1] < dists[i+1], i-1, i+1)
     }
     
+    # Compute d
     d <- min(dists) * point_line_side(spl[min(i,j),], spl[max(i,j),], pt)
     
+    # Compute r
     p <- proj(spl[i,], spl[j,], pt)
     p %<>% max(0) %>% min(1)
     r = i2d[i]*(1-p) + i2d[j]*(p)
+    
     return(c(d=d, r=r))
     
   }) %>% dplyr::bind_rows()
