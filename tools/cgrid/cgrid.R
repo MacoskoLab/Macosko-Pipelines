@@ -10,7 +10,9 @@ library(purrr)
 library(sf)
 library(qs)
 
+################################################################################
 ### Helper methods #############################################################
+################################################################################
 
 plot.new() # needed to initialize make.spline()
 
@@ -55,17 +57,6 @@ validate.xydf <- function(df) {
   stopifnot(is.finite(df[[1]]), is.finite(df[[2]])) # catch NA, NaN, Inf
 }
 
-# ensure that the cgrid (x,y,i,r) is coherent
-validate.cgrid <- function(cgrid) {
-  stopifnot(class(cgrid) == "data.frame", ncol(cgrid) >= 4)
-  stopifnot(names(cgrid)[1:4] == c("x","y","i","r"))
-  stopifnot(range(cgrid$i) == c(0,1), range(cgrid$r) == c(0,1))
-  stopifnot(len(unique(table(cgrid$i))) == 1, len(unique(table(cgrid$r))) == 1)
-  stopifnot(unique(table(cgrid$i)) * unique(table(cgrid$r)) == nrow(cgrid))
-  map(cgrid, ~stopifnot(is.numeric(.)))
-  map(cgrid, ~stopifnot(is.finite(.)))
-}
-
 # get the area enclosed by an (x,y) df
 polygon.area <- function(polygon_df) {
   validate.xydf(polygon_df)
@@ -89,6 +80,62 @@ in.bounds <- function(points_df, polygon_df) {
   inds[m] <- NA
   return(inds)
 }
+
+# geometry helpers
+proj <- function(A, B, P) {
+  AB = B - A
+  AP = P - A
+  return(sum(AP*AB) / sum(AB^2))
+}
+point_line_side <- function(A, B, P) {
+  cross_prod <- (B$x-A$x)*(P$y-A$y) - (B$y-A$y)*(P$x-A$x)
+  return(sign(cross_prod))
+}
+point_line_distance <- function(pt, l1, l2) {
+  dx = l2[[1]]-l1[[1]]
+  dy = l2[[2]]-l1[[2]]
+  return(abs((l1[[2]]-pt[[2]])*dx-(l1[[1]]-pt[[1]])*dy)/sqrt(dx^2+dy^2))
+}
+
+xy2dr <- function(xy, spl, res=1000) {
+  stopifnot("data.frame" %in% class(xy), c("x", "y") %in% names(xy))
+  stopifnot("data.frame" %in% class(spl), c("x", "y") %in% names(spl))
+  spl %<>% dplyr::select(x,y) %>% equalize(res)
+  i2d <- cumsum(path.dists(spl))
+  
+  df <- lapply(1:nrow(xy), function(idx) {
+    pt <- xy[idx, c("x","y")]
+    dists = cdist(pt, spl[,c("x","y")])[1,]
+    i = which.min(dists)
+    if (i == 1) {
+      j = 2
+    } else if (i == res) {
+      j = res - 1
+    } else {
+      j = ifelse(dists[i-1] < dists[i+1], i-1, i+1)
+    }
+    
+    whichside <- point_line_side(spl[min(i,j),c("x","y")], spl[max(i,j),c("x","y")], pt)
+    d <- min(dists) * whichside
+    
+    p <- proj(spl[i,c("x","y")], spl[j,c("x","y")], pt)
+    if (i==1 && p < 0) {return(c(d=d, r=1))}
+    if (i==res && p < 0) {return(c(d=d, r=res))}
+    p %<>% max(0) %>% min(1)
+    r = i2d[i]*(1-p) + i2d[j]*(p)
+    return(c(d=d, r=r))
+    
+  }) %>% dplyr::bind_rows()
+  
+  xy$d <- df$d
+  xy$r <- df$r
+  
+  return(xy)
+}
+
+################################################################################
+### spline methods #############################################################
+################################################################################
 
 # input (x,y) guide points df, return (x,y) spline df
 make.spline <- function(df, shape=-0.75) {
@@ -155,6 +202,21 @@ equalize <- function(df, n) {
   validate.xydf(df)
   dists <- seq(0, sum(path.dists(df)), length.out=n)
   return(dist2xy(df, dists))
+}
+
+################################################################################
+### cgrid methods ##############################################################
+################################################################################
+
+# ensure that the cgrid (x,y,i,r) is coherent
+validate.cgrid <- function(cgrid) {
+  stopifnot(class(cgrid) == "data.frame", ncol(cgrid) >= 4)
+  stopifnot(names(cgrid)[1:4] == c("x","y","i","r"))
+  stopifnot(range(cgrid$i) == c(0,1), range(cgrid$r) == c(0,1))
+  stopifnot(len(unique(table(cgrid$i))) == 1, len(unique(table(cgrid$r))) == 1)
+  stopifnot(unique(table(cgrid$i)) * unique(table(cgrid$r)) == nrow(cgrid))
+  map(cgrid, ~stopifnot(is.numeric(.)))
+  map(cgrid, ~stopifnot(is.finite(.)))
 }
 
 # take in cgrid (x,y,i,r), return list of splines (x,y)
@@ -249,7 +311,7 @@ makegrid2 <- function(spl1, spl2, num.i, num.r, p=1/20) {
 cgridmerge <- function(cgrid1, cgrid2, flip=F) {
   fetch <- function(cgrid, i, r) {return(unlist(dplyr::filter(cgrid, i==!!i, r==!!r)[c("x","y")]))}
   cgrid2above1 <- function(cgrid1, cgrid2) {
-      all(fetch(cgrid1,1,0)==fetch(cgrid2,0,0) & fetch(cgrid1,1,1)==fetch(cgrid2,0,1))
+    all(fetch(cgrid1,1,0)==fetch(cgrid2,0,0) & fetch(cgrid1,1,1)==fetch(cgrid2,0,1))
   }
   
   # Validate both cgrids, and assert that they are adjacent
@@ -263,41 +325,41 @@ cgridmerge <- function(cgrid1, cgrid2, flip=F) {
   
   # Adjust r
   update_r <- function(cgrid1, cgrid2) { # first argument gets r changed to match the second
-      # Get the seams
-      if (cgrid2above1(cgrid1, cgrid2)) {
-          path1 = cgrid1 %>% dplyr::filter(i==max(i)) %>% dplyr::arrange(r)
-          path2 = cgrid2 %>% dplyr::filter(i==min(i)) %>% dplyr::arrange(r)
-      } else if (cgrid2above1(cgrid2, cgrid1)) {
-          path1 = cgrid1 %>% dplyr::filter(i==min(i)) %>% dplyr::arrange(r)
-          path2 = cgrid2 %>% dplyr::filter(i==max(i)) %>% dplyr::arrange(r)
-      }
-      pdists = cdist(path1[,c("x","y")], path2[,c("x","y")])
-      
-      # compute p and (i,j) for each cgrid2 seam point
-      ijpr = purrr::map_dfr(1:ncol(pdists), function(i) {
-          twosmallest <- data.frame(i=1:nrow(pdists), d=pdists[,i]) %>% dplyr::arrange(d)
-          p = twosmallest$d[[1]] / (twosmallest$d[[1]]+twosmallest$d[[2]]) ; if (!is.finite(p)) { p = 0 }
-          return(c(i=twosmallest$i[[1]], j=twosmallest$i[[2]], p=p))
-      }) %>% dplyr::mutate(r = path2$r)
-      stopifnot(!duplicated(ijpr$r))
-      
-      cgrid1 = pmap_dfr(ijpr, function(i, j, p, r) {
-          col1 <- dplyr::filter(cgrid1, r==path1$r[[!!i]])
-          col2 <- dplyr::filter(cgrid1, r==path1$r[[!!j]])
-          stopifnot(col1$i == col2$i)
-          res <- col1[,c("x","y")]*(1-p) + col2[,c("x","y")]*(p)
-          res$i = col1$i ; res$r = r
-          return(res)
-      })
-      validate.cgrid(cgrid1)
-      return(cgrid1)
+    # Get the seams
+    if (cgrid2above1(cgrid1, cgrid2)) {
+      path1 = cgrid1 %>% dplyr::filter(i==max(i)) %>% dplyr::arrange(r)
+      path2 = cgrid2 %>% dplyr::filter(i==min(i)) %>% dplyr::arrange(r)
+    } else if (cgrid2above1(cgrid2, cgrid1)) {
+      path1 = cgrid1 %>% dplyr::filter(i==min(i)) %>% dplyr::arrange(r)
+      path2 = cgrid2 %>% dplyr::filter(i==max(i)) %>% dplyr::arrange(r)
+    }
+    pdists = cdist(path1[,c("x","y")], path2[,c("x","y")])
+    
+    # compute p and (i,j) for each cgrid2 seam point
+    ijpr = purrr::map_dfr(1:ncol(pdists), function(i) {
+      twosmallest <- data.frame(i=1:nrow(pdists), d=pdists[,i]) %>% dplyr::arrange(d)
+      p = twosmallest$d[[1]] / (twosmallest$d[[1]]+twosmallest$d[[2]]) ; if (!is.finite(p)) { p = 0 }
+      return(c(i=twosmallest$i[[1]], j=twosmallest$i[[2]], p=p))
+    }) %>% dplyr::mutate(r = path2$r)
+    stopifnot(!duplicated(ijpr$r))
+    
+    cgrid1 = pmap_dfr(ijpr, function(i, j, p, r) {
+      col1 <- dplyr::filter(cgrid1, r==path1$r[[!!i]])
+      col2 <- dplyr::filter(cgrid1, r==path1$r[[!!j]])
+      stopifnot(col1$i == col2$i)
+      res <- col1[,c("x","y")]*(1-p) + col2[,c("x","y")]*(p)
+      res$i = col1$i ; res$r = r
+      return(res)
+    })
+    validate.cgrid(cgrid1)
+    return(cgrid1)
   }
   d1 = sum(path.dists(cgrid1 %>% dplyr::filter(i==min(i)) %>% dplyr::arrange(r)))
   d2 = sum(path.dists(cgrid2 %>% dplyr::filter(i==max(i)) %>% dplyr::arrange(r)))
   if (xor(d2 > d1, flip)) { # change cgrid1
-      cgrid1 = update_r(cgrid1, cgrid2)
+    cgrid1 = update_r(cgrid1, cgrid2)
   } else { # change cgrid2
-      cgrid2 = update_r(cgrid2, cgrid1)
+    cgrid2 = update_r(cgrid2, cgrid1)
   }
   stopifnot(sort(unique(cgrid1$r)) == sort(unique(cgrid2$r)))
   stopifnot(range(cgrid1$i)==c(0,1), range(cgrid2$i)==c(0,1))
@@ -324,18 +386,6 @@ xy2ir <- function(xy, cgrid) {
   poly <- cgrid2poly(cgrid)
   m <- in.bounds(xy, poly[,c("x","y")])
   indf <- xy[m,] ; outdf <- xy[!m,]
-  
-  # geometry helpers
-  proj <- function(A, B, P) {
-    AB = B - A
-    AP = P - A
-    return(sum(AP*AB) / sum(AB^2))
-  }
-  point_line_distance <- function(pt, l1, l2) {
-    dx = l2[[1]]-l1[[1]]
-    dy = l2[[2]]-l1[[2]]
-    return(abs((l1[[2]]-pt[[2]])*dx-(l1[[1]]-pt[[1]])*dy)/sqrt(dx^2+dy^2))
-  }
   
   # assign <out> points
   avg <- cgrid.width(cgrid)
@@ -373,10 +423,10 @@ xy2ir <- function(xy, cgrid) {
   stopifnot(len(res)==nrow(indf), names(indf)[1:2]==c("x","y")) ; invisible(map(res,~stopifnot(nrow(.)==4, names(.)[1:2]==c("x","y"))))
   rs <- map(1:nrow(indf), ~c(res[[.]][1,"r"], point_line_distance(indf[.,], res[[.]][1,], res[[.]][2,]),
                              res[[.]][3,"r"], point_line_distance(indf[.,], res[[.]][3,], res[[.]][4,])
-                             )) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("r1","d1","r2","d2"))
+  )) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("r1","d1","r2","d2"))
   is <- map(1:nrow(indf), ~c(res[[.]][1,"i"], point_line_distance(indf[.,], res[[.]][1,], res[[.]][3,]),
                              res[[.]][2,"i"], point_line_distance(indf[.,], res[[.]][2,], res[[.]][4,])
-                             )) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("i1","d1","i2","d2"))
+  )) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("i1","d1","i2","d2"))
   indf$r <- (rs$r1*rs$d2+rs$r2*rs$d1)/(rs$d1+rs$d2)
   indf$i <- (is$i1*is$d2+is$i2*is$d1)/(is$d1+is$d2)
   indf %<>% dplyr::select(i, r, row)
@@ -404,7 +454,10 @@ obj2ir <- function(obj, cgrid) {
   return(obj)
 }
 
+################################################################################
 ### Shiny Servers ##############################################################
+################################################################################
+
 # cluster_selector
 # layer_selector
 # anno_points
@@ -567,7 +620,9 @@ anno_polar <- function(df) {
   return(df)
 }
 
-### Workflow ###################################################################
+################################################################################
+### Sample Workflow ############################################################
+################################################################################
 
 # STEP 1: Load coordinates
 # - `df` is a three-column dataframe of x, y, color
@@ -580,7 +635,7 @@ anno_polar <- function(df) {
 # df %<>% layer_selector
 
 # Option 2: load coordinate data directly
-# df <- read.csv("cgrid_sampledata.csv")
+# df <- read.csv("sampledata.csv")
 
 # STEP 2: Annotate splines
 # - all splines must be drawn in order and with the same orientation
