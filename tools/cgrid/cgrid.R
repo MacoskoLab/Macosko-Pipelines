@@ -32,7 +32,7 @@ scalevec <- function(x){stopifnot(!is.na(x)) ; vec=(x-min(x))/(max(x)-min(x)) ; 
 # Given a data vector, return a color vector
 vec2col <- function(vec, cont=F) {
   if (len(unique(vec)) == 1) {
-    col = rep("#000000",len(vec))
+    col = rep("#00BFC4", len(vec))
   } else if (!cont) {
     clusters = purrr::discard(gtools::mixedsort(unique(vec)), is.na)
     pal = scales::hue_pal()(len(clusters))
@@ -533,7 +533,7 @@ layer_selector <- function(df) {
 }
 
 # Returns an x,y dataframe of clicked points
-anno_points <- function(df, lines=F, splines=F, previous_lines=list(), previous_splines=list()) {
+anno_points <- function(df, lines=F, splines=F, previous_lines=list(), previous_splines=list(), cex=1) {
   # Pre-process
   if (ncol(df)==2) { df %<>% cbind(1) } # add cluster if missing
   stopifnot(ncol(df)==3) ; df %<>% setNames(c("x","y","col"))
@@ -553,7 +553,7 @@ anno_points <- function(df, lines=F, splines=F, previous_lines=list(), previous_
   server <- function(input, output) {
     df <- reactiveVal(data.frame(matrix(ncol=2, nrow=0)))
     output$plot <- renderPlot({
-      plot(x=x, y=y, col=colors, pch=19, asp=1, cex=1)
+      plot(x=x, y=y, col=colors, pch=19, asp=1, cex=cex)
       d <- df() ; points(d)
       if (lines) {lines(d,lwd=2)} ; if (splines && nrow(d)>=2) {lines(make.spline(d),lwd=2)}
       for (prev in previous_lines) {lines(prev, lwd=2, col="red")}
