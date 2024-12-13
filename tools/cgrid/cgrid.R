@@ -105,7 +105,7 @@ xy2dr <- function(xy, spl, res=1000) {
   
   df <- lapply(1:nrow(xy), function(idx) {
     pt <- xy[idx, c("x","y")]
-    dists = cdist(pt, spl[,c("x","y")])[1,]
+    dists = cdist(pt, spl)[1,]
     i = which.min(dists)
     if (i == 1) {
       j = 2
@@ -115,12 +115,9 @@ xy2dr <- function(xy, spl, res=1000) {
       j = ifelse(dists[i-1] < dists[i+1], i-1, i+1)
     }
     
-    whichside <- point_line_side(spl[min(i,j),c("x","y")], spl[max(i,j),c("x","y")], pt)
-    d <- min(dists) * whichside
+    d <- min(dists) * point_line_side(spl[min(i,j),], spl[max(i,j),], pt)
     
-    p <- proj(spl[i,c("x","y")], spl[j,c("x","y")], pt)
-    if (i==1 && p < 0) {return(c(d=d, r=1))}
-    if (i==res && p < 0) {return(c(d=d, r=res))}
+    p <- proj(spl[i,], spl[j,], pt)
     p %<>% max(0) %>% min(1)
     r = i2d[i]*(1-p) + i2d[j]*(p)
     return(c(d=d, r=r))
