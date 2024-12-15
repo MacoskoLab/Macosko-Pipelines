@@ -19,8 +19,8 @@ for arg in "$@"; do
     fi
 done
 
-ROOT="/broad/macosko/discopipeline"
-BINARY="/broad/macosko/discopipeline/software/cellranger-8.0.1/bin/cellranger"
+ROOT="/broad/macosko/pipelines"
+BINARY="/broad/macosko/pipelines/software/cellranger-8.0.1/bin/cellranger"
 OUTDIR="$ROOT/cellranger-count/$BCL"
 LOGDIR="$ROOT/logs/$BCL/$INDEX"
 
@@ -37,7 +37,7 @@ CELLRANGER_PARAMS="--id $INDEX \
 
 SBATCH_PARAMS="-C RedHat7 -o $LOGDIR/cellranger-count.log -J cellranger-count-$BCL-$INDEX \
                -c 16 --mem 128G --time 72:00:00 \
-               --mail-user mshabet@broadinstitute.org --mail-type END,FAIL,REQUEUE,INVALID_DEPEND,STAGE_OUT,TIME_LIMIT"
+               --mail-user macosko-pipelines@broadinstitute.org --mail-type END,FAIL,REQUEUE,INVALID_DEPEND,STAGE_OUT,TIME_LIMIT"
 
 mkdir -p $OUTDIR
 mkdir -p $LOGDIR
