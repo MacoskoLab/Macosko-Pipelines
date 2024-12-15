@@ -17,8 +17,8 @@ for arg in "$@"; do
     fi
 done
 
-ROOT="/broad/macosko/discopipeline"
-BINARY="/broad/macosko/discopipeline/software/bcl-convert-4.3.6-2.el7.x86_64/bin/bcl-convert"
+ROOT="/broad/macosko/pipelines"
+BINARY="/broad/macosko/pipelines/software/bcl-convert-4.3.6-2.el7.x86_64/bin/bcl-convert"
 LOGDIR="$ROOT/logs/$BCL"
 
 BCLCONVERT_PARAMS="--bcl-input-directory=$BCLPATH \
@@ -28,7 +28,7 @@ BCLCONVERT_PARAMS="--bcl-input-directory=$BCLPATH \
 
 SBATCH_PARAMS="-C RedHat7 -o $LOGDIR/bcl-convert.log -J bcl-convert-$BCL \
                -c 32 --mem 128G --time 72:00:00 \
-               --mail-user mshabet@broadinstitute.org --mail-type END,FAIL,REQUEUE,INVALID_DEPEND,STAGE_OUT,TIME_LIMIT"
+               --mail-user macosko-pipelines@broadinstitute.org --mail-type END,FAIL,REQUEUE,INVALID_DEPEND,STAGE_OUT,TIME_LIMIT"
 
 mkdir -p $LOGDIR
 cd $ROOT/fastqs
