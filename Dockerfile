@@ -179,4 +179,4 @@ ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
 
 # podman build -f Dockerfile -t pipeline-image .
-# podman save -o /broad/macosko/discopipeline/scripts/pipeline-image.tar pipeline-image:latest
+# podman save -o /broad/macosko/pipelines/scripts/pipeline-image.tar pipeline-image:latest
