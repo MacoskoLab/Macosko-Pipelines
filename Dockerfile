@@ -101,6 +101,7 @@ RUN julia -e 'using Pkg;                \
                        "StringViews",   \
                        "Combinatorics", \
                        "Distributions", \
+                       "KernelDensity", \
                        "LinearAlgebra"])'
 
 # Install R
