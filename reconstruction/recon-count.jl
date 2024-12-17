@@ -7,6 +7,7 @@ using PDFmerger
 using StatsBase
 using StatsPlots
 using Distributed
+using KernelDensity
 using Distributions: pdf, Exponential
 
 # R1 recognized bead types:
@@ -115,21 +116,23 @@ println("$(length(R1s)) pair(s) of FASTQs found\n")
 N = 30
 p = plot(xlim=(0, 4), ylim=(0, N+1), framestyle=:none, size=(7*100, 8*100),
          legend=false, xticks=:none, yticks=:none)
-annotate!(p, 0.1, N, text("Input directory: $fastq_path", :left, 9))
-annotate!(p, 0.1, N-1, text("Output directory: $out_path", :left, 9))
-annotate!(p, 0.1, N-3, text("R1 FASTQs:", :left, 9))
-annotate!(p, 2.1, N-3, text("R2 FASTQs:", :left, 9))
+annotate!(p, 0.1, N,   text("Input directory:", :left, 9))
+annotate!(p, 0.1, N-1, text("$fastq_path", :left, 9))
+annotate!(p, 0.1, N-2, text("Output directory:", :left, 9))
+annotate!(p, 0.1, N-3, text("$out_path", :left, 9))
+annotate!(p, 0.1, N-5, text("R1 FASTQs:", :left, 9))
+annotate!(p, 2.1, N-5, text("R2 FASTQs:", :left, 9))
 for (i, (R1, R2)) in enumerate(zip(R1s, R2s))
-    i > N-4 && break
-    annotate!(p, 0.1, N-3-i, text(basename(R1), :left, 9))
-    annotate!(p, 2.1, N-3-i, text(basename(R2), :left, 9))
+    i > N-6 && break
+    annotate!(p, 0.1, N-5-i, text(basename(R1), :left, 9))
+    annotate!(p, 2.1, N-5-i, text(basename(R2), :left, 9))
 end
-if length(R1s) > N-4
-    annotate!(p, 2, 0, text("$(length(R1s)-N+4) FASTQ file(s) not shown", :center, 9))
+if length(R1s) > N-6
+    annotate!(p, 2, 0, text("$(length(R1s)-N+6) FASTQ file(s) not shown", :center, 9))
 end
 savefig(p, joinpath(out_path, "filepaths.pdf"))
 
-####################################################################################################
+################################################################################
 
 # Create a worker for each FASTQ pair
 addprocs(length(R1s))
@@ -315,7 +318,7 @@ end
     const sbi_homopolymer_whitelist = Set(encode_str(str) for str in reduce(union, [listHDneighbors(c^15, i) for c in bases for i in 0:3]))
 end
 
-####################################################################################################
+################################################################################
 
 println("\nReading FASTQs...") ; flush(stdout)
 
@@ -448,7 +451,7 @@ println("\nReading FASTQs...") ; flush(stdout)
     return df, metadata
 end
 
-@time results = pmap(pair -> process_fastqs(pair...), zip(R1s, R2s))
+results = pmap(pair -> process_fastqs(pair...), zip(R1s, R2s))
 rmprocs(workers())
 
 df = vcat([r[1] for r in results]...)
@@ -457,30 +460,40 @@ results = nothing
 
 println("...done") ; flush(stdout) ; GC.gc()
 
-####################################################################################################
+################################################################################
 
 print("Counting reads... ") ; flush(stdout)
 
+# Remove PCR duplicates
 function count_reads(df, metadata)
     sort!(df, [:sb1_i, :sb2_i, :umi1_i, :umi2_i])
     @assert nrow(df) == metadata["reads_filtered"]
     start = vcat(true, reduce(.|, [df[2:end,c] .!= df[1:end-1,c] for c in names(df)]))
-    df = df[start, :]
-    df[!,:reads] = vcat(diff(findall(start)), metadata["reads_filtered"]-findlast(start)+1)
+    reads = vcat(diff(findall(start)), nrow(df)-findlast(start)+1)
+    
+    df.start = start ; filter!(:start => identity, df) ; select!(df, Not(:start))
+    df.reads = reads
     @assert sum(df.reads) == metadata["reads_filtered"]
     metadata["umis_filtered"] = nrow(df)
-    return df, metadata
+    
+    nothing
 end
-df, metadata = count_reads(df, metadata)
+count_reads(df, metadata) # this function modifies in-place
+
+println("done") ; flush(stdout) ; GC.gc()
+println("Total UMIs: $(nrow(df))") ; flush(stdout)
+@assert nrow(df) > 0
+
+################################################################################
 
 # Save results of fastq parsing
-h5open(joinpath(out_path, "reads.h5"), "w") do file
-    file["sb1_2bit", compress=1] = df[!, :sb1_i]
-    file["umi1_2bit", compress=1] = df[!, :umi1_i]
-    file["sb2_2bit", compress=1] = df[!, :sb2_i]
-    file["umi2_2bit", compress=1] = df[!, :umi2_i]
-    file["reads", compress=1] = df[!, :reads]
-end
+# h5open(joinpath(out_path, "reads.h5"), "w") do file
+#     file["sb1_2bit", compress=1] = df[!, :sb1_i]
+#     file["umi1_2bit", compress=1] = df[!, :umi1_i]
+#     file["sb2_2bit", compress=1] = df[!, :sb2_i]
+#     file["umi2_2bit", compress=1] = df[!, :umi2_i]
+#     file["reads", compress=1] = df[!, :reads]
+# end
 
 # Load previous fastq parsing results
 # df = h5open(joinpath(out_path, "reads.h5"), "r") do file 
@@ -492,11 +505,8 @@ end
 # end
 # metadata = Dict(String(row[1]) => parse(Int, row[2]) for row in CSV.Rows(joinpath(out_path, "metadata.csv"), header=false))
 
-println("done") ; flush(stdout) ; GC.gc()
-println("Total UMIs: $(nrow(df))") ; flush(stdout)
-@assert nrow(df) > 0
 
-####################################################################################################
+################################################################################
 
 print("Computing barcode whitelist... ") ; flush(stdout)
 
@@ -643,58 +653,36 @@ metadata["R2_barcodes"] = bc2
 
 println("done") ; flush(stdout) ; GC.gc()
 
-####################################################################################################
+################################################################################
 
 print("Matching to barcode whitelist... ") ; flush(stdout)
 
-function match_barcode(df, tab1, tab2, metadata)
-    metadata = merge(metadata, Dict("R1_exact"=>0, "R1_none"=>0, "R2_exact"=>0, "R2_none"=>0))
-    
+function match_barcode(df, metadata)    
     wl1 = Set{UInt64}([k for (k, v) in tab1 if v >= uc1]) ; @assert length(wl1) == bc1
     wl2 = Set{UInt64}([k for (k, v) in tab2 if v >= uc2]) ; @assert length(wl2) == bc2
 
-    m1 = [s1 in wl1 for s1 in df[!,:sb1_i]]
-    m2 = [s2 in wl2 for s2 in df[!,:sb2_i]]
+    m1 = [s1 in wl1 for s1 in df.sb1_i]
+    m2 = [s2 in wl2 for s2 in df.sb2_i]
 
     metadata["R1_exact"] = sum(m1)
-    metadata["R1_none"] = sum(.!m1)
     metadata["R2_exact"] = sum(m2)
-    metadata["R2_none"] = sum(.!m2)
 
-    df = df[m1 .& m2, :]
+    df.keep = m1 .& m2
+    filter!(:keep => identity, df)
+    select!(df, Not(:keep))
 
-    return df, metadata
+    nothing
 end
-df, metadata = match_barcode(df, tab1, tab2, metadata)
-metadata["umis_matched"] = nrow(df)
+match_barcode(df, metadata) # this function modifies in-place
+metadata["umis_exact"] = nrow(df)
 
 println("done") ; flush(stdout) ; GC.gc()
 
-####################################################################################################
+################################################################################
 
-print("Counting UMIs... ") ; flush(stdout)
+print("Removing chimeras... ") ; flush(stdout)
 
-function plot_reads_per_umi(vec)
-    tab = countmap(vec)
-    df = DataFrame(value = collect(keys(tab)), count = collect(values(tab)))
-    sum10 = sum(df[df.value .> 10, :count])
-    df = df[df.value .<= 10, :]
-    idx = findfirst(df.value .== 10)
-    if isnothing(idx)
-        push!(df, (10, sum10))
-    else
-        df[idx, :count] += sum10
-    end
-    p = bar(df.value, df.count, legend = false,
-            xlabel = "Reads per UMI", ylabel = "Number of filtered UMIs", title = "Read depth",
-            xticks = (1:10, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10+"]),
-            titlefont = 10, guidefont = 8)
-    return p
-end
-p1 = plot_reads_per_umi(df[!,:reads])
-
-function count_umis(df, metadata)
-    # Remove chimeras
+function remove_chimeras(df, metadata)
     sort!(df, [:sb1_i, :umi1_i, :reads], rev = [false, false, true])
     before_same = vcat(false, reduce(.&, [df[2:end,c] .== df[1:end-1,c] for c in [:sb1_i,:umi1_i]]))
     after_same = vcat(reduce(.&, [df[2:end,c] .== df[1:end-1,c] for c in [:sb1_i,:umi1_i,:reads]]), false)
@@ -705,43 +693,251 @@ function count_umis(df, metadata)
     after_same = vcat(reduce(.&, [df[2:end,c] .== df[1:end-1,c] for c in [:sb2_i,:umi2_i,:reads]]), false)
     df.chimeric2 = before_same .| after_same
     
-    metadata["umis_chimeric_R1"] = sum(df.chimeric1)
-    metadata["umis_chimeric_R2"] = sum(df.chimeric2)
+    metadata["R1_chimeric"] = sum(df.chimeric1)
+    metadata["R2_chimeric"] = sum(df.chimeric2)
 
     subset!(df, :chimeric1 => x -> .!x, :chimeric2 => x -> .!x)
-    select!(df, [:sb1_i, :sb2_i])
-
-    # Count UMIs
-    sort!(df, [:sb1_i, :sb2_i])
-    bnd = vcat(true, (df.sb1_i[2:end] .!= df.sb1_i[1:end-1]) .| (df.sb2_i[2:end] .!= df.sb2_i[1:end-1]))
-    umis = vcat(diff(findall(bnd)), nrow(df)-findlast(bnd)+1)
-    df = df[bnd, :]
-    df[!,:umi] = umis
-    metadata["umis_final"] = sum(df.umi)
-    metadata["connections_final"] = nrow(df)
-        
-    return df, metadata
+    select!(df, Not([:chimeric1, :chimeric2]))
+    nothing
 end
-df, metadata = count_umis(df, metadata)
+remove_chimeras(df, metadata) # this function modifies in-place
+metadata["umis_chimeric"] = metadata["umis_exact"] - nrow(df)
 
-function plot_umis_per_connection(vec)
+println("done") ; flush(stdout) ; GC.gc()
+
+################################################################################
+
+print("Counting UMIs... ") ; flush(stdout)
+
+function hist_10cap(vec)
     tab = countmap(vec)
-    df = DataFrame(value = collect(keys(tab)), count = collect(values(tab)))
-    sum10 = sum(df[df.value .> 10, :count])
-    df = df[df.value .<= 10, :]
-    idx = findfirst(df.value .== 10)
-    if isnothing(idx)
-        push!(df, (10, sum10))
-    else
-        df[idx, :count] += sum10
-    end
-    p = bar(df.value, df.count, legend = false,
-            xlabel = "UMIs per connection", ylabel = "Number of connections", title = "Connection distribution",
+    plotdf = DataFrame(value = collect(keys(tab)), count = collect(values(tab)))
+    sum10 = sum(filter(:value => v -> v >= 10, plotdf).count)
+    filter!(:value => v -> v < 10, plotdf)
+    push!(plotdf, (10, sum10))
+    p = bar(plotdf.value, plotdf.count, legend = false,
             xticks = (1:10, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10+"]),
             titlefont = 10, guidefont = 8)
     return p
 end
-p2 = plot_umis_per_connection(df.umi)
+p1 = hist_10cap(df.reads)
+xlabel!(p1, "Reads per UMI")
+ylabel!(p1, "Number of filtered UMIs")
+title!(p1, "Read depth")
+
+function count_umis(df)
+    select!(df, [:sb1_i, :sb2_i])
+    sort!(df, [:sb1_i, :sb2_i])
+    start = vcat(true, (df.sb1_i[2:end] .!= df.sb1_i[1:end-1]) .| (df.sb2_i[2:end] .!= df.sb2_i[1:end-1]))
+    umis = vcat(diff(findall(start)), nrow(df)-findlast(start)+1)
+
+    df.start = start ; filter!(:start => identity, df) ; select!(df, Not(:start))
+    df.umi = umis
+    nothing
+end
+count_umis(df) # this function modifies in-place
+
+p2 = hist_10cap(df.umi)
+xlabel!(p2, "UMIs per connection")
+ylabel!(p2, "Number of connections")
+title!(p2, "Connection distribution")
+
+function sum_topn(v, n)
+    return sum(sort(v, rev=true)[1:min(n, length(v))])
+end
+function plot_umi_distributions(df, col::Symbol)
+    R = "R"*string(col)[3] # R1 or R2
+    gdf = combine(groupby(df, col), :umi => sum => :umi,
+                                    :umi => length => :connections,
+                                    :umi => (v->sum_topn(v,5)) => :top5,
+                                    :umi => (v->sum_topn(v,20)) => :top20,
+                                    :umi => (v->sum_topn(v,50)) => :top50,
+                                    :umi => (v->sum_topn(v,100)) => :top100)
+
+    plotdf = vcat(DataFrame(x = 1, y = gdf.top5 ./ gdf.umi),
+                  DataFrame(x = 2, y = gdf.top20 ./ gdf.umi),
+                  DataFrame(x = 3, y = gdf.top50 ./ gdf.umi),
+                  DataFrame(x = 4, y = gdf.top100 ./ gdf.umi))
+
+    # SNR violins
+    p1 = @df plotdf begin
+        violin(:x, :y, line = 0, fill = (0.3, :blue), legend = false, titlefont = 10, guidefont = 8,
+            xticks = ([1, 2, 3, 4], ["5", "20", "50", "100"]), yticks = [0.0, 0.25, 0.5, 0.75, 1.0],
+        xlabel = "Number of top beads", ylabel = "%UMIs in top beads", title = "$R SNR")
+        boxplot!(:x, :y, line = (1, :black), fill = (0.3, :grey), outliers = false, legend = false)
+    end
+
+    # log-umi vs log-connection density
+    m = max(log10(maximum(gdf.umi)),log10(maximum(gdf.connections)))
+    xmean = round(log10(mean(gdf.umi)), digits=2)
+    xmed = round(log10(median(gdf.umi)), digits=2)
+    ymean = round(log10(mean(gdf.connections)), digits=2)
+    ymed = round(log10(median(gdf.connections)),digits=2)
+    p2 = histogram2d(log10.(gdf.umi), log10.(gdf.connections),
+            show_empty_bins=true, color=cgrad(:plasma, scale = :exp),
+            xlabel="log10 UMIs (mean: $xmean, median: $xmed)",
+            ylabel="log10 connections (mean: $ymean, median: $ymed)",
+            title="$R UMI Distribution", titlefont = 10, guidefont = 8,
+            xlims=(0, m), ylims=(0, m))
+    plot!(p2, [0, m], [0, m], color=:black, linewidth=1, legend = false)
+   
+    return p1, p2
+end
+p3, p5 = plot_umi_distributions(df, :sb1_i)
+p4, p6 = plot_umi_distributions(df, :sb2_i)
+
+p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
+savefig(p, joinpath(out_path, "SNR.pdf"))
+
+p = plot(p5, p6, layout = (2, 1), size=(7*100, 8*100))
+savefig(p, joinpath(out_path, "histograms.pdf"))
+
+println("done") ; flush(stdout) ; GC.gc()
+
+################################################################################
+
+print("Connection filter... ") ; flush(stdout)
+
+function connection_filter(df::DataFrame, metadata::Dict, col::Symbol, z=+3)
+    R = "R"*string(col)[3] # R1 or R2
+    gdf = combine(groupby(df, col), :umi => sum => :umi,
+                                    :umi => length => :connections,
+                                    :umi => maximum => :maximum)
+
+    logcon = log10.(gdf.connections)
+    logmax = log10.(gdf.maximum)
+    
+    # assume values above mode follow a half-normal distribution
+    kdens = kde(logcon)
+    xmode = kdens.x[argmax(kdens.density)]
+    sd = mean(filter(x -> x >= xmode, logcon) .- xmode) * sqrt(pi) / sqrt(2)
+    z3 = xmode + sd * z
+
+    # create the label
+    a = round(10^z3, digits=2)
+    b = sum(gdf.connections .> 10^z3)
+    c = round(b / nrow(gdf) * 100, digits=2)
+    label = "z = +$z: $a\nbeads: $b ($c%)"
+
+    # connection plot
+    p1 = barhist(logcon, bins=100, legend=false, line=0,
+                 titlefont = 10, guidefont = 6, xlabelfontsize = 8, ylabelfontsize = 8,
+                 title="$R Connections", xlabel="Connections (log10)", ylabel="Count")
+    vline!(p1, [z3], color=:red, linestyle=:dash, linewidth=1)
+    annotate!(p1, z3+Plots.xlims(p1)[2]*0.02, Plots.ylims(p1)[2]*0.95,
+              text(label, :red, 6, :left))
+
+    # max plot
+    p2 = barhist(logmax, bins=100, legend=false, line=0,
+                 titlefont = 10, guidefont = 6, xlabelfontsize = 8, ylabelfontsize = 8,
+                 title="$R Max UMIs per connection", xlabel="Maximum UMI (log10)", ylabel="Count")
+    
+    gdf_remove = filter(:connections => c -> c > 10^z3, gdf)
+    remove_set = Set(gdf_remove[:, col])
+
+    metadata["$(R)_cxnfilter_z"] = z
+    metadata["$(R)_cxnfilter_cutoff"] = ceil(10^z3)
+    metadata["$(R)_cxnfilter_beads"] = length(remove_set)
+    metadata["$(R)_cxnfilter"] = sum(gdf_remove.umi)
+    
+    return remove_set, p1, p2
+end
+
+R1_remove, p1, p3 = connection_filter(df, metadata, :sb1_i)
+R2_remove, p2, p4 = connection_filter(df, metadata, :sb2_i)
+
+p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
+savefig(p, joinpath(out_path, "connection_filter.pdf"))
+
+before = sum(df.umi)
+subset!(df, :sb1_i => x -> .!in.(x, [R1_remove]), :sb2_i => y -> .!in.(y, [R2_remove]))
+after = sum(df.umi)
+
+metadata["umis_cxnfilter"] = before - after
+metadata["umis_final"] = sum(df.umi)
+metadata["connections_final"] = nrow(df)
+
+println("done") ; flush(stdout) ; GC.gc()
+
+################################################################################
+
+# Compute more metadata
+sequencing_saturation = round((1 - (metadata["umis_filtered"] / metadata["reads_filtered"]))*100, digits=1)
+bead_ratio = round(metadata["R2_barcodes"]/metadata["R1_barcodes"], digits=2)
+ubcf = metadata["umis_exact"] - metadata["umis_chimeric"]
+metadata["R1_beadtype"] = parse(Int, join(filter(isdigit, bead1_type)))
+metadata["R2_beadtype"] = parse(Int, join(filter(isdigit, bead2_type)))
+metadata["downsampling_pct"] = round(Int, prob*100)
+
+# Plot the metadata summary
+m = metadata
+function f(num)
+    num = string(num)
+    num = reverse(join([reverse(num)[i:min(i+2, end)] for i in 1:3:length(num)], ","))
+    return(num)
+end
+function r(num1, num2)
+    string(round(num1/num2*100, digits=2))*"%"
+end
+function d(num1, num2)
+    f(num1)*" ("*r(num1, num2)*")"
+end
+data = [
+("R1 bead type", "Total reads", "R2 bead type"),
+(bead1_type, f(m["reads"]), bead2_type),
+("R1 GG UP", prob<1 ? "Downsampling level" : "", "R2 GG UP"),
+(d(m["R1_GG_UP"],m["reads"]), prob<1 ? "$prob" : "", d(m["R2_GG_UP"],m["reads"])),
+("R1 no UP", "", "R2 no UP"),
+(d(m["R1_no_UP"],m["reads"]), "", d(m["R2_no_UP"],m["reads"])),
+("R1 LQ UMI" , "", "R2 LQ UMI"),
+(d(m["R1_N_UMI"]+m["R1_homopolymer_UMI"],m["reads"]), "", d(m["R2_N_UMI"]+m["R2_homopolymer_UMI"],m["reads"])),
+("R1 LQ SB", "", "R2 LQ SB"),    
+(d(m["R1_N_SB"]+m["R1_homopolymer_SB"],m["reads"]), "", d(m["R2_N_SB"]+m["R2_homopolymer_SB"],m["reads"])),
+("", "Filtered reads", ""),
+("", d(m["reads_filtered"], m["reads"]), ""),
+("", "Sequencing saturation", ""),
+("", string(sequencing_saturation)*"%", ""),
+("", "Filtered UMIs", ""),
+(R1_barcodes > 0 ? "(manual)" : "", f(m["umis_filtered"]), R2_barcodes > 0 ? "(manual)" : ""),
+("R1 UMI cutoff", "", "R2 UMI cutoff"),   
+(f(m["R1_umicutoff"]), "", f(m["R2_umicutoff"])),
+("R1 Barcodes", "R2:R1 ratio", "R2 Barcodes"),
+(f(m["R1_barcodes"]), string(bead_ratio), f(m["R2_barcodes"])),
+("R1 matched", "Matched UMIs", "R2 matched"),
+(r(m["R1_exact"],m["umis_filtered"]), r(m["umis_exact"],m["umis_filtered"]), r(m["R2_exact"],m["umis_filtered"])),
+("R1 chimeric", "Chimeric UMIs", "R2 chimeric"),
+(r(m["R1_chimeric"],m["umis_exact"]), r(m["umis_chimeric"], m["umis_exact"]), r(m["R2_chimeric"],m["umis_exact"])),
+("R1 high-cxn", "High-connection UMIs", "R2 high-cxn"),
+(r(m["R1_cxnfilter"],ubcf), r(m["umis_cxnfilter"],ubcf), r(m["R2_cxnfilter"],ubcf)),
+("", "Final UMIs", ""),
+("", d(m["umis_final"],m["umis_filtered"]), ""),
+]
+p = plot(xlim=(0, 4), ylim=(0, 28+1), framestyle=:none, size=(7*100, 8*100),
+         legend=false, xticks=:none, yticks=:none)
+for (i, (str1, str2, str3)) in enumerate(data)
+    annotate!(p, 1, 28 - i + 1, text(str1, :center, 12))
+    annotate!(p, 2, 28 - i + 1, text(str2, :center, 12))
+    annotate!(p, 3, 28 - i + 1, text(str3, :center, 12))
+end
+hline!(p, [14.5], linestyle = :solid, color = :black)
+savefig(p, joinpath(out_path, "metadata.pdf"))
+
+# Write the metadata to .csv
+meta_df = DataFrame([Dict(:key => k, :value => v) for (k,v) in metadata])
+sort!(meta_df, :key) ; meta_df = select(meta_df, :key, :value)
+CSV.write(joinpath(out_path,"metadata.csv"), meta_df, writeheader=false)
+
+################################################################################
+
+print("Writing output... ") ; flush(stdout)
+
+merge_pdfs([joinpath(out_path,"elbows.pdf"),
+            joinpath(out_path,"metadata.pdf"),
+            joinpath(out_path,"SNR.pdf"),
+            joinpath(out_path,"connection_filter.pdf"),
+            joinpath(out_path,"histograms.pdf"),
+            joinpath(out_path,"filepaths.pdf")],
+            joinpath(out_path,"QC.pdf"), cleanup=true)
 
 # Factorize the barcode indexes
 uniques1 = sort(collect(Set(df.sb1_i)))
@@ -755,159 +951,19 @@ df.sb2_i = [dict2[k] for k in df.sb2_i]
 @assert sort(collect(Set(df.sb1_i))) == collect(1:length(Set(df.sb1_i)))
 @assert sort(collect(Set(df.sb2_i))) == collect(1:length(Set(df.sb2_i)))
 
-function sum_top5(v)
-    return sum(sort(v, rev=true)[1:min(5, length(v))])
-end
-function sum_top20(v)
-    return sum(sort(v, rev=true)[1:min(20, length(v))])
-end
-function sum_top50(v)
-    return sum(sort(v, rev=true)[1:min(50, length(v))])
-end
-function sum_top100(v)
-    return sum(sort(v, rev=true)[1:min(100, length(v))])
-end
-function plot_umi_distributions(df, col::Symbol)
-    gdf = combine(groupby(df, col), :umi => sum => :umi,
-                                    :umi => length => :count,
-                                    :umi => maximum => :max,
-                                    :umi => sum_top5 => :top5,
-                                    :umi => sum_top20 => :top20,
-                                    :umi => sum_top50 => :top50,
-                                    :umi => sum_top100 => :top100)
-
-    plotdf = vcat(DataFrame(x = 1, y = gdf.top5 ./ gdf.umi),
-                  DataFrame(x = 2, y = gdf.top20 ./ gdf.umi),
-                  DataFrame(x = 3, y = gdf.top50 ./ gdf.umi),
-                  DataFrame(x = 4, y = gdf.top100 ./ gdf.umi))
-    
-    p1 = @df plotdf begin
-        violin(:x, :y, line = 0, fill = (0.3, :blue), legend = false, titlefont = 10, guidefont = 8,
-            xticks = ([1, 2, 3, 4], ["5", "20", "50", "100"]), yticks = [0.0, 0.25, 0.5, 0.75, 1.0],
-        xlabel = "Number of top beads", ylabel = "%UMIs in top beads", title = "R$(string(col)[3]) SNR")
-        boxplot!(:x, :y, line = (1, :black), fill = (0.3, :grey), outliers = false, legend = false)
-    end
-
-    m = max(log10(maximum(gdf.umi)),log10(maximum(gdf.count)))
-    p2 = histogram2d(log10.(gdf.umi), log10.(gdf.count), show_empty_bins=true, color=cgrad(:plasma, scale = :exp),
-            xlabel="log10 UMIs (mean: $(round(log10(mean(gdf.umi)),digits=2)), median: $(round(log10(median(gdf.umi)),digits=2)))",
-            ylabel="log10 connections (mean: $(round(log10(mean(gdf.count)),digits=2)), median: $(round(log10(median(gdf.count)),digits=2)))",
-            title="R$(string(col)[3]) UMI Distribution", titlefont = 10, guidefont = 8, xlims=(0, m), ylims=(0, m))
-    plot!(p2, [0, m], [0, m], color=:black, linewidth=1, legend = false)
-
-    select!(gdf, [col, :umi, :count, :max])
-    rename!(gdf, :count => :connections)
-    sort!(gdf, col)
-    @assert gdf[!, col] == collect(1:nrow(gdf))
-    @assert sum(gdf.umi) == sum(df.umi)
-    @assert sum(gdf.connections) == nrow(df)
-    
-    return gdf, p1, p2
-end
-
-df1, p3, p5 = plot_umi_distributions(df, :sb1_i)
-df2, p4, p6 = plot_umi_distributions(df, :sb2_i)
-
-# Distrubtion of umi1 umi2, reads per umi, umi per connection
-p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
-savefig(p, joinpath(out_path, "SNR.pdf"))
-
-p = plot(p5, p6, layout = (2, 1), size=(7*100, 8*100))
-savefig(p, joinpath(out_path, "histograms.pdf"))
-
-println("done") ; flush(stdout) ; GC.gc()
-
-####################################################################################################
-
-print("Writing output... ") ; flush(stdout)
-
-# Write the metadata
-function f(num)
-    num = string(num)
-    num = reverse(join([reverse(num)[i:min(i+2, end)] for i in 1:3:length(num)], ","))
-    return(num)
-end
-function d(num1, num2)
-    f(num1)*" ("*string(round(num1/num2*100, digits=2))*"%"*")"
-end
-m = metadata
-data = [
-("R1 bead type", "Total reads", "R2 bead type"),
-(bead1_type, f(m["reads"]), bead2_type),
-("R1 too short", prob<1 ? "Downsampling level" : "", "R2 too short"),
-(d(m["R1_tooshort"],m["reads"]), prob<1 ? "$prob" : "", d(m["R2_tooshort"],m["reads"])),
-("R1 GG UP", "", "R2 GG UP"),
-(d(m["R1_GG_UP"],m["reads"]), "", d(m["R2_GG_UP"],m["reads"])),
-("R1 no UP", "", "R2 no UP"),
-(d(m["R1_no_UP"],m["reads"]), "", d(m["R2_no_UP"],m["reads"])),
-("R1 LQ UMI" , "", "R2 LQ UMI"),
-(d(m["R1_N_UMI"]+m["R1_homopolymer_UMI"],m["reads"]), "", d(m["R2_N_UMI"]+m["R2_homopolymer_UMI"],m["reads"])),
-("R1 LQ SB", "", "R2 LQ SB"),    
-(d(m["R1_N_SB"]+m["R1_homopolymer_SB"],m["reads"]), "", d(m["R2_N_SB"]+m["R2_homopolymer_SB"],m["reads"])),
-("", "Filtered reads", ""),
-("", d(m["reads_filtered"], m["reads"]), ""),
-("", "Sequencing saturation", ""),
-("", string(round((1 - (m["umis_filtered"] / m["reads_filtered"]))*100, digits=1))*"%", ""),
-("", "Filtered UMIs", ""),
-(R1_barcodes > 0 ? "(manual)" : "", f(m["umis_filtered"]), R2_barcodes > 0 ? "(manual)" : ""),
-("R1 UMI cutoff", "", "R2 UMI cutoff"),
-(f(m["R1_umicutoff"]), "", f(m["R2_umicutoff"])),
-("R1 Barcodes", "R2:R1 ratio", "R2 Barcodes"),
-(f(m["R1_barcodes"]), string(round(m["R2_barcodes"]/m["R1_barcodes"],digits=2)), f(m["R2_barcodes"])),
-("R1 exact matches", "", "R2 exact matches"),
-(d(m["R1_exact"],m["umis_filtered"]), "", d(m["R2_exact"],m["umis_filtered"])),
-("", "Matched UMIs", ""),
-("", d(m["umis_matched"], m["umis_filtered"]), ""),
-("R1 chimeras", "", "R2 chimeras"),
-(d(m["umis_chimeric_R1"],m["umis_matched"]), "", d(m["umis_chimeric_R2"],m["umis_matched"])),
-("", "Final UMIs", ""),
-("", d(m["umis_final"],m["umis_filtered"]), ""),
-]
-p = plot(xlim=(0, 4), ylim=(0, 30+1), framestyle=:none, size=(7*100, 8*100),
-         legend=false, xticks=:none, yticks=:none)
-for (i, (str1, str2, str3)) in enumerate(data)
-    annotate!(p, 1, 30 - i + 1, text(str1, :center, 12))
-    annotate!(p, 2, 30 - i + 1, text(str2, :center, 12))
-    annotate!(p, 3, 30 - i + 1, text(str3, :center, 12))
-end
-hline!(p, [14.5], linestyle = :solid, color = :black)
-savefig(p, joinpath(out_path, "metadata.pdf"))
-
-merge_pdfs([joinpath(out_path,"elbows.pdf"),
-            joinpath(out_path,"metadata.pdf"),
-            joinpath(out_path,"SNR.pdf"),
-            joinpath(out_path,"histograms.pdf"),
-            joinpath(out_path,"filepaths.pdf")],
-            joinpath(out_path,"QC.pdf"), cleanup=true)
-
-# Save the metadata
-metadata["R1_beadtype"] = parse(Int, join(filter(isdigit, bead1_type)))
-metadata["R2_beadtype"] = parse(Int, join(filter(isdigit, bead2_type)))
-metadata["downsampling_pct"] = round(Int, prob*100)
-meta_df = DataFrame([Dict(:key => k, :value => v) for (k,v) in metadata])
-sort!(meta_df, :key) ; meta_df = select(meta_df, :key, :value)
-CSV.write(joinpath(out_path,"metadata.csv"), meta_df, writeheader=false)
-
 # Save the matrix
-@assert length(df1.umi) == length(sb1_whitelist)
-open(GzipCompressorStream, joinpath(out_path,"sb1.csv.gz"), "w") do file
-    write(file, "sb1,umi,connections,max\n")
-    for line in zip(sb1_whitelist, df1.umi, df1.connections, df1.max)
-        write(file, join(line, ",") * "\n")
-    end
+using DelimitedFiles
+open(GzipCompressorStream, joinpath(out_path, "sb1.txt.gz"), "w") do file
+    writedlm(file, sb1_whitelist, "\n")
 end
-@assert length(df2.umi) == length(sb2_whitelist)
-open(GzipCompressorStream, joinpath(out_path,"sb2.csv.gz"), "w") do file
-    write(file, "sb2,umi,connections,max\n")
-    for line in zip(sb2_whitelist, df2.umi, df2.connections, df2.max)
-        write(file, join(line, ",") * "\n")
-    end
+open(GzipCompressorStream, joinpath(out_path, "sb2.txt.gz"), "w") do file
+    writedlm(file, sb2_whitelist, "\n")
 end
 rename!(df, Dict(:sb1_i => :sb1_index, :sb2_i => :sb2_index, :umi => :umi))
-open(GzipCompressorStream, joinpath(out_path,"matrix.csv.gz"), "w") do file
+open(GzipCompressorStream, joinpath(out_path, "matrix.csv.gz"), "w") do file
     CSV.write(file, df, writeheader=true)
 end
 
-@assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.csv.gz", "sb2.csv.gz", "QC.pdf", "metadata.csv", "reads.h5"])
+@assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.txt.gz", "sb2.txt.gz", "QC.pdf", "metadata.csv"])
 
 println("done") ; flush(stdout) ; GC.gc()
