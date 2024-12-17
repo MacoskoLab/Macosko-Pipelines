@@ -98,7 +98,7 @@ else
     println("R2 barcodes: AUTO")
 end
 
-println("Threads: $(Threads.nthreads())")
+println("Threads: $(Threads.nthreads())\n")
 
 # Load the FASTQ paths
 fastqs = readdir(fastq_path, join=true)
