@@ -7,7 +7,7 @@ pub type SeqPos = u32;
 pub type WLi = u32;
 pub type RNAMEi = u16;
 
-const FLAG_QC: u16 = 4 + 256 + 512 + 2048; // disallowed FLAG bits
+const FLAG_QC: u16 = 4 + 256 + 2048; // disallowed FLAG bits
 
 // Data structure that aggregates all the information of a UMI
 pub struct UMIinfo {
