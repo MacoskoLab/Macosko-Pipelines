@@ -1,13 +1,13 @@
 recon-count.jl
 --------------
 
-**matrix.csv.gz**: diffusion matrix
-* 3-column format (sb1_index, sb2_index, umi)
-* sb1.txt.gz, sb2.txt.gz contain the sb1, sb2 barcode sequences (1-indexed)
+**matrix.csv.gz**: the diffusion matrix
+* 3-column format `(sb1_index, sb2_index, umi)`
+* `sb1.txt.gz`, `sb2.txt.gz` contain the sb1, sb2 barcode sequences (1-indexed)
 
-**QC.pdf**: visual summary of input/output
+**QC.pdf**: a visual summary of the input/output data
 
-**metadata.csv**
+**metadata.csv**: contains processing metrics (see below)
 
 FASTQ parsing:
 * `reads`: total number of reads
