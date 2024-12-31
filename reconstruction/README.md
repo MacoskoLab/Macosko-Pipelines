@@ -45,9 +45,12 @@ General info:
 * `R1/R2_beadtype`: V10/V17 for R1, V15/V16 for R2
 * `downsampling_pct`: the % of reads retained from the original FASTQs
 
-knn.jl
+knn.py
 ------
-TODO
+
+Input: `matrix.csv.gz`, `sb1.txt.gz`, `sb2.txt.gz` and bead type (`1` or `2`)
+
+Output: The KNN matrix (`knn1.npz` or `knn2.npz`)
 
 recon.py
 --------
