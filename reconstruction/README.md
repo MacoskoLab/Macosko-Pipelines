@@ -48,9 +48,13 @@ General info:
 knn.py
 ------
 
-Input: `matrix.csv.gz`, `sb1.txt.gz`, `sb2.txt.gz` and bead type (`1` or `2`)
+Input:
+* `in_dir`: path to dir with matrix.csv.gz
+* `bead` (default 2)
+* `n_neighbors` (default 150)
 
-Output: The KNN matrix (`knn1.npz` or `knn2.npz`)
+Output:
+* sparse KNN matrix (`knn1.npz` or `knn2.npz`) in cosine distance
 
 recon.py
 --------
