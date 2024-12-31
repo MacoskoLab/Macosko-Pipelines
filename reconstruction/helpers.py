@@ -283,84 +283,7 @@ def knn_filter(knn_indices, knn_dists):
     fig.tight_layout()
     return filter_indexes, fig, meta
 
-
-
 ### KNN METHODS ################################################################
-
-# Compute the KNN using NNDescent
-def knn_descent(mat, n_neighbors, metric="cosine", n_jobs=-1):    
-    from pynndescent import NNDescent
-    knn_search_index = NNDescent(
-        data=mat,
-        metric=metric,
-        metric_kwds={},
-        n_neighbors=n_neighbors,
-        n_trees=64, # originally None
-        # leaf_size=None,
-        pruning_degree_multiplier=3.0, # originally 1.5
-        diversify_prob=0.0, # originally 1.0
-        # tree_init=True,
-        # init_graph=None,
-        # init_dist=None,
-        random_state=None,
-        low_memory=True, # originally False
-        max_candidates=60, # originally None
-        max_rptree_depth=999999, # originally 200
-        n_iters=512, # originally None
-        delta=0.0001, # originally 0.001
-        n_jobs=n_jobs,
-        # compressed=False,
-        # parallel_batch_queries=False,
-        verbose=True # originally False
-    )
-    knn_indices, knn_dists = knn_search_index.neighbor_graph
-    return knn_indices, knn_dists
-
-# UMAP NNDescent wrapper
-def nearest_neighbors(mat, n_neighbors, metric="cosine", n_jobs=-1):
-    from umap.umap_ import nearest_neighbors
-    knn_indices, knn_dists, _ = nearest_neighbors(mat,
-                                    n_neighbors = n_neighbors,
-                                    metric = metric,
-                                    metric_kwds = {},
-                                    angular = False, # Does nothing?
-                                    random_state = None,
-                                    low_memory = True, # False?
-                                    use_pynndescent = True, # Does nothing?
-                                    n_jobs = n_jobs,
-                                    verbose = True
-                                )
-    return knn_indices, knn_dists
-
-# knn_indices1 can be row-sliced, knn_indices2 is original
-def knn_merge(knn_indices1, knn_dists1, knn_indices2, knn_dists2):
-    assert knn_indices1.shape == knn_dists1.shape
-    assert knn_indices2.shape == knn_dists2.shape
-    assert knn_indices1.shape[0] == knn_dists1.shape[0] == knn_indices2.shape[0] == knn_dists2.shape[0]
-
-    assert all(knn_indices2[:,0] == np.arange(knn_indices2.shape[0]))
-    assert np.all(knn_indices2 >= 0) and np.all(knn_dists2 >= 0)
-    index_map = dict(zip(knn_indices1[:,0], knn_indices2[:,0]))
-    knn_indices1 = np.vectorize(lambda i: index_map.get(i,-1))(knn_indices1)
-    assert all(knn_indices1[:,0] == knn_indices2[:,0])
-    # assert np.all(knn_dists1[np.where(knn_indices1==knn_indices2)] == knn_dists2[np.where(knn_indices1==knn_indices2)])
-    
-    k = max(knn_indices1.shape[1], knn_indices2.shape[1])
-    knn_indices = np.zeros((knn_indices1.shape[0], k), dtype=np.int32)
-    knn_dists = np.zeros((knn_indices1.shape[0], k), dtype=np.float64)
-    
-    for i in range(knn_indices1.shape[0]):
-        d1 = {i:d for i,d in zip(knn_indices1[i], knn_dists1[i]) if i >= 0}
-        d2 = {i:d for i,d in zip(knn_indices2[i], knn_dists2[i]) if i >= 0}
-        d = d1 | d2
-
-        row = sorted(d.items(), key=lambda item: item[1])[:k]
-        inds, dists = zip(*row)
-        
-        knn_indices[i,:] = inds
-        knn_dists[i,:] = dists
-
-    return knn_indices, knn_dists
 
 class KNNMask:
     def __init__(self, knn_indices, knn_dists):
@@ -403,9 +326,6 @@ class KNNMask:
         mask[self.valid_original_indexes] = True
         return mask
 
-### MNN METHODS ################################################################
-### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
-
 def create_knn_matrix(knn_indices, knn_dists):
     assert knn_indices.shape == knn_dists.shape
     assert knn_indices.dtype == np.int32 and knn_dists.dtype == np.float64
@@ -427,7 +347,10 @@ def create_knn_matrix(knn_indices, knn_dists):
     
     knn_matrix = sp.csr_matrix((vals, (rows, cols)), shape=(knn_indices.shape[0], knn_indices.shape[0]))
     
-    return knn_matrix    
+    return knn_matrix
+
+### MNN METHODS ################################################################
+### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
 
 # Prune non-reciprocated edges
 def create_mnn(knn_indices, knn_dists):
