@@ -30,7 +30,7 @@ cores = args.cores             ; print(f"cores = {cores}")
 chunks = args.chunks           ; print(f"chunks = {chunks}")
 
 # Check in/out directories
-assert all(os.path.isfile(os.path.join(in_dir, file)) for file in ['matrix.csv.gz', 'sb1.txt.gz', 'sb2.txt.gz'])
+assert os.path.isfile(os.path.join(in_dir, 'matrix.csv.gz'))
 os.makedirs(out_dir, exist_ok=True)
 assert os.path.exists(out_dir)
 
