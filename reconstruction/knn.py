@@ -107,6 +107,7 @@ C.setdiag(0)
 C.eliminate_zeros()
 
 print('Saving output...')
+assert C.shape[0] == C.shape[1]
 sp.save_npz(out_file, C, compressed=True)
 
 print("Done!")
