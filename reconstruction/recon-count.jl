@@ -480,9 +480,29 @@ function count_reads(df, metadata)
 end
 count_reads(df, metadata) # this function modifies in-place
 
+# Save reads per umi distribution
+function save_rpu(df, path)
+    rpu_dict = countmap(df[!,:reads])
+    rpu_df = DataFrame(reads_per_umi = collect(keys(rpu_dict)), umis = collect(values(rpu_dict)))
+    sort!(rpu_df, :reads_per_umi)
+    CSV.write(path, rpu_df, writeheader=true)
+end
+save_rpu(df, joinpath(out_path, "reads_per_umi.csv"))
+
+# Save reads per bead, umis per bead
+function save_rupb(df::DataFrame, col::Symbol, decode::Function, path::String)
+    gdf = combine(groupby(df, col), 
+        :reads => sum => :reads,
+        nrow => :umis
+    )
+    gdf[!,Symbol(String(col)[1:3])] = decode.(gdf[!,col])
+    CSV.write(path, gdf[:, [4, 2, 3]], writeheader=true)
+end
+save_rupb(df, :sb1_i, decode_sb1, joinpath(out_path, "readumi_per_sb1.csv"))
+save_rupb(df, :sb2_i, decode_sb2, joinpath(out_path, "readumi_per_sb2.csv"))
+
 println("done") ; flush(stdout) ; GC.gc()
 println("Total UMIs: $(nrow(df))") ; flush(stdout)
-@assert nrow(df) > 0
 
 ################################################################################
 
@@ -504,7 +524,6 @@ println("Total UMIs: $(nrow(df))") ; flush(stdout)
 #               reads = read(file["reads"]))
 # end
 # metadata = Dict(String(row[1]) => parse(Int, row[2]) for row in CSV.Rows(joinpath(out_path, "metadata.csv"), header=false))
-
 
 ################################################################################
 
@@ -940,10 +959,10 @@ merge_pdfs([joinpath(out_path,"elbows.pdf"),
             joinpath(out_path,"QC.pdf"), cleanup=true)
 
 # Factorize the barcode indexes
-uniques1 = sort(collect(Set(df.sb1_i)))
-uniques2 = sort(collect(Set(df.sb2_i)))
-sb1_whitelist = [decode_sb1(sb1_i) for sb1_i in uniques1]
-sb2_whitelist = [decode_sb2(sb2_i) for sb2_i in uniques2]
+uniques1 = sort(collect(Set(df.sb1_i))) # called sb1_i (encoded)
+uniques2 = sort(collect(Set(df.sb2_i))) # called sb2_i (encoded)
+sb1_whitelist = [decode_sb1(sb1_i) for sb1_i in uniques1] # called sb1 (barcodes)
+sb2_whitelist = [decode_sb2(sb2_i) for sb2_i in uniques2] # called sb2 (barcodes)
 dict1 = Dict{UInt64, UInt64}(value => index for (index, value) in enumerate(uniques1))
 dict2 = Dict{UInt64, UInt64}(value => index for (index, value) in enumerate(uniques2))
 df.sb1_i = [dict1[k] for k in df.sb1_i]
