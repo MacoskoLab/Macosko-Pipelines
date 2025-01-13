@@ -148,8 +148,8 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    numpy pandas scipy scikit-learn \
                    matplotlib seaborn plotly pypdf \
                    networkx rustworkx igraph graph-tool \
-                   umap-learn pynndescent sparse_dot_topn leidenalg \
-                   python-duckdb"
+                   umap-learn pynndescent leidenalg"
+RUN /bin/bash -lc "micromamba run pip install sparse_dot_topn"
 
 # Install IRkernel
 RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
