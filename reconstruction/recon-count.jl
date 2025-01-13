@@ -496,10 +496,10 @@ function save_rupb(df::DataFrame, col::Symbol, decode::Function, path::String)
         nrow => :umis
     )
     gdf[!,Symbol(String(col)[1:3])] = decode.(gdf[!,col])
-    CSV.write(path, gdf[:, [4, 2, 3]], writeheader=true)
+    CSV.write(path, gdf[:, [4, 2, 3]], writeheader=true, compress=true)
 end
-save_rupb(df, :sb1_i, decode_sb1, joinpath(out_path, "readumi_per_sb1.csv"))
-save_rupb(df, :sb2_i, decode_sb2, joinpath(out_path, "readumi_per_sb2.csv"))
+save_rupb(df, :sb1_i, decode_sb1, joinpath(out_path, "readumi_per_sb1.csv.gz"))
+save_rupb(df, :sb2_i, decode_sb2, joinpath(out_path, "readumi_per_sb2.csv.gz"))
 
 println("done") ; flush(stdout) ; GC.gc()
 println("Total UMIs: $(nrow(df))") ; flush(stdout)
@@ -979,9 +979,7 @@ open(GzipCompressorStream, joinpath(out_path, "sb2.txt.gz"), "w") do file
     writedlm(file, sb2_whitelist, "\n")
 end
 rename!(df, Dict(:sb1_i => :sb1_index, :sb2_i => :sb2_index, :umi => :umi))
-open(GzipCompressorStream, joinpath(out_path, "matrix.csv.gz"), "w") do file
-    CSV.write(file, df, writeheader=true)
-end
+CSV.write(joinpath(out_path, "matrix.csv.gz"), df, writeheader=true, compress=true)
 
 @assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.txt.gz", "sb2.txt.gz", "QC.pdf", "metadata.csv"])
 
