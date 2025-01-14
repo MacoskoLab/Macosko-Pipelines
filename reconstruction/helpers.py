@@ -1,19 +1,15 @@
-import os
-import math
-import copy
-import heapq
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 import matplotlib.pyplot as plt
-from functools import reduce
-from collections import Counter
+
+### PLOTTING METHODS ###########################################################
 
 # (x, y)
-def hexmap(embedding, title="", fontsize=12):
+def hexmap(embedding, weights=None, title="", fontsize=12):
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
     x, y = embedding[:, 0], embedding[:, 1]
-    hb = ax.hexbin(x, y, cmap='viridis', linewidths=0.5)
+    hb = ax.hexbin(x, y, cmap='viridis' if weights is None else 'inferno', C = weights, linewidths=0.5)
     ax.axis('equal')
     ax.set_xticks([])
     ax.set_yticks([])
@@ -26,7 +22,7 @@ def hexmap(embedding, title="", fontsize=12):
 # [(x, y)]
 def hexmaps(embeddings, titles=[], fontsize=10):
     assert type(embeddings) == type(titles) == list
-    n = math.ceil(len(embeddings)**0.5)
+    n = np.ceil(len(embeddings)**0.5).astype(int)
     fig, axes = plt.subplots(n, n, figsize=(8, 8))
     if type(axes) != np.ndarray:
         axes = np.array([axes])
@@ -79,19 +75,6 @@ def beadplot(embedding, colors, cmap='viridis'):
     plt.axis('square')
     return plt
 
-# embedding1, embedding2
-def L2_distance(p1, p2):
-    assert p1.shape == p2.shape
-    dists = np.sqrt(np.sum(np.square(p1 - p2), axis=1))
-    return np.sum(dists) / p1.shape[0]
-
-# embedding1, embedding2
-def procrustes_distance(p1, p2):
-    assert p1.shape == p2.shape
-    from scipy.spatial import procrustes
-    _, _, disparity = procrustes(p1, p2)
-    return disparity
-
 # [embedding]
 def convergence_plot(embeddings):
     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
@@ -118,221 +101,178 @@ def convergence_plot(embeddings):
     plt.tight_layout()
     return fig, axes
 
-# highlight reciprocated ones
-def embedding_neighbor_locations(knn_indices, knn_dists, embedding, nn=45, n=16):
-    from matplotlib.cm import viridis
-    from matplotlib.colors import Normalize
-    assert knn_indices.shape[0] == knn_dists.shape[0] == embedding.shape[0]
-    assert knn_indices.shape[1] == knn_dists.shape[1]
+# # TODO: highlight reciprocated ones
+# def embedding_neighbor_locations(knn_indices, knn_dists, embedding, nn=45, n=16):
+#     from matplotlib.cm import viridis
+#     from matplotlib.colors import Normalize
+#     assert knn_indices.shape[0] == knn_dists.shape[0] == embedding.shape[0]
+#     assert knn_indices.shape[1] == knn_dists.shape[1]
     
-    # Create the grid
-    nrows = np.ceil(np.sqrt(n)).astype(int)
-    fig, axes = plt.subplots(nrows, nrows, figsize=(8, 8))
-    if type(axes) != np.ndarray:
-        axes = np.array([axes])
-    axes = axes.flatten()
+#     # Create the grid
+#     nrows = np.ceil(np.sqrt(n)).astype(int)
+#     fig, axes = plt.subplots(nrows, nrows, figsize=(8, 8))
+#     if type(axes) != np.ndarray:
+#         axes = np.array([axes])
+#     axes = axes.flatten()
 
-    selected_indices = np.random.randint(0, embedding.shape[0], size=n)
-    x = embedding[:,0] ; y = embedding[:,1]
+#     selected_indices = np.random.randint(0, embedding.shape[0], size=n)
+#     x = embedding[:,0] ; y = embedding[:,1]
 
-    # Plot the data
-    for ax, i in zip(axes, selected_indices):
-        indices = knn_indices[i, 1:nn]
-        dists = knn_dists[i, 1:nn]
-        colors = viridis(Normalize(vmin=0, vmax=1)(dists))
+#     # Plot the data
+#     for ax, i in zip(axes, selected_indices):
+#         indices = knn_indices[i, 1:nn]
+#         dists = knn_dists[i, 1:nn]
+#         colors = viridis(Normalize(vmin=0, vmax=1)(dists))
 
-        ax.scatter(x, y, color='grey', s=10, alpha=0.5)
-        ax.scatter(x[indices], y[indices], color=colors, s=20)
-        ax.scatter(x[i], y[i], color='red', s=30)
+#         ax.scatter(x, y, color='grey', s=10, alpha=0.5)
+#         ax.scatter(x[indices], y[indices], color=colors, s=20)
+#         ax.scatter(x[i], y[i], color='red', s=30)
 
-        ax.set_xlim(min(x[indices]), max(x[indices]))
-        ax.set_ylim(min(y[indices]), max(y[indices]))
-        ax.set_aspect('equal', adjustable='box')
-        ax.set_title(i)
+#         ax.set_xlim(min(x[indices]), max(x[indices]))
+#         ax.set_ylim(min(y[indices]), max(y[indices]))
+#         ax.set_aspect('equal', adjustable='box')
+#         ax.set_title(i)
     
-    for ax in axes[n:]:
-        ax.set_visible(False)
+#     for ax in axes[n:]:
+#         ax.set_visible(False)
     
-    fig.tight_layout()
-    return fig, axes
+#     fig.tight_layout()
+#     return fig, axes
 
-def embedding_neighbor_distances(knn_indices, knn_dists, embedding, nn=45):
-    assert knn_indices.shape[0] == knn_dists.shape[0] == embedding.shape[0]
-    assert knn_indices.shape[1] == knn_dists.shape[1]
+# def embedding_neighbor_distances(knn_indices, knn_dists, embedding, nn=45):
+#     assert knn_indices.shape[0] == knn_dists.shape[0] == embedding.shape[0]
+#     assert knn_indices.shape[1] == knn_dists.shape[1]
 
-    dists = np.vstack([np.linalg.norm(embedding[inds] - embedding[inds[0]], axis=1) for inds in knn_indices])
+#     dists = np.vstack([np.linalg.norm(embedding[inds] - embedding[inds[0]], axis=1) for inds in knn_indices])
     
-    def n_hist(ax, dists, nn):
-        data = dists[:,nn]
-        ax.hist(np.log10(data), bins=100)
-        ax.set_xlabel('UMAP distance (log10)')
-        ax.set_ylabel('Count')
-        ax.set_title(f'UMAP Distance to neighbor {nn}')
-        meanval = np.log10(np.mean(data))
-        ax.axvline(meanval, color='red', linestyle='dashed')
-        ax.text(meanval+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='left')
+#     def n_hist(ax, dists, nn):
+#         data = dists[:,nn]
+#         ax.hist(np.log10(data), bins=100)
+#         ax.set_xlabel('UMAP distance (log10)')
+#         ax.set_ylabel('Count')
+#         ax.set_title(f'UMAP Distance to neighbor {nn}')
+#         meanval = np.log10(np.mean(data))
+#         ax.axvline(meanval, color='red', linestyle='dashed')
+#         ax.text(meanval+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='left')
 
-    fig, axes = plt.subplots(2, 2, figsize=(8, 8))
+#     fig, axes = plt.subplots(2, 2, figsize=(8, 8))
     
-    n_hist(axes[0,0], dists, 1)
-    n_hist(axes[0,1], dists, nn)
+#     n_hist(axes[0,0], dists, 1)
+#     n_hist(axes[0,1], dists, nn)
     
-    ax=axes[1,0]
-    data = np.mean(dists[:,1:nn], axis=1)
-    ax.hist(np.log10(data), bins=100)
-    ax.set_xlabel('UMAP distance (log10)')
-    ax.set_ylabel('Count')
-    ax.set_title(f'UMAP Distance to average neighbor (45)')
-    meanval = np.log10(np.mean(data))
-    ax.axvline(meanval, color='red', linestyle='dashed')
-    ax.text(meanval+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='left')
+#     ax=axes[1,0]
+#     data = np.mean(dists[:,1:nn], axis=1)
+#     ax.hist(np.log10(data), bins=100)
+#     ax.set_xlabel('UMAP distance (log10)')
+#     ax.set_ylabel('Count')
+#     ax.set_title(f'UMAP Distance to average neighbor (45)')
+#     meanval = np.log10(np.mean(data))
+#     ax.axvline(meanval, color='red', linestyle='dashed')
+#     ax.text(meanval+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='left')
     
-    axes[1,1].hexbin(np.log10(dists[:,1:nn]), knn_dists[:,1:nn], gridsize=100, bins='log', cmap='plasma')
-    axes[1,1].set_xlabel('UMAP distance (log10)')
-    axes[1,1].set_ylabel('Cosine Distance')
-    axes[1,1].set_title(f'Cosine vs. UMAP Distance ({nn})')
+#     axes[1,1].hexbin(np.log10(dists[:,1:nn]), knn_dists[:,1:nn], gridsize=100, bins='log', cmap='plasma')
+#     axes[1,1].set_xlabel('UMAP distance (log10)')
+#     axes[1,1].set_ylabel('Cosine Distance')
+#     axes[1,1].set_title(f'Cosine vs. UMAP Distance ({nn})')
     
-    fig.tight_layout()
+#     fig.tight_layout()
     
-    return fig, axes
+#     return fig, axes
 
-### BEAD FILTERING METHODS #####################################################
+# TODO: annotate number of beads with incomplete neighbors
+def knn_plot(knn_indices, knn_dists, tlu):
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
 
-def knn_filter(knn_indices, knn_dists):
-    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
-    filter_indexes = set()
-    meta = dict()
+    def my_histogram(ax, vec, title, xlab):
+        ax.hist(vec, bins=100)
+        ax.set_title(title)
+        ax.set_xlabel(xlab)
+        ax.set_ylabel("Counts")
+        
+        xmean = np.mean(vec)
+        ax.axvline(xmean, color='red', linestyle='dotted', linewidth=1.5)
+        ax.text(xmean + ax.get_xlim()[1] * 0.02, ax.get_ylim()[1] * 0.95,
+                f'Mean: {xmean:.2f}', color='red', ha='left')
 
-    def hist_z(ax, data, z_high=None, z_low=None, bins=100):
-        ax.hist(data, bins=bins)
-        ax.set_ylabel('Count')
-    
-        meanval = np.mean(data)
-        ax.axvline(meanval, color='black', linestyle='dashed')
-        ax.text(meanval, ax.get_ylim()[1] * 0.95, f'Mean: {meanval:.2f}', color='black', ha='center')
-    
-        if z_high:
-            assert z_high > 0
-            zval = meanval + np.std(data) * z_high
-            ax.axvline(zval, color='red', linestyle='dashed')
-            ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_high}z: {zval:.2f}', color='red', ha='left')
-    
-        if z_low:
-            assert z_low < 0
-            zval = meanval + np.std(data) * z_low
-            ax.axvline(zval, color='red', linestyle='dashed')
-            ax.text(zval, ax.get_ylim()[1]*0.9, f'{z_low}z: {zval:.2f}', color='red', ha='right')
-    
-    # Filter beads with far nearest neighbors
-    z_high = 3
-    data = knn_dists[:,1]
-    hist_z(axes[0,0], data, z_high)
-    axes[0,0].set_xlabel(f'Distance')
-    axes[0,0].set_title(f'Nearest neighbor distance')
+    # Nearest neighbor distance
+    nnd = knn_dists[:,1]
+    nnd = nnd[np.isfinite(nnd)]
+    my_histogram(axs[0,0], nnd, "Nearest neighbor distance", "Cosine distance")
+    # Furthest neighbor distance
+    fnd = knn_dists[:,-1]
+    fnd = fnd[np.isfinite(fnd)]
+    my_histogram(axs[0,1], fnd, f"Furthest neighbor ({knn_dists.shape[1]}) distance", "Cosine distance")
+    # Number of in-edges
+    unique, counts = np.unique(knn_indices[:,1:], return_counts=True)
+    my_histogram(axs[1,0], counts[unique >= 0], f"Number of in-edges", "In-edges")
+    # Clustering coefficient
+    my_histogram(axs[1,1], tlu, f"Clustering coefficient", "transitivity_local_undirected")
 
-    high = knn_indices[data >= np.mean(data) + np.std(data) * z_high, 0]
-    filter_indexes.update(high)
-    print(f"{len(high)} far-NN beads removed")
-    meta["far-NN"] = len(high)
+    plt.tight_layout()
+    return fig, axs
 
-    # Plot furthest neighbor distance
-    hist_z(axes[0,1], knn_dists[:,-1])
-    axes[0,1].set_xlabel(f'Distance')
-    axes[0,1].set_title(f'Furthest neighbor distance ({knn_dists.shape[1]})')
-    
-    # Filter too-high or too-low in-edges
-    z_high = 3 ; z_low = -3
-    indexes, data = np.unique(knn_indices, return_counts=True)
-    hist_z(axes[1,0], data, z_high, z_low, bins=np.arange(0, data.max()+1))
-    axes[1,0].set_xlabel('In-edges')
-    axes[1,0].set_title('Number of in-edges')
-    axes[1,0].set_xlim(0, 4*knn_indices.shape[1])
-    
-    high = indexes[data >= np.mean(data) + np.std(data) * z_high]
-    filter_indexes.update(high)
-    print(f"{len(high)} in-high beads removed")
-    meta["in-high"] = len(high)
-    
-    low = indexes[data <= np.mean(data) + np.std(data) * z_low]
-    filter_indexes.update(low)
-    print(f"{len(low)} in-low beads removed")
-    meta["in-low"] = len(low)
+### MISC. HELPERS ##############################################################
 
-    # Filter low clustering coefficients
-    z_low = -3
-    knn_matrix = create_knn_matrix(knn_indices, knn_dists)
-    G = nx.from_scipy_sparse_array(knn_matrix, create_using=nx.Graph, edge_attribute=None) # undirected, unweighted
-    clustering = nx.clustering(G, nodes=None, weight=None)
-    data = [clustering[key] for key in sorted(clustering.keys())]
-    hist_z(axes[1,1], data, z_low=z_low)
-    axes[1,1].set_xlabel('Clustering coefficient')
-    axes[1,1].set_title('Local clustering coefficient')
-    
-    low = knn_indices[data <= np.mean(data) + np.std(data) * z_low, 0]
-    filter_indexes.update(low)
-    print(f"{len(low)} cluster-low beads removed")
-    meta["cluster-low"] = len(low)
+# embedding1, embedding2
+def L2_distance(p1, p2):
+    assert p1.shape == p2.shape
+    dists = np.sqrt(np.sum(np.square(p1 - p2), axis=1))
+    return np.sum(dists) / p1.shape[0]
 
-    # Filter weakly-connected components
-    n_components, labels = sp.csgraph.connected_components(csgraph=knn_matrix, directed=True, connection='strong')
-    wcc = np.where(labels != np.bincount(labels).argmax())[0]
-    filter_indexes.update(wcc)
-    print(f"{len(wcc)} WCC beads removed")
-    meta["wcc"] = len(wcc)
-     
-    fig.tight_layout()
-    return filter_indexes, fig, meta
+# embedding1, embedding2
+def procrustes_distance(p1, p2):
+    assert p1.shape == p2.shape
+    from scipy.spatial import procrustes
+    _, _, disparity = procrustes(p1, p2)
+    return disparity
 
 ### KNN METHODS ################################################################
 
 class KNNMask:
-    def __init__(self, knn_indices, knn_dists):
-        assert knn_indices.shape == knn_dists.shape
-        self.knn_indices = copy.deepcopy(knn_indices)
-        self.knn_dists = copy.deepcopy(knn_dists)
-        self.original_size = knn_indices.shape[0]
-        self.valid_original_indexes = np.arange(self.original_size)
-    
-    def remove(self, bad):
-        curr_len = self.knn_indices.shape[0]
-        
-        assert self.knn_indices.shape == self.knn_dists.shape
-        assert np.all(np.unique(bad, return_counts=True)[1] == 1)
-        assert np.min(bad) >= 0 and np.max(bad) < curr_len
-        print(f"Removing {len(bad)} beads")
-        
-        # Slice the data        
-        m = np.ones(curr_len, dtype=bool)
-        m[bad] = False
-        self.knn_indices = self.knn_indices[m]
-        self.knn_dists = self.knn_dists[m]
-        self.valid_original_indexes = self.valid_original_indexes[m]
-        assert np.all(b not in self.knn_indices[:,0] for b in bad)
-        
-        # Remap the KNN        
-        index_map = np.cumsum([i not in bad for i in range(curr_len)], dtype=np.int32) - 1
-        index_map[bad] = -1
-        mask_2d = np.isin(self.knn_indices, bad)
-        self.knn_indices = index_map[self.knn_indices]
-        assert np.all(self.knn_indices[mask_2d] == -1)
-        self.knn_dists[mask_2d] = np.inf
+    # initialize the valid indices
+    def __init__(self, knn_matrix):
+        assert knn_matrix.shape[0] == knn_matrix.shape[1]
+        self.mask = np.ones(knn_matrix.shape[0], dtype=bool)
 
-        assert self.knn_indices.shape == self.knn_dists.shape
-        return copy.deepcopy(self.knn_indices), copy.deepcopy(self.knn_dists)
-    
-    def final(self):
-        assert len(self.valid_original_indexes) == self.knn_indices.shape[0] == self.knn_dists.shape[0]
-        mask = np.zeros(self.original_size, dtype=bool)
-        mask[self.valid_original_indexes] = True
-        return mask
+    # input knn_matrix and mask, return filtered matrix
+    def apply_mask(self, knn_matrix, mask):
+        assert knn_matrix.shape[0] == knn_matrix.shape[1] == len(mask)
+        assert mask.dtype == bool
+        
+        # update mask
+        v = np.where(self.mask)[0]
+        assert len(v) == len(mask)
+        self.mask[v[~mask]] = False
+        
+        # filter matrix
+        return(knn_matrix[mask,:][:,mask])
 
-def create_knn_matrix(knn_indices, knn_dists):
-    assert knn_indices.shape == knn_dists.shape
-    assert knn_indices.dtype == np.int32 and knn_dists.dtype == np.float64
-    assert np.max(knn_indices) < len(knn_indices)
-    assert np.array_equal(knn_indices[:,0], np.arange(len(knn_indices)))
-    assert np.all(knn_dists[:,1:] > 0) and not np.any(np.isnan(knn_dists))
+# Convert knn_matrix to (knn_indices, knn_dists)
+def knn_matrix2indist(knn_matrix):
+    lil = knn_matrix.tolil(copy=False)
+    nrows = lil.shape[0]
+    ncols = max(len(row) for row in lil.rows) + 1
     
+    knn_indices = np.full((nrows, ncols), -1, dtype=np.int32)
+    knn_dists = np.full((nrows, ncols), np.inf, dtype=np.float32)
+    
+    for i in range(nrows):
+        inds = np.array([i]+lil.rows[i], dtype=np.int32)
+        vals = np.array([0]+lil.data[i], dtype=np.float32)
+
+        sorted_indices = np.argsort(vals)
+        inds = inds[sorted_indices]
+        vals = vals[sorted_indices]
+
+        knn_indices[i, :len(inds)] = inds
+        knn_dists[i, :len(vals)] = vals
+
+    validate_knn_indist(knn_indices, knn_dists)
+    return knn_indices, knn_dists
+
+# convert (knn_indices, knn_dists) back into knn_matrix
+def knn_indist2matrix(knn_indices, knn_dists):
+    validate_knn_indist(knn_indices, knn_dists)
     rows = np.repeat(knn_indices[:,0], knn_indices.shape[1]-1)
     cols = knn_indices[:,1:].ravel()
     vals = knn_dists[:,1:].ravel()
@@ -349,104 +289,63 @@ def create_knn_matrix(knn_indices, knn_dists):
     
     return knn_matrix
 
-### MNN METHODS ################################################################
-### source: https://umap-learn.readthedocs.io/en/latest/mutual_nn_umap.html ####
+# subset a knn_matrix to the closest k neighbors in each row
+def csr_k_nearest(csr, k):
+    assert type(csr) == sp._csr.csr_matrix
+    rows, cols, data = [], [], []
+    
+    for i in range(csr.shape[0]):
+        row_start, row_end = csr.indptr[i], csr.indptr[i+1]
+        row_data = csr.data[row_start:row_end]
+        row_indices = csr.indices[row_start:row_end]
 
-# Prune non-reciprocated edges
-def create_mnn(knn_indices, knn_dists):
+        if len(row_data) > k:
+            top_k_indices = np.argpartition(row_data, k)[:k]
+            row_data = row_data[top_k_indices]
+            row_indices = row_indices[top_k_indices]
+
+        rows.extend([i] * len(row_data))
+        cols.extend(row_indices)
+        data.extend(row_data)
+
+    return sp.csr_matrix((data, (rows, cols)), shape=csr.shape)
+
+def csr_nbytes(csr):
+    assert type(csr) == sp._csr.csr_matrix
+    return(csr.data.nbytes + csr.indptr.nbytes + csr.indices.nbytes)
+
+def validate_knn_indist(knn_indices, knn_dists):
     assert knn_indices.shape == knn_dists.shape
+    assert knn_indices.dtype == np.int32 and knn_dists.dtype == np.float32
+    assert np.array_equal(knn_indices[:,0], np.arange(len(knn_indices)))
+    assert np.all(-1 <= knn_indices) and np.all(knn_indices < len(knn_indices))
+    assert np.all(knn_dists[:,0] == 0)
+    assert np.all(knn_dists[:,1:] > 0)
+    assert not np.any(np.isnan(knn_dists))
 
-    # Create mutual graph
-    print(f"Creating mutual graph...")
-    knn_matrix = create_knn_matrix(knn_indices, knn_dists).tocsr()
-    m = np.abs(knn_matrix - knn_matrix.T) > np.min(knn_matrix.data)/2
-    knn_matrix.data *= ~m[knn_matrix.astype(bool)].A1
-    knn_matrix.eliminate_zeros()
-    lil = knn_matrix.tolil()
-    lil.setdiag(0)
-    del knn_matrix, m
-    
-    # Write output
-    print("Writing output...")
-    nrows = lil.shape[0]
-    ncols = max(len(row) for row in lil.rows) + 1
-    
-    mnn_indices = np.full((nrows, ncols), -1, dtype=np.int32)
-    mnn_dists = np.full((nrows, ncols), np.inf, dtype=np.float64)
-    for i in range(nrows):
-        cols = np.array(lil.rows[i]+[i], dtype=np.int32)
-        vals = np.array(lil.data[i]+[0], dtype=np.float64)
+# do checks
 
-        sorted_indices = np.argsort(vals)
-        cols = cols[sorted_indices]
-        vals = vals[sorted_indices]
+### UMAP METHODS ###############################################################
 
-        mnn_indices[i, :len(cols)] = cols
-        mnn_dists[i, :len(vals)] = vals
-    
-    print("done")
-    return mnn_indices, mnn_dists
+def my_umap(mat, knn, init, opts, n_jobs=-1):
+    from umap import UMAP
+    reducer = UMAP(n_components = 2,
+                   metric = "cosine",
+                   random_state = None,
+                   verbose = True,
+                   low_memory=True,
+                   
+                   n_neighbors = opts["n_neighbors"],
+                   min_dist = opts["min_dist"],
+                   spread = opts["spread"],
+                   local_connectivity = opts["local_connectivity"],
+                   repulsion_strength = opts["repulsion_strength"],
+                   negative_sample_rate = opts["negative_sample_rate"],
+                   n_epochs = opts["n_epochs"],
 
-# Search to find path neighbors (todo: stop at dist=0)
-def find_new_nn(indices, dists, out_neighbors, i_range):
-    mnn_dists = [] 
-    mnn_indices = []
-    
-    for i in i_range:
-        min_indices = []
-        min_distances = []
-        
-        heap = [(0,i)] ; heapq.heapify(heap) 
-        mapping = {}
-        seen = set()
-        
-        while len(min_distances) < out_neighbors and len(heap) > 0:
-            dist, nn = heapq.heappop(heap)
-            if nn in seen or nn < 0:
-                continue
-        
-            min_indices.append(nn)
-            min_distances.append(dist)
-            seen.add(nn)
-            
-            for nn_i, nn_d in zip(indices[nn], dists[nn]):
-                if nn_i in seen or nn_d <= 0:
-                    continue
-                distance = dist + nn_d
-                if nn_i not in mapping or distance < mapping[nn_i]:
-                    mapping[nn_i] = distance
-                    heapq.heappush(heap, (distance, nn_i))
-            
-        if len(min_distances) < out_neighbors:
-            for i in range(out_neighbors-len(min_distances)):
-                min_indices.append(-1)
-                min_distances.append(np.inf)
-        
-        mnn_indices.append(min_indices)
-        mnn_dists.append(min_distances)
-        
-    return np.array(mnn_indices, dtype=np.int32), np.array(mnn_dists)
-
-def find_path_neighbors(knn_indices, knn_dists, out_neighbors, n_jobs=-1):
-    print("Finding new path neighbors...")
-    assert np.all(np.sum(knn_indices[:,1:]>=0, axis=1) > 0), "ERROR: Some beads have no edges"
-    
-    from multiprocessing import Pool
-    if n_jobs < 1:
-        n_jobs = len(os.sched_getaffinity(0))
-
-    ranges = np.array_split(range(len(knn_indices)), n_jobs)
-    with Pool(processes=n_jobs) as pool:
-        results = pool.starmap(find_new_nn, [(knn_indices, knn_dists, out_neighbors, i_range) for i_range in ranges])
-
-    mnn_indices, mnn_dists = zip(*results)
-    mnn_indices = np.vstack(mnn_indices)
-    mnn_dists = np.vstack(mnn_dists)
-    
-    assert mnn_indices.shape == mnn_dists.shape
-    assert mnn_indices.shape[0] == knn_indices.shape[0]
-    assert np.max(mnn_indices) < len(mnn_indices)
-    assert np.all(mnn_indices >= 0) and np.all(mnn_dists >= 0)
-    assert np.array_equal(mnn_indices[:,0], np.arange(len(mnn_indices)))
-    assert mnn_indices.dtype == np.int32 and mnn_dists.dtype == np.float64
-    return mnn_indices, mnn_dists
+                   precomputed_knn = knn,
+                   init = init,
+                   n_jobs = n_jobs
+                  )
+    embedding = reducer.fit_transform(np.log1p(mat))
+    return(embedding)
