@@ -7,11 +7,11 @@ import pandas as pd
 import igraph as ig
 import scipy.sparse as sp
 from pypdf import PdfWriter
-from untitled import *
+from helpers import *
 
 def get_args():
     parser = argparse.ArgumentParser(description='2D embedding of reconstruction data')
-    parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default="../recon-count/output0")
+    parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default=".")
     parser.add_argument("-o", "--out_dir", help="output data folder", type=str, default=".")
     parser.add_argument("-c", "--cores", type=int, default=-1)
     parser.add_argument("-b", "--bead", type=int, default=2)
@@ -24,7 +24,7 @@ def get_args():
     parser.add_argument("-s", "--spread", type=float, default=1.0)
     parser.add_argument("-lc", "--local_connectivity", type=int, default=1)
     parser.add_argument("-rs", "--repulsion_strength", type=float, default=1.0)
-    parser.add_argument("-nsr", "--negative_sample_rate", type=int, default=5)
+    parser.add_argument("-nsr", "--negative_sample_rate", type=int, default=10)
     parser.add_argument("-ne", "--n_epochs", type=int, default=500)
     
     args, unknown = parser.parse_known_args()
@@ -50,8 +50,7 @@ opts["repulsion_strength"] = args.repulsion_strength
 opts["negative_sample_rate"] = args.negative_sample_rate
 opts["n_epochs"] = args.n_epochs
 print(f"UMAP options:\n{'\n'.join(f'    {k} = {v}' for k, v in opts.items())}")
-# learning_rate, init, set_op_mix_ratio
-# a, b, target_n_neighbors, disconnection_distance
+# learning_rate, set_op_mix_ratio, disconnection_distance
 
 # Create programmatic output folder name
 name = f"UMAP_sb{bead}_"
@@ -80,6 +79,8 @@ del avail_cores
 print(f"Using {cores} cores")
 
 ### Pre-process KNN ############################################################
+
+print("\nLoading KNN...")
 
 # Read KNN matrix
 knn_matrix = sp.load_npz(os.path.join(in_dir, f'knn{bead}.npz')).tocsr()
@@ -199,9 +200,10 @@ def leiden_init(G):
     # community_walktrap through community_edge_betweenness
     # end_time = time.time()
     # print(end_time - start_time)
+    # maintain cluster size, dynamic resolution?
     
     # https://leidenalg.readthedocs.io/en/stable/reference.html
-    partition = la.find_partition(G, la.RBConfigurationVertexPartition, resolution_parameter=160) # 69.5
+    partition = la.find_partition(G, la.RBConfigurationVertexPartition, resolution_parameter=160)
     # leidenalg.find_partition(graph, partition_type, initial_membership=None, weights=None, n_iterations=2, max_comm_size=0, seed=None, **kwargs)
 
     membership = np.array(partition.membership)
@@ -302,7 +304,7 @@ gc.collect()
 #     cosine_similarity(mat[b], mat[ns])
 
 # Load barcodes
-print('\nLoading the barcodes...')
+print('Loading the barcodes...')
 sb = pd.read_csv(os.path.join(in_dir, f"sb{bead}.txt.gz"), header=None, names=['sb'])
 
 # Subset barcodes
@@ -321,9 +323,9 @@ if opts["n_epochs"] <= 1000:
     embeddings.append(my_umap(mat, (knn_indices, knn_dists), init, opts, cores))
 else:
     n_epochs = opts["n_epochs"]
-    opts["n_epochs"] = 100
+    opts["n_epochs"] = 1000
     embeddings.append(my_umap(mat, (knn_indices, knn_dists), init, opts, cores))
-    for i in range(int(np.ceil(n_epochs/100))-1):
+    for i in range(int(np.ceil(n_epochs/1000))-1):
         embeddings.append(my_umap(mat, (knn_indices, knn_dists), embeddings[-1], opts, cores))
     opts["n_epochs"] = n_epochs
 
