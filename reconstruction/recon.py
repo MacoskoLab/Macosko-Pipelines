@@ -153,8 +153,6 @@ fig, ax = knn_plot(knn_indices, knn_dists, tlu)
 fig.savefig(os.path.join(out_dir, "knn.pdf"), dpi=200)
 del fig, ax
 
-# G.clique_number() on 150
-
 # Unused metrics
 # G.strength(G.vs, weights="weight")
 # G.reciprocity()
