@@ -41,3 +41,8 @@ call-MergeStarOutputs/Test_Optimus_gex_sparse_counts_row_index.npy
 call-MergeStarOutputs/Test_Optimus_gex_sparse_counts_col_index.npy
 call-MergeStarOutputs/Test_Optimus_gex_filtered_mtx_files.tar
 call-MergeStarOutputs/Test_Optimus_gex.mtx_files.tar
+
+spatial-count.jl
+----------------
+
+SBcounts.h5
