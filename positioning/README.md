@@ -23,26 +23,41 @@ Other documentation
 * [10X molecule_info.h5](https://www.10xgenomics.com/support/software/cell-ranger/latest/analysis/outputs/cr-outputs-molecule-info)
 * [Optimus .h5ad](https://broadinstitute.github.io/warp/docs/Pipelines/Optimus_Pipeline/Loom_schema)
 
-RNA source
-
-call-CellMetrics/attempt-2/Test_Optimus_gex.cell-metrics.csv.gz
-
-call-GeneMetrics/Test_Optimus_gex.gene-metrics.csv.gz
-
-call-ReferenceCheck/cacheCopy/reference_version.txt
-
-call-OptimusH5adGeneration/Test_Optimus_gex.h5ad
-call-OptimusH5adGeneration/Test_Optimus_gex__library_metrics.csv
-
-call-MergeBam/Test_Optimus_gex.bam
-
-call-MergeStarOutputs/Test_Optimus_gex.star_metrics.tar
-call-MergeStarOutputs/Test_Optimus_gex_sparse_counts_row_index.npy
-call-MergeStarOutputs/Test_Optimus_gex_sparse_counts_col_index.npy
-call-MergeStarOutputs/Test_Optimus_gex_filtered_mtx_files.tar
-call-MergeStarOutputs/Test_Optimus_gex.mtx_files.tar
-
-spatial-count.jl
-----------------
-
 SBcounts.h5
+-----------
+* lists
+    * cb_list - cell barcode sequences
+    * sb_list - spatial barcode sequences
+    * puck_list - puck filenames
+    * R1_list - R1 FASTQ filenames
+    * R2_list - R2 FASTQ filenames
+* matrix
+    * cb_index - index of the cell barcode in lists/cb_list
+    * umi - 2-bit encoded UMI sequence
+    * sb_index - index of the cell barcode in lists/sb_list
+    * reads - number of read sequences with this 3-tuple of barcodes
+* puck
+    * sb - spatial barcode sequence
+    * x - x-coordinate of bead centroid
+    * y - y-coordinate of bead centroid
+    * puck_index - index into puck_list
+* metadata
+    * switch - False if R1 contains CB/UMI and R2 contains SB, True otherwise
+    * bead - ID of read structure
+    * num_lowQbeads - number of low-quality beads filtered from the puck
+    * reads - total number of reads
+    * reads_filtered - total number of reads passing the UMI, UP, and SB filters
+    * R1_tooshort - number of reads with fewer than the allowable 
+    * R2_tooshort -
+    * UMI - filtering statistics on the UMI sequence
+    * UP - filtering statistics on the UP
+    * SB - filtering statistics on the spatial barcode sequence
+    * SB_HD - location of spatial barcode fuzzy match
+
+Bead structures
+---------------
+* `JJJJJJJJTCTTCAGCGTTCCCGAGAJJJJJJJNNNNNNNVV`   (V10)
+* `JJJJJJJJJTCTTCAGCGTTCCCGAGAJJJJJJJJNNNNNNNNN` (V17)
+* `JJJJJJJJJJJJJJJCTGTTTCCTGNNNNNNNNN`           (V15)
+* `JJJJJJJJJJJJJJJJJCTGTTTCCTGNNNNNNNNN`         (V16)
+
