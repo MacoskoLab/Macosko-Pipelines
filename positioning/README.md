@@ -47,12 +47,52 @@ SBcounts.h5
     * num_lowQbeads - number of low-quality beads filtered from the puck
     * reads - total number of reads
     * reads_filtered - total number of reads passing the UMI, UP, and SB filters
-    * R1_tooshort - number of reads with fewer than the allowable 
-    * R2_tooshort -
+    * R1/2_tooshort - number of reads with fewer than the allowable cycles
     * UMI - filtering statistics on the UMI sequence
     * UP - filtering statistics on the UP
     * SB - filtering statistics on the spatial barcode sequence
     * SB_HD - location of spatial barcode fuzzy match
+
+Spatial Library Metadata
+------------------------
+
+* SB_info
+    * R1s
+    * R2s
+    * pucks
+    * UMI_downsampling
+    * switch_R1R2
+    * bead_type
+    * remap_10X_CB
+    * UMI_pct_in_called_cells
+    * sequencing_saturation
+* puck_info
+    * puck_name - filename of puck
+    * num_beads - total number of beads
+    * num_lowQ - number of beads removed before FASTQ parsing
+    * num_dup - number of beads removed by collision (puck multiplexing)
+    * num_N - number of beads removed for having an N
+    * num_degen - number of beads removed for being degnerate
+    * puck_boundaries - x-coordinates demarcating puck start/end positions
+    * umi_final - number of spatial UMIs associated with the puck after filtering
+* UMI_filtering
+    * N: number of reads where the UMI contained a N
+    * homopolymer: number of reads where the UMI was degenerate
+* UP_matching: exact, fuzzy, GG, none
+* SB_matching: exact, HD1, HD1ambig, none
+* SB_fuzzy_position: the number of barcodes which fuzzy-matched to each base
+* CB_matching: exact, fuzzy, ambig, none
+* SB_filtering
+    * reads_total - total number of reads in the input FASTQ
+    * reads_tooshort - FASTQ sequence not long enough
+    * reads_noumi - UMI was low-quality
+    * reads_noup - UP site not matched
+    * reads_nosb - SB did not match puck whitelist
+    * reads_lqsb - SB was low-quality
+    * reads_nocb - CB did not match called cell whitelist
+    * reads_final - number of reads after all above filters
+    * UMIs_final - number of UMIs after all above filters
+
 
 Bead structures
 ---------------
