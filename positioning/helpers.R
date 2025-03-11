@@ -12,26 +12,32 @@ make.pdf <- function(plots, name, w, h) {
 }
 
 remap_10X_CB <- function(vec) {
-  stopifnot(class(vec) == "character")
-  stopifnot(nchar(vec) == 16)
   basemap = setNames(c("AG","TC","CA","GT"), c("TC","AG","GT","CA"))
-  stopifnot(unique(substr(vec,8,9)) %in% names(basemap))
-  ret = paste0(substr(vec,1,7), basemap[substr(vec,8,9)], substr(vec,10,16))
-  stopifnot(len(vec) == len(ret))
-  stopifnot(nchar(vec) == nchar(ret))
-  return(ret)
+  return(paste0(substr(vec,1,7), basemap[substr(vec,8,9)], substr(vec,10,16)))
+}
+
+determine_remap_10X_CB <- function(vec, dt) {
+  if (class(vec) != "character") {
+    return(F)
+  } else if (!all(nchar(vec) == 16)) {
+    return(F)
+  } else if (!all(unique(substr(vec,8,9)) %in% c("TC","AG","GT","CA"))) {
+    return(F)
+  }
+  
+  # Determine which mapping has more reads
+  reads_noremap <- dt[cb %in% cb_whitelist, reads] %>% sum
+  reads_remap <- dt[cb %in% remap_10X_CB(cb_whitelist), reads] %>% sum
+  return(reads_remap > reads_noremap)
 }
 
 listHD1neighbors <- function(input_string) {
-  nucleotides <- c('A','C','G','T','N')
-  result <- c()
-  for (i in 1:nchar(input_string)) {
-    for (nuc in nucleotides[nucleotides != substr(input_string, i, i)]) {
-      new_string <- paste0(substr(input_string, 1, i-1), nuc, substr(input_string, i+1, nchar(input_string)))
-      result <- c(result, new_string)
-    }
-  }
-  return(result)
+  bases <- c('A','C','G','T','N')
+  lapply(1:nchar(input_string), function(i){
+    paste0(substr(input_string, 1, i-1),
+           setdiff(bases, substr(input_string, i, i)),
+           substr(input_string, i+1, nchar(input_string)))
+  }) %>% list_c
 }
 
 count_umis <- function(df) {
@@ -45,7 +51,9 @@ count_umis <- function(df) {
   return(gdf)
 }
 
+################################################################################
 ### Loading methods ############################################################
+################################################################################
 
 ReadOptimus <- function(matrix_path) {
   fetch <- function(x){return(rhdf5::h5read(matrix_path, x))}
@@ -55,8 +63,8 @@ ReadOptimus <- function(matrix_path) {
   indices <- fetch("X/indices") %>% as.numeric
   indptr <- fetch("X/indptr") %>% as.numeric
   
-  row_names <- fetch("var/_index") %>% as.character # var/Gene and var/gene_names were too short
-  col_names <- fetch("obs/_index") %>% as.character # obs/CellID and obs/cell_names were the same
+  row_names <- fetch("var/_index") %>% as.character %>% make.unique # var/Gene and var/gene_names were too short
+  col_names <- fetch("obs/_index") %>% as.character %>% make.unique # obs/CellID and obs/cell_names were the same
   star_IsCell <- fetch("obs/star_IsCell") %>% as.logical
   
   mat <- Matrix::sparseMatrix(
@@ -70,7 +78,8 @@ ReadOptimus <- function(matrix_path) {
   
   stopifnot(ncol(mat) == len(star_IsCell))
   return(mat[,star_IsCell])
-} # REMAP GENE NAMES
+}
+
 
 ReadIntronic <- function(intronic_path, cb_list) {
   if (!file.exists(intronic_path)) {
@@ -99,6 +108,7 @@ ReadIntronic <- function(intronic_path, cb_list) {
   return(pct.intronic)
 }
 
+
 ReadLibraryMetrics <- function(metrics_path) {
   if (!file.exists(metrics_path)) {
     return(data.frame())
@@ -121,11 +131,120 @@ ReadLibraryMetrics <- function(metrics_path) {
   return(df)
 }
 
-ReadSpatialMetadata <- function() {
+
+ReadSpatialMatrix <- function(f) {
+  cb_list <- f("lists/cb_list")
+  sb_list <- f("lists/sb_list")
   
+  dt <- data.table(cb = f("matrix/cb_index") %>% as.integer %>% factor(levels=seq(len(cb_list)), labels=cb_list),
+                   umi = f("matrix/umi") %>% as.integer,
+                   sb = f("matrix/sb_index") %>% as.integer %>% factor(levels=seq(len(sb_list)), labels=sb_list),
+                   reads = f("matrix/reads") %>% as.integer)
+  
+  return(dt)
 }
 
-### Plotting methods ###########################################################
+
+ReadSpatialMetadata <- function(f) {
+  metadata = list(SB_info = list(R1s=f("lists/R1_list"),
+                                 R2s=f("lists/R2_list"),
+                                 pucks=f("lists/puck_list"),
+                                 UMI_downsampling=f("metadata/downsampling"),
+                                 switch_R1R2=f("metadata/switch") %>% as.logical,
+                                 bead_type=f("metadata/bead")),
+                  UMI_filtering = setNames(f("metadata/UMI/count"), f("metadata/UMI/type")),
+                  UP_matching = setNames(f("metadata/UP/count"), f("metadata/UP/type")),
+                  SB_matching = setNames(f("metadata/SB/count"), f("metadata/SB/type")),
+                  SB_fuzzy_position = setNames(f("metadata/SB_HD/count"), f("metadata/SB_HD/type")) %>% {.[order(as.integer(names(.)))]},
+                  puck_info = list(num_lowQ=f("metadata/num_lowQbeads"))
+  )
+  metadata$SB_filtering = c(reads_total=f("metadata/reads"),
+                            reads_tooshort=f("metadata/R1_tooshort")+f("metadata/R2_tooshort"),
+                            reads_noumi=sum(metadata$UMI[c("N","homopolymer")]),
+                            reads_noup=sum(metadata$UP[c("none","GG")]),
+                            reads_nosb=sum(metadata$SB_matching[c("none","HD1ambig")]))
+  return(metadata)
+}
+
+
+ReadPuck <- function(f) {
+  # Read matrix from .h5 file
+  puckdf <- data.table(sb=f("puck/sb") %>% as.character,
+                       x=f("puck/x") %>% as.numeric,
+                       y=f("puck/y") %>% as.numeric,
+                       puck_index=f("puck/puck_index") %>% as.integer)
+  
+  # Compute eps scale
+  epsilon <- RANN::nn2(data = puckdf[, .(x, y)],
+                       query = puckdf[sample(.N, 10000), .(x,y)],
+                       k = 2)$nn.dists[,2] %>% median
+  
+  # Add degeneracy statistics
+  most_character_count <- function(vec) {
+    stopifnot(typeof(vec) == "character")
+    degenA = str_count(vec, "A")
+    degenC = str_count(vec, "C")
+    degenG = str_count(vec, "G")
+    degenT = str_count(vec, "T")
+    degenN = str_count(vec, "N")
+    return(pmax.int(degenA, degenC, degenG, degenT, degenN))
+  }
+  puckdf[, mc := most_character_count(sb)]
+  
+  longest_run_length <- function(vec) {
+    stopifnot(typeof(vec) == "character", nchar(vec) > 0)
+    ret = stringr::str_extract_all(vec, "(.)\\1*")
+    return(map_int(ret, ~max(nchar(.))))
+  }
+  puckdf[, lr := longest_run_length(sb)]
+  
+  sb_len = max(nchar(puckdf$sb))
+  mc_tol = round(sb_len*4/5)
+  lr_tol = round(sb_len*2/3)
+  
+  dups = unique(puckdf$sb[duplicated(puckdf$sb)])
+  Ns = puckdf[grepl("N", sb), sb]
+  
+  # split into pucks
+  puckdfs <- split(puckdf, by = "puck_index", sorted = TRUE)
+  for (puck in puckdfs) {puck[, puck_index := NULL]}
+  
+  # save metadata
+  puckmeta <- list()
+  puckmeta$puck_name = as.character(f("lists/puck_list")) %>% unname
+  puckmeta$num_beads = map_int(puckdfs, nrow) %>% unname
+  puckmeta$num_dup = map_int(puckdfs, ~.[sb %in% dups, .N]) %>% unname
+  puckmeta$num_N = map_int(puckdfs, ~.[sb %in% Ns, .N]) %>% unname
+  puckmeta$num_degen = map_int(puckdfs, ~.[mc > mc_tol | lr > lr_tol, .N]) %>% unname
+  
+  # remove duplicated or low-quality beads
+  puckdfs %<>% map(~.[!sb %in% dups])
+  puckdfs %<>% map(~.[!sb %in% Ns])
+  puckdfs %<>% map(~.[mc <= mc_tol & lr <= lr_tol])
+  for (puck in puckdfs) {puck[, mc := NULL]}
+  for (puck in puckdfs) {puck[, lr := NULL]}
+  
+  # for multiplexed pucks, stack along "x" to prevent overlapping
+  if (len(puckdfs) > 1) {
+    maxs <- map_dbl(puckdfs, ~max(.$x, na.rm=TRUE)) %>% unname
+    mins <- map_dbl(puckdfs, ~min(.$x, na.rm=TRUE)) %>% unname
+    starts <- cumsum(maxs-mins) %>% lag(1, 0)
+    puckdfs %>% map2(starts, ~.x[, x := x-min(x)+.y])
+  } else {
+    starts <- min(puckdfs[[1]]$x)
+  }
+  
+  puckdf <- rbindlist(puckdfs)
+  stopifnot(!any(duplicated(puckdf[, sb])))
+  puckmeta$puck_boundaries = c(starts, max(puckdf$x))
+  puckdf[, sb := factor(sb)]
+  
+  return(list(puckdf, puckmeta, epsilon))
+}
+
+################################################################################
+### RNA plots ##################################################################
+################################################################################
 
 # Page 1: 10X/Optimus RNA metrics
 plot_metrics_csv <- function(df) {
@@ -141,6 +260,7 @@ plot_metrics_csv <- function(df) {
                     ncol=1, rel_heights=c(0.1,0.1,0.7,0.2))
   return(plot)
 }
+
 
 # Page 2: Cell calling
 plot_cellcalling <- function(intronic_path, cb_list, ct = 200) {
@@ -159,7 +279,7 @@ plot_cellcalling <- function(intronic_path, cb_list, ct = 200) {
                     )[,.(umi=.N, pct.intronic=sum(umi_type==0)/.N*100), barcode_idx]
     dt[, called := barcode_idx %in% match(cb_list, fetch("barcodes"))]
     dt[, barcode_idx := NULL]
-    dt2 <- data.table(x=fetch("count"))[,.(N=.N),x]
+    dt2 <- data.table(x=fetch("count"))[, .(N=.N), x]
   } else if (all(c("reads_mapped_intronic", "reads_mapped_exonic") %in% fields)) { # Optimus
     dt <- data.table(barcode = fetch("/obs/CellID"),
                      umi = data.table(data=fetch("X/data"),indices=fetch("X/indices"))[,.(umi=sum(data)),indices][order(indices), umi],
@@ -207,8 +327,8 @@ plot_cellcalling <- function(intronic_path, cb_list, ct = 200) {
   
   # Panel 3: Read per UMI histogram
   if (nrow(dt2) > 0) {
-    dt2[, x := pmin(x,10)]
-    dt2 <- dt2[,.(N=sum(N)),x][order(x)]
+    dt2[, x := pmin(x, 10)]
+    dt2 <- dt2[, .(N=sum(N)), x][order(x)]
     p3 <- ggplot(dt2, aes(x=as.factor(x),y=N)) + geom_col() +
       scale_x_discrete(breaks=min(dt2$x):max(dt2$x), labels=(min(dt2$x):max(dt2$x)) %>% {ifelse(.==10, "10+", .)}) +
       xlab("Reads per UMI") + ylab("UMI Count") + ggtitle("Reads per UMI distribution") +
@@ -234,7 +354,8 @@ plot_cellcalling <- function(intronic_path, cb_list, ct = 200) {
   return(plot)
 }
 
-# Plot UMAP + metrics
+
+# Page 3: UMAP + QC
 plot_umaps <- function(obj) {
   mytheme <- function(){theme(plot.title=element_text(hjust=0.5), axis.title.x=element_blank(), axis.title.y=element_blank(), legend.position="top", legend.justification="center", legend.key.width=unit(2, "lines"))}
   p1 <- DimPlot(obj, label=T) + ggtitle(g("UMAP")) + mytheme() + NoLegend()  + coord_fixed(ratio=1)
@@ -251,71 +372,195 @@ plot_umaps <- function(obj) {
   return(plot)
 }
 
+################################################################################
+### SB plots ###################################################################
+################################################################################
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-plot_rankplots <- function(df, f, out_path) {
-  gdf = count_umis(df)
+# Page 4: Spatial library
+plot_SBlibrary <- function(dt, f) {
+  sb_pct_in_called_cells <- round(nrow(dt[!is.na(cb)])/nrow(dt) * 100, digits=2) %>% paste0("%")
   
-  # p1
-  cb.data = gdf %>% group_by(cb_index) %>% summarize(umi=sum(umi)) %>% arrange(desc(umi)) %>% {mutate(.,index=1:nrow(.), filter="all cell barcodes")}
-  cb.data2 = cb.data %>% filter(cb_index>0) %>% {mutate(.,index=1:nrow(.), filter="called cell barcodes only")}
-  sb_pct_in_called_cells = round(sum(filter(cb.data,cb_index>0)$umi)/sum(cb.data$umi)*100,2) %>% paste0("%")
-  p1 = ggplot(mapping=aes(x=index, y=umi,col=filter))+geom_line(data=cb.data)+geom_line(data=cb.data2) +
-    scale_x_log10()+scale_y_log10()+theme_bw()+ggtitle("SB UMI per cell")+ylab("SB UMI counts")+xlab("Cell barcodes") +
-    theme(legend.position = c(0.05, 0.05), legend.justification = c("left", "bottom"), legend.background = element_blank(), legend.spacing.y = unit(0.1,"lines"), legend.title=element_blank()) +
+  # Panel 1: Spatial barcodes per cell
+  cb.data <- rbindlist(list(dt[is.na(cb), .N, cb_raw][,.(N)], dt[!is.na(cb), .N, cb][,.(N)]))[order(-N)]
+  cb.data[, index := .I]
+  cb.data <- cb.data[N != lag(N,1,0) | N != lead(N,1,0)]
+  cb.data[, filter := "all cell barcodes"]
+  
+  cb.data2 <- dt[!is.na(cb), .N, cb][,.(N)][order(-N)]
+  cb.data2[, index := .I]
+  cb.data2 <- cb.data2[N != lag(N,1,0) | N != lead(N,1,0)]
+  cb.data2[, filter := "called cell barcodes only"]
+  
+  p1 <- ggplot(mapping=aes(x=index, y=N, col=filter)) + 
+    geom_line(data=cb.data) + geom_line(data=cb.data2) +
+    scale_x_log10() + scale_y_log10() + theme_bw() + 
+    ggtitle("SB UMI per cell") + ylab("SB UMI counts") + xlab("Cell barcode rank") +
+    theme(legend.position = "inside",
+          legend.position.inside = c(0.05, 0.05),
+          legend.justification.inside = c("left", "bottom"),
+          legend.background = element_blank(),
+          legend.spacing.y = unit(0.1,"lines"),
+          legend.title=element_blank()) +
     annotate("text", x = Inf, y = Inf, label = g("SB UMI in called cells: {sb_pct_in_called_cells}"), hjust = 1.02, vjust = 1.33)
   rm(cb.data, cb.data2) ; invisible(gc())
   
-  # p2
-  sb.data = gdf %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>% arrange(desc(umi)) %>% {mutate(.,index=1:nrow(.),filter="all cell barcodes")}
-  sb.data2 = gdf %>% filter(cb_index > 0) %>% group_by(sb_index) %>% summarize(umi=sum(umi)) %>% arrange(desc(umi)) %>% {mutate(.,index=1:nrow(.),filter="called cell barcodes only")}
-  p2 = ggplot(mapping=aes(x=index,y=umi,col=filter))+geom_line(data=sb.data)+geom_line(data=sb.data2)+
-    scale_x_log10()+scale_y_log10()+theme_bw()+ggtitle("SB UMI per bead")+ylab("SB UMI counts")+xlab("Beads")+
-    theme(legend.position = c(0.05, 0.05), legend.justification = c("left", "bottom"), legend.background = element_blank(), legend.spacing.y = unit(0.1,"lines"), legend.title=element_blank())
+  # Panel 2: Spatial barcodes per bead
+  sb.data <- dt[, .N, sb][, .(N)][order(-N)]
+  sb.data[, index := .I]
+  sb.data <- sb.data[N != lag(N,1,0) | N != lead(N,1,0)]
+  sb.data[, filter := "all cell barcodes"]
+  
+  sb.data2 <- dt[!is.na(cb), .N, sb][, .(N)][order(-N)]
+  sb.data2[, index := .I]
+  sb.data2 <- sb.data2[N != lag(N,1,0) | N != lead(N,1,0)]
+  sb.data2[, filter := "called cell barcodes only"]
+  
+  p2 <- ggplot(mapping=aes(x=index, y=N, col=filter)) + 
+    geom_line(data=sb.data) + geom_line(data=sb.data2) +
+    scale_x_log10() + scale_y_log10() + theme_bw() + 
+    ggtitle("SB UMI per bead") + ylab("SB UMI counts") + xlab("Beads") +
+    theme(legend.position = "inside",
+          legend.position.inside = c(0.05, 0.05),
+          legend.justification.inside = c("left", "bottom"),
+          legend.background = element_blank(),
+          legend.spacing.y = unit(0.1,"lines"),
+          legend.title=element_blank())
   rm(sb.data, sb.data2) ; invisible(gc())
   
-  # p3
-  x = seq(0, 1, 0.05) * f("metadata/reads")/1000000
-  plot.df = data.frame(x=x, y=f("metadata/downsampling")/1000000)
-  p3 = ggplot(plot.df, aes(x=x,y=y)) + geom_point() + theme_bw() + 
-    xlab("Millions of reads") + ylab("Millions of filtered SB UMIs") + ggtitle("SB downsampling curve")
+  # Panel 3: Spatial barcode library downsampling curve
+  p3 <- data.frame(x = seq(0, 1, 0.05) * f("metadata/reads")/1000000,
+                   y = f("metadata/downsampling")/1000000) %>% 
+        ggplot(aes(x=x,y=y)) + geom_point() + theme_bw() + 
+        xlab("Millions of SB reads") + ylab("Millions of filtered SB UMIs") + ggtitle("SB downsampling curve")
   
-  # p4
-  d = table(df$reads) %>% as.data.frame %>% setNames(c("reads","count")) %>% mutate(reads = as.numeric(levels(reads))[reads])
-  d %<>% filter(reads < 10) %>% bind_rows(data.frame(reads = 10, count = sum(d$count[d$reads >= 10])))
-  total_reads = prettyNum(f('metadata/reads'), big.mark=',')
-  sequencing_saturation = round((1 - nrow(df) / sum(df$reads)) * 100, 2) %>% paste0("%")
-  p4 = ggplot(d, aes(x=reads, y=count/1000/1000)) + geom_col() +
-    theme_bw() + xlab("Reads per UMI") + ylab("Millions of filtered SB UMIs") + ggtitle("SB read depth") + 
+  # Panel 4: Reads per UMI distribution
+  d <- dt[, .N, reads]
+  d[, reads := pmin(reads, 10)]
+  d <- d[, .(N = sum(N)), reads][order(reads)]
+  
+  total_reads = add.commas(f('metadata/reads'))
+  sequencing_saturation = round((1 - nrow(dt) / sum(dt$reads)) * 100, 2) %>% paste0("%")
+  
+  p4 <- ggplot(d, aes(x=reads, y=N/1000/1000)) + geom_col() +
+    theme_bw() + xlab("Reads per UMI") + ylab("Millions of filtered SB UMIs") + ggtitle("Reads per UMI") + 
     annotate("text", x = Inf, y = Inf, label = g("sequencing saturation = {sequencing_saturation}\ntotal reads = {total_reads}"), hjust = 1.02, vjust = 1.33) +
     scale_x_continuous(breaks=min(d$reads):max(d$reads), labels=(min(d$reads):max(d$reads)) %>% {ifelse(.==10, "10+", .)})
   
-  plot = plot_grid(p1, p2, p3, p4, ncol=2)
-  
-  make.pdf(plot, file.path(out_path, "SB.pdf"), 7, 8)
-  
-  meta <- metadata
-  meta$SB_info$UMI_pct_in_called_cells = sb_pct_in_called_cells
-  meta$SB_info$sequencing_saturation = sequencing_saturation
-  metadata <<- meta
-  return(T)
+  return(plot_grid(p1, p2, p3, p4, ncol=2))
 }
+
+
+# Page 5: Bead plots
+beadplot <- function(sb.data) {
+  ggplot(sb.data, aes(x=x, y=y, col=umi)) +
+    ggrastr::rasterize(geom_point(size=0.1, shape=16), dpi=200) +
+    coord_fixed(ratio=1) +
+    theme_classic() +
+    labs(x="x", y="y") +
+    scale_color_viridis(trans="log", option="B", name="UMI") + 
+    ggtitle(g("SB UMI per bead"))
+}
+plot_SBplot <- function(dt, puckdf) {
+  p1 <- merge(dt[, .(umi=.N), sb], puckdf, by = "sb")[order(umi)] %>% 
+    beadplot() + ggtitle(g("SB UMI per bead (total)"))
+  
+  p2 <- merge(dt[!is.na(cb), .(umi=.N), sb], puckdf, by = "sb")[order(umi)] %>% 
+    beadplot() + ggtitle(g("SB UMI per bead (called cells only)"))
+
+  return(plot_grid(p1, p2, ncol=1))
+}
+
+
+# Page 6: Spatial library metrics
+plot_SBmetrics <- function(metadata) {
+  
+  # Panel A1
+  plot.df = list(
+    c("Total Reads", metadata$SB_filtering[["reads_total"]] %>% add.commas),
+    c("Final UMIs", metadata$SB_filtering[["UMIs_final"]] %>% add.commas),
+    c("R1 <-> R2", metadata$SB_info$switch_R1R2),
+    c("Remap CB", metadata$SB_info$remap_10X_CB),
+    c("Bead type", metadata$SB_info$bead_type)
+  ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("Metric", "Value"))
+  A1 <- plot_grid(gdraw("Library information", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1, 0.6))
+  
+  # Panel A2
+  header = c("Metric", metadata$puck_info$puck_name %>% str_remove("^Puck_") %>% str_remove("\\.csv$"))
+  plot.df = list(c("Beads total", metadata$puck_info$num_beads %>% add.commas),
+                 c("Beads removed", Reduce(`+`,metadata$puck_info[c("num_dup","num_N","num_degen","num_lowQ")]) %>% add.commas),
+                 # c("Size", metadata$puck_info$puck_sizes),
+                 c("Diameter", metadata$puck_info$puck_boundaries %>% {map2_dbl(head(.,-1), tail(.,-1), ~round(.y-.x, 2))}),
+                 #c("Scaling factor", metadata$puck_info$scaling_factors %>% round(2)),
+                 c("Final UMIs", metadata$puck_info$umi_final %>% add.commas)
+  ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(header)
+  A2 <- plot_grid(gdraw("Puck information", 13), plot.tab(plot.df), gdraw(""), ncol=1, rel_heights=c(0.1 ,0.5, 0.1))
+  
+  # Panel B1
+  plot.df = data.frame(a=c("exact", "fuzzy", "GG", "none"),
+                       b=metadata$UP_matching[c("exact", "fuzzy", "GG", "none")]) %>%
+                       mutate(b=(b/sum(b)*100) %>% round(2) %>% paste0("%")) %>% unname
+  B1 <- plot_grid(gdraw("UP matching", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1, 0.4))
+  
+  # Panel B2
+  plot.df = data.frame(a=c("exact","fuzzy","ambig","none"),
+                       b=metadata$SB_matching[c("exact","HD1","HD1ambig","none")] %>% {./sum(.)*100} %>% round(2) %>% unname %>% paste0("%")) %>% unname
+  B2 <- plot_grid(gdraw("SB matching", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1, 0.4))
+  
+  # Panel B3
+  plot.df = data.frame(a=c("exact","fuzzy","ambig","none"),
+                       b=metadata$CB_matching[c("exact","fuzzy","ambig","none")] %>% {./sum(.)*100} %>% round(2) %>% unname %>% paste0("%")) %>% unname
+  B3 <- plot_grid(gdraw("CB matching", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1, 0.4))
+  
+  # Panel C1
+  plot.df = data.frame(a=c("LQ UMI", "No UP", "No SB", "LQ SB", "Uncalled CB", "Chimeric"),
+                       b=metadata$SB_filtering[c("reads_noumi", "reads_noup", "reads_nosb", "reads_lqsb", "reads_nocb", "reads_chimeric")] %>% unname) %>% 
+            setNames(c("Filter","Percent"))
+  plot.df$Percent = as.numeric(plot.df$Percent) / (metadata$SB_filtering[["reads_total"]] - lag(cumsum(plot.df$Percent),1,0))
+  plot.df$Percent = round(plot.df$Percent * 100, 2) %>% paste0("%")
+  C1 <- plot_grid(gdraw("SB filtering", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.7))
+  
+  # Panel C2
+  if (metadata$SB_info$bead_type %in% c("V10","V17","V15","V16")) {
+    plot.df = metadata$SB_fuzzy_position %>% {data.frame(pos=as.numeric(names(.)),count=as.numeric(unname(.)))}
+    switch(metadata$SB_info$bead_type, 
+           "V10"={u1=9  ; u2=26},
+           "V17"={u1=10 ; u2=27},
+           "V15"={u1=16 ; u2=25},
+           "V16"={u1=18 ; u2=27}
+    )
+    plot.df$pos[plot.df$pos>=u1] %<>% add(u2-u1+1)
+    C2 <- ggplot(plot.df, aes(x=pos,y=count)) + geom_col() + theme_bw() +
+      geom_rect(aes(xmin=u1, xmax=u2, ymin=-Inf, ymax=Inf), fill="grey") +
+      annotate("text", x=(u1+u2)/2, y=max(plot.df$count, na.rm=T)*0.1, label="UP Site", color="black") +
+      xlab("Spatial barcode base position") + ylab("Fuzzy matches") + ggtitle("Location of spatial barcode fuzzy match")
+  } else {
+    C2 <- gdraw("Unrecognized bead type")
+  }
+
+  # Panel D
+  plot.df <- data.frame(R1s=metadata$SB_info$R1s %>% basename,
+                        R2s=metadata$SB_info$R1s %>% basename)
+  if (nrow(plot.df) > 4) {
+    plot.df <- rbind(plot.df[1:3,], data.frame(R1s=g("({nrow(plot.df)-3} more)"), R2s=g("({nrow(plot.df)-3} more)")))
+  }
+  D1 <- plot_grid(gdraw("Spatial library FASTQs", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1, 0.5))
+  
+  plot <- plot_grid(
+    gdraw("Spatial library metadata", 15),
+    plot_grid(A1, A2, ncol=2, rel_widths = c(0.38, 0.62)),
+    plot_grid(B1, B2, B3, ncol=3),
+    plot_grid(C1, C2, ncol=2, rel_widths = c(0.35, 0.65)),
+    D1,
+    ncol=1,
+    rel_heights = c(0.1*1.1, 0.7, 0.5, 0.8, 0.6)
+  )
+  
+  return(plot)
+}
+
+################################################################################
+### DBSCAN plots ###############################################################
+################################################################################
 
 # Create DimPlot
 plot_clusters <- function(obj, reduction) {
@@ -375,106 +620,153 @@ plot_RNAvsSB <- function(obj) {
   return(plot)
 }
 
-beadplot <- function(sb.data) {
-  ggplot(sb.data, aes(x=x, y=y, col=umi)) +
-    rasterize(geom_point(size=0.1, shape=16), dpi=200) +
-    coord_fixed(ratio=1) +
-    theme_classic() +
-    labs(x="x (\u00B5m)", y="y (\u00B5m)") +
-    scale_color_viridis(trans="log", option="B", name="UMI") + 
-    ggtitle(g("SB UMI per bead"))
-}
-plot_beadplot <- function(df, puckdf, out_path) {
-  sb.data = df %>% count_umis %>% group_by(sb_index) %>% summarize(umi=sum(umi), .groups="drop") %>%
-    inner_join(y=puckdf, by="sb_index") %>% arrange(umi)
-  p1 = beadplot(sb.data) + ggtitle(g("SB UMI per bead (total)"))
-  sb.data = df %>% filter(cb_index>0) %>% count_umis %>% group_by(sb_index) %>% summarize(umi=sum(umi), .groups="drop") %>%
-    inner_join(y=puckdf, by="sb_index") %>% arrange(umi)
-  p2 = beadplot(sb.data) + ggtitle(g("SB UMI per bead (called cells only)"))
-  plot = plot_grid(p1, p2, ncol=1)
-  make.pdf(plot, file.path(out_path, "beadplot.pdf"), 7, 8)
-  return(T)
+plot_dbscan <- function(coords, optim_plot) {
+  # Panel 1: DBSCAN cluster distribution
+  d = data.frame(x=coords$clusters) %>% rowwise %>% mutate(x=min(x,5)) %>% ungroup
+  p1 = ggplot(d, aes(x=x)) + geom_histogram(aes(y = after_stat(count)/sum(after_stat(count))*100), binwidth=.5) +
+    geom_text(aes(label = sprintf("%1.0f%%", after_stat(count)/sum(after_stat(count))*100), y=after_stat(count)/sum(after_stat(count))*100), stat="bin", binwidth=1, vjust=-0.5)+
+    theme_classic() + xlab("DBSCAN clusters") + ylab("Percent") +
+    scale_y_continuous(limits=c(0,100)) +
+    scale_x_continuous(breaks=min(d$x):max(d$x), labels=(min(d$x):max(d$x)) %>% {ifelse(.==5, "5+", .)}) +
+    ggtitle("Cluster distribution")
+  
+  # Panel 3: SB UMI distribution
+  d = coords %>% rowwise %>% mutate(x=min(clusters,5)) %>% ungroup
+  p3 = ggplot(d, aes(x=as.factor(x), y=log10(umi))) + geom_violin(scale="count") + 
+    scale_x_discrete(breaks=min(d$x):max(d$x), labels=(min(d$x):max(d$x)) %>% {ifelse(.==5, "5+", .)}) +
+    xlab("DBSCAN clusters") + ylab("log10 SB UMI") + ggtitle("SB UMI distribution") + theme_classic()
+  
+  # Panel 4: SNR density
+  max_density_x = mean(coords$SNR, na.rm=T)
+  p4 = coords %>% filter(!is.na(x_um)) %>% ggplot(aes(x = SNR)) + geom_density() + 
+    theme_minimal() +
+    labs(title = "SNR per cell (density)", x = "SNR", y = "Density") + 
+    geom_vline(xintercept = max_density_x, color = "red", linetype = "dashed") +
+    annotate(geom = 'text', label = g("Mean: {round(max_density_x*100, 1)}%"), x = max_density_x+0.01, y = Inf, hjust = 0, vjust = 1, col="red")
+  
+  plot = plot_grid(gdraw("DBSCAN Results"),
+                   plot_grid(p1, optim_plot, p3, p4, ncol=2),
+                   ncol=1, rel_heights=c(0.05,0.95))
+  return(plot)
 }
 
-plot_metrics <- function(metadata, out_path) {
+plot_kde <- function(kde_coords) {
+  p1 <- kde_coords %>% ggplot(aes(x=x_um,y=y_um))+geom_point(size=0.1,shape=16)+coord_fixed()+theme_classic()+ggtitle("Location of highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
+  p3 <- kde_coords %>% filter(!is.na(x2_um),!is.na(y2_um)) %>% ggplot(aes(x=x2_um,y=y2_um))+geom_point(size=0.1,shape=16)+coord_fixed()+theme_classic()+ggtitle("Location of second-highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
+  #p1 <- kde_coords %>% ggplot(aes(x=x_um,y=y_um))+geom_bin2d(bins=c(round(xrange/50),round(yrange/50)))+coord_fixed()+theme_classic()+ggtitle("Distribution of highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
+  #p3 <- kde_coords %>% ggplot(aes(x=x2_um,y=y2_um))+geom_bin2d(bins=c(round(xrange/50),round(yrange/50)))+coord_fixed()+theme_classic()+ggtitle("Distribution of second-highest density")+xlab("")+ylab("")+theme(plot.title=element_text(size=12))
   
-  plot.df = list(
-    c("Total Reads", metadata$SB_filtering[["reads_total"]] %>% add.commas),
-    c("Final UMIs", metadata$SB_filtering[["UMIs_final"]] %>% add.commas),
-    c("R1<->R2", metadata$SB_info$switch_R1R2),
-    c("Remap 10X CB", metadata$SB_info$remap_10X_CB),
-    c("Bead type", metadata$SB_info$bead_type)
-  ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("Metric", "Value"))
-  p_sp = plot_grid(gdraw("Library information"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.6))
+  label = g("3:1\ncells: {sum(kde_coords$ratio<1/3)}/{nrow(kde_coords)} ({round(sum(kde_coords$ratio<1/3)/nrow(kde_coords)*100,2) %>% paste0('%')})")
+  p2 <- kde_coords %>% ggplot(aes(x = ratio)) + geom_density() + 
+    theme_minimal() + theme(plot.title=element_text(size=12)) + 
+    labs(title = "Distribution of top-2 density ratio", x = "Ratio", y = "Density") + 
+    geom_vline(xintercept = 1/3, color = "red", linetype = "dashed") +
+    annotate(geom = 'text', label = label, x = 1/3+0.01, y = Inf, hjust = 0, vjust = 1, col="red")
   
-  header = c("Metric", metadata$puck_info$puck_name %>% str_remove("^Puck_") %>% str_remove("\\.csv$"))
-  plot.df = list(c("Beads", metadata$puck_info$num_beads %>% add.commas),
-                 c("Size", metadata$puck_info$puck_sizes),
-                 c("Filtered beads", Reduce(`+`,metadata$puck_info[c("num_dup","num_N","num_degen","num_lowQ")]) %>% add.commas),
-                 c("Scaling factor", metadata$puck_info$scaling_factors %>% round(2)),
-                 c("Final UMIs", metadata$puck_info$umi_final %>% add.commas)
-  ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(header)
-  p_puck = plot_grid(gdraw("Puck information"),
-                     plot.tab(plot.df),
-                     ncol=1, rel_heights=c(0.1,0.6))
+  d <- kde_coords %>% filter(!is.na(x2_um),!is.na(y2_um)) %>% mutate(dist=sqrt((x_um-x2_um)^2+(y_um-y2_um)^2))
+  p4 <- ggplot(d, aes(x=dist)) + geom_histogram(bins = 30) + theme_bw() +
+    xlab("Distance (\u00B5m)")+ylab("Frequency")+ggtitle("Distance between top-2 densities")+theme(plot.title=element_text(size=12))
   
-  UP_matching = metadata$UP_matching
-  SB_filtering = metadata$SB_filtering
+  plot = plot_grid(gdraw("KDE Results"),
+                   plot_grid(p1, p2, p3, p4, ncol=2),
+                   ncol=1, rel_heights=c(0.05,0.95))
+  return(plot)
+}
+
+dbscan_vs_kde <- function(coords) {
+  coords %<>% mutate(dist=sqrt((x_um_dbscan-x_um_kde)^2+(y_um_dbscan-y_um_kde)^2))
   
-  plot.df = data.frame(a=c("exact","fuzzy", "none", "GG"),
-                       b=c(UP_matching[["exact"]],
-                           UP_matching[["fuzzy"]],
-                           UP_matching[["none"]],
-                           UP_matching[["GG"]]
-                       ) %>% {./sum(.)*100} %>% round(2) %>% paste0("%")
-  ) %>% arrange(desc(b)) %>% unname
-  p_up = plot_grid(gdraw("UP matching"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.4))
+  # Panel 1: Distance between DBSCAN and KDE assignments
+  d = filter(coords, !is.na(dist))
+  max_density_x = median(d$dist+1, na.rm=T) %>% log10
+  p1 <- ggplot(d, aes(x=log10(dist+1)))+geom_histogram(bins=30)+theme_bw()+
+    labs(title = "DBSCAN vs KDE distance", x = "log1p Distance (\u00B5m)", y = "Frequency") + 
+    geom_vline(xintercept = max_density_x, color = "red", linetype = "dashed") +
+    annotate(geom = 'text', label = round(10^max_density_x-1, 2) %>% paste0("\u00B5m"), x = max_density_x+0.1, y = Inf, hjust = 0, vjust = 1.3, col="red")
   
-  plot.df = data.frame(a=c("exact","fuzzy","none","ambig"),b=metadata$SB_matching[c("exact","HD1","none","HD1ambig")] %>% {./sum(.)*100} %>% round(2) %>% unname %>% paste0("%")) %>% unname
-  p_sb = plot_grid(gdraw("SB matching"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.4))
+  # Panel 2: Distribution of KDE ratio for each DBSCAN cluster
+  d = coords %>% rowwise %>% mutate(clusters=min(clusters,5)) %>% ungroup
+  p2 <- ggplot(d, aes(x=clusters %>% as.factor, y=ratio)) + geom_violin() +
+    theme_classic() + xlab("DBSCAN clusters") + ylab("KDE ratio") +
+    scale_x_discrete(breaks=min(d$clusters):max(d$clusters), labels=(min(d$clusters):max(d$clusters)) %>% {ifelse(.==5, "5+", .)}) +
+    ggtitle("KDE ratio per DBSCAN cluster") + 
+    geom_hline(yintercept = 1/3, color = "red", linetype = "dashed")
   
-  plot.df = data.frame(a=c("exact","fuzzy","none","ambig"),b=metadata$CB_matching[c("exact","HD1","none","HD1ambig")] %>% {./sum(.)*100} %>% round(2) %>% unname %>% paste0("%")) %>% unname
-  p_cb = plot_grid(gdraw("CB matching"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.4))
+  # Panel 3: KDE ratio for disagreeing placements
+  p3 <- coords %>% filter(clusters==1) %>% ggplot(aes(x=dist, y=ratio))+geom_point(size=0.5)+theme_bw()+
+    xlab("Distance between assignments")+ylab("KDE ratio")+ggtitle("Density ratio of disagreements")+
+    geom_hline(yintercept = 1/3, color = "red", linetype = "dashed")
   
-  plot.df = list(
-    c("Invalid UMI", SB_filtering[["reads_noumi"]]),
-    c("No UP", SB_filtering[["reads_noup"]]),
-    c("No SB", SB_filtering[["reads_nosb"]]),
-    c("Chimeric", SB_filtering[["reads_chimeric"]]),
-    c("Invalid SB", SB_filtering[["reads_lowQsb"]]),
-    c("Uncalled CB", SB_filtering[["reads_uncalled"]])
-  ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(c("Filter","Percent"))
-  plot.df$Percent = as.numeric(plot.df$Percent) / (SB_filtering[["reads_total"]] - lag(cumsum(plot.df$Percent),1,0))
-  plot.df$Percent = round(plot.df$Percent * 100, 2) %>% paste0("%")
-  p_filter = plot_grid(gdraw("SB filtering"), plot.tab(plot.df), ncol=1, rel_heights=c(0.1,0.7))
+  # Panel 4: Contingency table of placements
+  d = coords %>% mutate(dbscan_pass=clusters==1, kde_pass=ratio<1/3) %>% group_by(dbscan_pass, kde_pass) %>% summarize(n=n(), .groups="drop") %>% mutate(pct=g("{round(n/sum(n)*100,2)}%\n{n}"))
+  p4 <- ggplot(d, aes(x=dbscan_pass,y=kde_pass,fill=n))+geom_tile()+geom_text(label=d$pct)+theme_bw()+
+    xlab("DBSCAN=1")+ylab("KDE < 1/3")+theme(legend.position="none")+coord_fixed()+ggtitle("Placement table")
   
-  plot.df = metadata$SB_fuzzy_position %>% {data.frame(pos=as.numeric(names(.)),count=as.numeric(unname(.)))}
-  switch(metadata$SB_info$bead_type, 
-         "V10"={u1=9  ; u2=26},
-         "V17"={u1=10 ; u2=27},
-         "V15"={u1=16 ; u2=25},
-         "V16"={u1=18 ; u2=27}
-  )
-  plot.df$pos[plot.df$pos>=u1] %<>% add(u2-u1+1)
-  p_loc = ggplot(plot.df,aes(x=pos,y=count))+geom_col()+theme_bw() +
-    geom_rect(aes(xmin=u1, xmax=u2, ymin=-Inf, ymax=Inf), fill="grey") +
-    annotate("text", x=(u1+u2)/2, y=max(plot.df$count, na.rm=T)*0.1, label="UP Site", color="black") +
-    xlab("Spatial barcode base position") + ylab("Fuzzy matches") + ggtitle("Location of spatial barcode fuzzy match")
+  plot = plot_grid(gdraw("DBSCAN vs. KDE Comparison"),
+                   plot_grid(p1, p2, p3, p4, ncol=2),
+                   ncol=1, rel_heights=c(0.05,0.95))
+  return(plot)
+}
+
+sample_bead_plots <- function(data.list, coords) {
+  plot.sb <- function(cb_i) {
+    row = coords %>% filter(cb_index==cb_i) %T>% {stopifnot(nrow(.)==1)}
+    subdf = data.list[[as.character(cb_i)]] ; stopifnot(subdf$cb_index == cb_i)
+    subdf %<>% arrange(umi) %>% filter(!is.na(x_um), !is.na(y_um))
+    subdf1 <- filter(subdf, cluster==1)
+    subdf2 <- filter(subdf, cluster==2)
+    
+    plot <- ggplot() + coord_fixed(ratio=1 ,xlim=xlims, ylim=ylims) + theme_void() +
+      geom_point(data=subdf, mapping=aes(x=x_um, y=y_um, col=umi), size=2, shape=16)+
+      geom_point(aes(x=row$x_um_kde, y=row$y_um_kde), color="red", shape=5, size=3) + 
+      ggtitle(g("[{unique(subdf$cb_index)}] ({round(row$ratio,2)})")) +
+      theme(legend.key.width=unit(0.5,"lines"),
+            legend.position="right",
+            legend.key.height=unit(1,"lines"),
+            legend.title=element_blank(),
+            legend.spacing.y=unit(0.2,"lines"),
+            legend.margin=margin(0,0,0,0,"lines"),
+            legend.box.margin=margin(0,0,0,0,"pt"),
+            legend.box.background=element_blank(),
+            legend.background=element_blank(),
+            legend.direction="vertical",
+            legend.justification="left",
+            legend.box.just="left",
+            legend.box.spacing=unit(0,"cm"),
+            plot.title = element_text(hjust = 0.5))
+    # Add the DBSCAN=1 point
+    if(nrow(subdf1) > 0) {
+      plot <- plot + geom_point(aes(x=weighted.mean(subdf1$x_um, w=subdf1$umi),
+                                    y=weighted.mean(subdf1$y_um, w=subdf1$umi)),
+                                color="red", shape=0, size=3)
+    }
+    # Add the DBSCAN=2 point
+    if(nrow(subdf2) > 0) {
+      plot <- plot + geom_point(aes(x=weighted.mean(subdf2$x_um, w=subdf2$umi),
+                                    y=weighted.mean(subdf2$y_um, w=subdf2$umi)),
+                                color="green", shape=0, size=3)
+    }
+    return(plot)
+  }
   
-  p_R = list(c("R1s", metadata$SB_info$R1s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_R1_001")),
-             c("R2s", metadata$SB_info$R2s %>% basename %>% str_remove("\\.fastq\\.gz$") %>% str_remove("_R2_001"))) %>%
-    {do.call(rbind,.)} %>% as.data.frame %>% setNames(NULL) %>% plot.tab
+  list0 = data.list %>% keep(~max(.$cluster)==0 & nrow(.)>0) %>% names %>% as.numeric
+  list1 = data.list %>% keep(~max(.$cluster)==1 & nrow(.)>0) %>% names %>% as.numeric
+  list2 = data.list %>% keep(~max(.$cluster)==2 & nrow(.)>0) %>% names %>% as.numeric
   
-  plot = plot_grid(
-    gdraw("Spatial library metadata",16),
-    plot_grid(p_sp, p_puck, ncol=2, rel_widths = c(0.38,0.62)),
-    plot_grid(p_up, p_sb, p_cb, ncol=3),
-    plot_grid(p_filter, p_loc, ncol=2, rel_widths = c(0.35,0.65)),
-    p_R,
-    ncol=1,
-    rel_heights = c(0.04,0.15,0.11,0.17,0.1)
-  )
+  if(len(list0) > 0) {
+    p1 = plot_grid(ggdraw()+draw_label("DBSCAN=0"),
+                   list0 %>% sample(min(12,len(list0)), replace=F) %>% map(plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1, rel_heights=c(0.1,2))
+  } else {p1 = gdraw("No DBSCAN = 0")}
+  if(len(list1) > 0) {
+    p2 = plot_grid(ggdraw()+draw_label("DBSCAN=1"),
+                   list1 %>% sample(min(12,len(list1)), replace=F) %>% map(plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1, rel_heights=c(0.1,2))
+  } else {p2 = gdraw("No DBSCAN = 1")}
+  if(len(list2) > 0) {
+    p3 = plot_grid(ggdraw()+draw_label("DBSCAN=2"),
+                   list2 %>% sample(min(12,len(list2)), replace=F) %>% map(plot.sb) %>% {plot_grid(plotlist=.,ncol=3)}, ncol=1, rel_heights=c(0.1,2))
+  } else {p3 = gdraw("No DBSCAN = 2")}
   
-  make.pdf(plot, file.path(out_path, "SBmetrics.pdf"), 7, 8)
-  return(T)
+  plots = list(p1, p2, p3)
+  
+  return(plots)
 }
