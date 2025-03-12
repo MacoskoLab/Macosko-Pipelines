@@ -880,6 +880,8 @@ println("done") ; flush(stdout) ; GC.gc()
 
 ################################################################################
 
+print("Writing output... ") ; flush(stdout)
+
 # Compute more metadata
 sequencing_saturation = round((1 - (metadata["umis_filtered"] / metadata["reads_filtered"]))*100, digits=1)
 bead_ratio = round(metadata["R2_barcodes"]/metadata["R1_barcodes"], digits=2)
@@ -945,10 +947,6 @@ savefig(p, joinpath(out_path, "metadata.pdf"))
 meta_df = DataFrame([Dict(:key => k, :value => v) for (k,v) in metadata])
 sort!(meta_df, :key) ; meta_df = select(meta_df, :key, :value)
 CSV.write(joinpath(out_path,"metadata.csv"), meta_df, writeheader=false)
-
-################################################################################
-
-print("Writing output... ") ; flush(stdout)
 
 merge_pdfs([joinpath(out_path,"elbows.pdf"),
             joinpath(out_path,"metadata.pdf"),
