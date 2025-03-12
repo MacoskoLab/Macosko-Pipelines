@@ -100,93 +100,24 @@ C = sp.vstack([zip_sp_matmul_topn(top_n=n_neighbors, C_mats=Cis) for Cis in Cs],
 del Cs ; gc.collect()
 
 print('Finalizing result...')
-C.data = 1 - C.data
+C.data = 1 - C.data # cosine similarity -> cosine distance
 C.data = np.maximum(C.data, 0)
 C.data = np.minimum(C.data, 1)
 C.setdiag(0)
 C.eliminate_zeros()
+
+# print('Checking result...')
+# C.has_canonical_format = False
+# nnz_before = C.nnz
+# C.sort_indices()
+# C.sum_duplicates()
+# nnz_after = C.nnz
+# assert nnz_before == nnz_after
+# assert C.has_canonical_format
+# C.check_format(full_check=True)
 
 print('Saving output...')
 assert C.shape[0] == C.shape[1]
 sp.save_npz(out_file, C, compressed=True)
 
 print("Done!")
-
-### Archive: NNDescent #########################################################
-
-# # Compute the KNN using NNDescent
-# def knn_descent(mat, n_neighbors, metric="cosine", n_jobs=-1):    
-#     from pynndescent import NNDescent
-#     knn_search_index = NNDescent(
-#         data=mat,
-#         metric=metric,
-#         metric_kwds={},
-#         n_neighbors=n_neighbors,
-#         n_trees=64, # originally None
-#         # leaf_size=None,
-#         pruning_degree_multiplier=3.0, # originally 1.5
-#         diversify_prob=0.0, # originally 1.0
-#         # tree_init=True,
-#         # init_graph=None,
-#         # init_dist=None,
-#         random_state=None,
-#         low_memory=True, # originally False
-#         max_candidates=60, # originally None
-#         max_rptree_depth=999999, # originally 200
-#         n_iters=512, # originally None
-#         delta=0.0001, # originally 0.001
-#         n_jobs=n_jobs,
-#         # compressed=False,
-#         # parallel_batch_queries=False,
-#         verbose=True # originally False
-#     )
-#     knn_indices, knn_dists = knn_search_index.neighbor_graph
-#     return knn_indices, knn_dists
-
-# # UMAP NNDescent wrapper
-# def nearest_neighbors(mat, n_neighbors, metric="cosine", n_jobs=-1):
-#     from umap.umap_ import nearest_neighbors
-#     knn_indices, knn_dists, _ = nearest_neighbors(mat,
-#                                     n_neighbors = n_neighbors,
-#                                     metric = metric,
-#                                     metric_kwds = {},
-#                                     angular = False, # Does nothing?
-#                                     random_state = None,
-#                                     low_memory = True, # False?
-#                                     use_pynndescent = True, # Does nothing?
-#                                     n_jobs = n_jobs,
-#                                     verbose = True
-#                                 )
-#     return knn_indices, knn_dists
-
-# # Take the best neighbors between two NNDescent runs
-# # knn_indices1 is row-sliced, knn_indices2 is original
-# def knn_merge(knn_indices1, knn_dists1, knn_indices2, knn_dists2):
-#     assert knn_indices1.shape == knn_dists1.shape
-#     assert knn_indices2.shape == knn_dists2.shape
-#     assert knn_indices1.shape[0] == knn_dists1.shape[0] == knn_indices2.shape[0] == knn_dists2.shape[0]
-#
-#     assert all(knn_indices2[:,0] == np.arange(knn_indices2.shape[0]))
-#     assert np.all(knn_indices2 >= 0) and np.all(knn_dists2 >= 0)
-#     index_map = dict(zip(knn_indices1[:,0], knn_indices2[:,0]))
-#     knn_indices1 = np.vectorize(lambda i: index_map.get(i,-1))(knn_indices1)
-#     assert all(knn_indices1[:,0] == knn_indices2[:,0])
-#
-#     k = max(knn_indices1.shape[1], knn_indices2.shape[1])
-#     knn_indices = np.zeros((knn_indices1.shape[0], k), dtype=np.int32)
-#     knn_dists = np.zeros((knn_indices1.shape[0], k), dtype=np.float64)
-#
-#     for i in range(knn_indices1.shape[0]):
-#         d1 = {i:d for i,d in zip(knn_indices1[i], knn_dists1[i]) if i >= 0}
-#         d2 = {i:d for i,d in zip(knn_indices2[i], knn_dists2[i]) if i >= 0}
-#         d = d1 | d2
-#
-#         row = sorted(d.items(), key=lambda item: item[1])[:k]
-#         inds, dists = zip(*row)
-#
-#         knn_indices[i,:] = inds
-#         knn_dists[i,:] = dists
-#
-#     return knn_indices, knn_dists
-
-# knn_indices, knn_dists = knn_descent(np.log1p(mat), n_neighbors, metric="cosine", n_jobs=cores)
