@@ -15,13 +15,6 @@ Seurat Metadata
 
 Seurat Misc
 -----------
-RNA_metadata
-* [10X metadata](https://www.10xgenomics.com/support/software/cell-ranger/latest/analysis/outputs/cr-outputs-metrics)
-* [Optimus metadata](https://broadinstitute.github.io/warp/docs/Pipelines/Optimus_Pipeline/Library-metrics)
-
-Other documentation
-* [10X molecule_info.h5](https://www.10xgenomics.com/support/software/cell-ranger/latest/analysis/outputs/cr-outputs-molecule-info)
-* [Optimus .h5ad](https://broadinstitute.github.io/warp/docs/Pipelines/Optimus_Pipeline/Loom_schema)
 
 SBcounts.h5
 -----------
@@ -96,8 +89,19 @@ Spatial Library Metadata
 
 Bead structures
 ---------------
-* `JJJJJJJJTCTTCAGCGTTCCCGAGAJJJJJJJNNNNNNNVV`   (V10)
-* `JJJJJJJJJTCTTCAGCGTTCCCGAGAJJJJJJJJNNNNNNNNN` (V17)
-* `JJJJJJJJJJJJJJJCTGTTTCCTGNNNNNNNNN`           (V15)
-* `JJJJJJJJJJJJJJJJJCTGTTTCCTGNNNNNNNNN`         (V16)
+* `V10: JJJJJJJJ  TCTTCAGCGTTCCCGAGA JJJJJJJ  NNNNNNNVV`
+* `V17: JJJJJJJJJ TCTTCAGCGTTCCCGAGA JJJJJJJJ NNNNNNNNN`
+* `V15: JJJJJJJJJJJJJJJ   CTGTTTCCTG NNNNNNNNN`
+* `V16: JJJJJJJJJJJJJJJJJ CTGTTTCCTG NNNNNNNNN`
+
+Documentation
+-------------
+RNA library-level metadata
+* [10X metadata](https://www.10xgenomics.com/support/software/cell-ranger/latest/analysis/outputs/cr-outputs-metrics)
+* [Optimus metadata](https://broadinstitute.github.io/warp/docs/Pipelines/Optimus_Pipeline/Library-metrics)
+
+RNA read-level metadata
+* [10X molecule_info.h5](https://www.10xgenomics.com/support/software/cell-ranger/latest/analysis/outputs/cr-outputs-molecule-info)
+* [Optimus .h5ad](https://broadinstitute.github.io/warp/docs/Pipelines/Optimus_Pipeline/Loom_schema)
+
 
