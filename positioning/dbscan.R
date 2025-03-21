@@ -3,23 +3,6 @@
 ### Input: cb_whitelist.txt (newline-delimited list of cell barcodes to position)
 ### Output: coords.csv (+metadata)
 ################################################################################
-library(glue) ; g=glue ; len=length
-library(magrittr)
-library(purrr)
-library(tidyr)
-library(dplyr)
-library(data.table)
-library(Seurat)
-library(stringr)
-library(ggplot2)
-library(cowplot)
-library(viridisLite)
-library(viridis)
-library(qpdf)
-library(qs)
-
-source("helpers.R")
-
 # Load arguments
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 2) {
@@ -37,6 +20,9 @@ if (length(args) == 2) {
 # Check input arguments
 if (!dir.exists(out_path)) {dir.create(out_path, recursive=T)}
 stopifnot(filter(rhdf5::h5ls(sb_path), group=="/matrix")$name == c("cb_index", "reads", "sb_index", "umi"))
+
+# Print arguments
+print("")
 
 # Load the spatial barcode count matrix
 f <- function(p){return(rhdf5::h5read(sb_path, p))}
@@ -164,6 +150,7 @@ plot_SBmetrics(metadata) %>% make.pdf(file.path(out_path, "SBmetrics.pdf"), 7, 8
 
 # Write intermediate output
 print("Writing intermediate matrix")
+# order[]
 fwrite(dt, file.path(out_path, "matrix.csv.gz"), quote=FALSE, sep=",", row.names=FALSE, col.names=TRUE, compress="gzip")
 metadata %>% map(as.list) %>% jsonlite::toJSON(pretty=T) %>% writeLines(file.path(out_path, "spatial_metadata.json"))
 dt[, sb := NULL]
@@ -177,14 +164,16 @@ stopifnot(sort(names(dt)) == c("cb", "umi", "x", "y"))
 
 xlims = range(dt$x) ; xrange = max(dt$x) - min(dt$x)
 ylims = range(dt$y) ; yrange = max(dt$y) - min(dt$y)
+# num_pucks = round(xrange/yrange)
 data.list <- split(dt, by="cb", drop=TRUE, keep.by=FALSE)
-for (dl in data.list) {stopifnot(nrow(dl) > 0)}
+for (dl in data.list) {stopifnot(nrow(dl) > 0, dl$umi > 0)}
 rm(dt) ; invisible(gc())
 print(g("Running positioning on {len(data.list)} cells"))
 
-# Prepare for positioning
+# prepare for positioning
 library(future)
 library(furrr)
+options(future.globals.maxSize = 1024 * 1024 * 1024)
 myoptions <- furrr::furrr_options(packages=c("data.table"), seed=TRUE, scheduling=1)
 future::plan(future::multisession, workers=parallelly::availableCores())
 mydbscan <- function(dl, eps, minPts) {dbscan::dbscan(x = dl[,.(x,y)],
@@ -194,49 +183,26 @@ mydbscan <- function(dl, eps, minPts) {dbscan::dbscan(x = dl[,.(x,y)],
                                                       borderPoints = FALSE)$cluster}
 
 # Dynamic DBSCAN
-ms <- 1 # minPts step size (must be integer for IRanges)
-eps = epsilon * 15
+ms <- 1L # minPts step size
+eps = epsilon * 15 # TODO: make this a vector, or pass-in-able
 res <- furrr::future_map(data.list, function(dl){
   # base case
-  minpts <- ms
-  a1 <- mydbscan(dl, eps, minpts)
-  a2 <- a1
-  if (max(a2) <= 1) {vec <- a1 ; minpts2 <- minpts}
+  v2 <- mydbscan(dl, eps, ms)
+  if (max(v2) == 0) {return(list(i2=1L, c2=v2, i1=0L, c1=v2))}
+  if (max(v2) == 1) {i2=1L ; c2=v2}
   
   # loop
-  while (max(a2) > 0) {
-    minpts <- minpts + ms
-    a1 <- a2
-    a2 <- mydbscan(dl, eps, minpts)
-    if (max(a1) > 1 & max(a2) <= 1) {vec <- a1 ; minpts2 <- minpts}
+  i <- 1L
+  while (max(v2) > 0) {
+    i <- i + 1L
+    v1 <- v2
+    v2 <- mydbscan(dl, eps, ms*i)
+    if (max(v1) > 1 & max(v2) <= 1) {c2=v1 ; i2=i-1L}
   }
   
-  # [[1]] are the DBSCAN clusters at highest minPts that produces 2+ clusters
-  # [[2]] are the DBSCAN clusters at highest minPts that produces 1 cluster
-  # [[3]][[1]] is the highest minPts that produces DBSCAN=2, plus 1 step
-  # [[3]][[2]] is the lowest minPts that produces DBSCAN=0, minus 1 step
-  return(list(vec, a1, c(minpts2, minpts-ms)))
+  # i2/c2 is the index/clusters at the highest minPts that produces 2+ clusters (if applicable)
+  # i1/c1 is the index/clusters at the lowest minPts that produces DBSCAN=0, minus 1 step
+  return(list(i2=i2, c2=c2, i1=i-1L, c1=v1))
 }, .options = myoptions)
-invisible(map2(data.list, res, ~.x[, c2 := .y[[1]]]))
-invisible(map2(data.list, res, ~.x[, c1 := .y[[2]]]))
-mranges <- IRanges::IRanges(start=map_int(res, ~.[[3]][[1]]),
-                            end=map_int(res, ~.[[3]][[2]])) %>% 
-           IRanges::coverage() %>% as.integer
-rm(res)
-
-# DBSCAN
-minPts <- which.max(mranges) * ms
-coords_dbscan <- map(data.list, function(dl){
-  d <- mydbscan(dl, eps, minPts)
-  if (max(d) == 1) {
-    return(dl[d==1, .(x=weighted.mean(x, umi),
-                      y=weighted.mean(y, umi),
-                      sumi=sum(umi),
-                      umi=sum(dl$umi),
-                      SNR=sum(umi)/sum(dl$umi))])
-  } else {
-    return(dl[,.(x=NA,y=NA,sumi=NA,umi=sum(umi),SNR=NA)])
-  }
-}) %>% rbindlist
-
-fwrite(coords_dbscan, file.path(out_path, "coords.csv"))
+invisible(map2(data.list, res, ~.x[, c2 := .y$c2]))
+invisible(map2(data.list, res, ~.x[, c1 := .y$c1]))
