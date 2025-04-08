@@ -1,20 +1,10 @@
-library(glue) ; g=glue ; len=length
-library(magrittr)
-library(purrr)
-library(tidyr)
-library(dplyr)
-library(data.table)
 library(Seurat)
-library(stringr)
-library(ggplot2)
-library(cowplot)
-library(viridisLite)
-library(viridis)
-library(qpdf)
 library(qs)
 
 # Helper files required for loading spatial data and positioning cells
-stopifnot(file.exists("dbscan.R", "helpers.R"))
+stopifnot(file.exists("positioning.R", "helpers.R"))
+Sys.setenv(PATH = paste(Sys.getenv("PATH"), "/usr/local/bin", sep = ":"))
+stopifnot(Sys.which("Rscript") != "")
 source("helpers.R")
 # setDTthreads(parallelly::availableCores())
 
@@ -58,7 +48,7 @@ if (dir.exists(file.path(RNApath, "filtered_feature_bc_matrix"))) {
   matrix_path = file.path(RNApath, "filtered_feature_bc_matrix.h5")
   intronic_path = file.path(RNApath, "molecule_info.h5")
   metrics_path = file.path(RNApath, "metrics_summary.csv")
-} else if (any(str_ends(list.files(RNApath), "_filtered_mtx_files.tar"))) {
+} else if (any(str_ends(list.files(RNApath), ".h5ad"))) {
   rna_source = "Optimus"
   matrix_path <-  list.files(RNApath, full.names=T) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)==1)}
   intronic_path <- list.files(RNApath, full.names=T) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)<=1)}
@@ -115,62 +105,49 @@ plot_cellcalling(intronic_path, obj$cb) %>% make.pdf(file.path(out_path,"RNAcall
 # Page 3
 plot_umaps(obj) %>% make.pdf(file.path(out_path,"RNAumap.pdf"), 7, 8)
 
-### Load the Spatial ###########################################################
+### DBSCAN #####################################################################
 
-# Load the spatial barcode counts matrix and fuzzy match to our called-cells whitelist
-print("Generating the matrix...")
 cb_whitelist = unname(obj$cb)
 writeLines(cb_whitelist, file.path(out_path, "cb_whitelist.txt"))
 
-system(g("Rscript load_matrix.R {SBpath} {file.path(out_path, 'cb_whitelist.txt')} {out_path}"))
-stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"), file.path(out_path, "spatial_metadata.json")))
-Misc(obj, "spatial_metadata") <- jsonlite::fromJSON(file.path(out_path, "spatial_metadata.json"))
-
-### DBSCAN #####################################################################
-
 # Assign a position to each whitelist cell
 print("Positioning cells...")
-system(g("Rscript positioning.R {file.path(out_path, 'matrix.csv.gz')} {out_path}"))
-stopifnot(file.exists(file.path(out_path,"coords.csv")))
-coords <- read.table(file.path(out_path,"coords.csv"), header=T, sep=",")
-coords %<>% right_join(data.frame(cb_index=1:len(cb_whitelist)), by = "cb_index") %>% arrange(cb_index) # fill in cells with no spatial data
-Misc(obj, "coords") <- coords
+system(g("Rscript --vanilla positioning.R {SBpath} {file.path(out_path, 'cb_whitelist.txt')} {out_path}"))
+
+stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
+                      file.path(out_path, "spatial_metadata.json"),
+                      file.path(out_path, "coords_global.csv"),
+                      file.path(out_path, "coords_dynamic.csv")))
+Misc(obj, "SB_metadata") <- jsonlite::fromJSON(file.path(out_path, "spatial_metadata.json"))
+
+coords_global <- fread(file.path(out_path, "coords_global.csv"), header=TRUE, sep=",")
+coords_dynamic <- fread(file.path(out_path, "coords_dynamic.csv"), header=TRUE, sep=",")
+Misc(obj, "coords_global") <- coords_global
+Misc(obj, "coords_dynamic") <- coords_dynamic
 
 # Create spatial reduction
-stopifnot(nrow(coords) == ncol(obj), coords$cb_index == obj$cb_index)
-obj$x_um <- coords$x_um
-obj$y_um <- coords$y_um
-# Add DBSCAN coords
-emb = coords %>% select(x_um_dbscan, y_um_dbscan)
-colnames(emb) = c("d_1","d_2") ; rownames(emb) = rownames(obj@meta.data)
+coords <- obj@meta.data %>% select(cb) %>% left_join(coords_global, by="cb") %>% select(x,y,clusters)
+obj %<>% AddMetaData(coords)
+
+emb <- coords %>% select(x,y)
+colnames(emb) <- c("d_1","d_2") ; rownames(emb) = rownames(obj@meta.data)
 obj[["dbscan"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "d_", assay = "RNA")
-# Add KDE coords
-emb = coords %>% mutate(across(everything(), ~ifelse(ratio > 1/3, NA, .))) %>% select(x_um_kde, y_um_kde)
-colnames(emb) = c("k_1","k_2") ; rownames(emb) = rownames(obj@meta.data)
-obj[["kde"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "k_", assay = "RNA")
-# Add KDE-filtered DBSCAN coords
-emb = obj@meta.data[,c("x_um","y_um")] ; colnames(emb) = c("s_1","s_2")
+colnames(emb) <- c("s_1","s_2") ; rownames(emb) = rownames(obj@meta.data)
 obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_", assay = "RNA")
 
-plot <- plot_clusters(obj, reduction="dbscan")
-make.pdf(plot, file.path(out_path,"DimPlotDBSCAN.pdf"), 7, 8)
-plot <- plot_clusters(obj, reduction="kde")
-make.pdf(plot, file.path(out_path,"DimPlotKDE.pdf"), 7, 8)
-plot <- plot_clusters(obj, reduction="spatial")
-make.pdf(plot, file.path(out_path,"DimPlot.pdf"), 7, 8)
-
-plot <- plot_RNAvsSB(obj)
-make.pdf(plot, file.path(out_path, "RNAvsSB.pdf"), 7, 8)
+plot_clusters(obj, reduction="dbscan") %>% make.pdf(file.path(out_path,"DimPlot.pdf"), 7, 8)
+plot_RNAvsSB(obj) %>% make.pdf(file.path(out_path, "RNAvsSB.pdf"), 7, 8)
 
 # Merge the PDF files
-plotlist <- c(c("SB.pdf","beadplot.pdf","SBmetrics.pdf"),
-              c("DBSCAN.pdf","KDE.pdf","DBSCANvsKDE.pdf","beadplots.pdf"),
-              c("RNAmetrics.pdf","RNA.pdf","UMAP.pdf","DimPlot.pdf","DimPlotDBSCAN.pdf","DimPlotKDE.pdf","RNAvsSB.pdf"))
-plotorder <- c(8, 9, 10, 1, 2, 4, 5, 6, 11, 12, 13, 14, 3, 7)
-pdfs <- file.path(out_path, plotlist[plotorder])
+plotlist <- c(c("RNAmetrics.pdf","RNAcalls.pdf","RNAumap.pdf"),
+              c("SBlibrary.pdf","SBmetrics.pdf","SBplot.pdf"),
+              c("GDBSCANopt.pdf", "GDBSCAN1.pdf", "DDBSCANxy.pdf"),
+              c("DimPlot.pdf", "RNAvsSB.pdf", "DBSCAN.pdf"))
+pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)
 qpdf::pdf_combine(input=pdfs, output=file.path(out_path,"summary.pdf"))
 file.remove(pdfs)
 
 # Save the seurat object
-qsave(obj, file.path(out_path,"seurat.qs"))
+qsave(obj, file.path(out_path, "seurat.qs"))
+print("Done!")
