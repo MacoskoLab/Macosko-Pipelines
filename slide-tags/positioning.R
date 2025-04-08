@@ -4,7 +4,7 @@
 ### Output: coords.csv (+metadata)
 ################################################################################
 
-source("plots.R")
+source("helpers.R")
 
 # Load arguments
 args <- commandArgs(trailingOnly = TRUE)
@@ -17,7 +17,7 @@ if (length(args) == 2) {
   cb_path <- args[[2]]
   out_path <- args[[3]]
 } else {
-  stop("Usage: Rscript load_matrix.R SBcounts_path cb_whitelist_path [output_path]", call. = FALSE)
+  stop("Usage: Rscript positioning.R SBcounts_path cb_whitelist_path [output_path]", call. = FALSE)
 }
 
 # Check input arguments
@@ -25,7 +25,9 @@ if (!dir.exists(out_path)) {dir.create(out_path, recursive=T)}
 stopifnot(filter(rhdf5::h5ls(sb_path), group=="/matrix")$name == c("cb_index", "reads", "sb_index", "umi"))
 
 # Print arguments
-print("")
+print(g("sb_path: {sb_path}"))
+print(g("cb_path: {cb_path}"))
+print(g("out_path: {out_path}"))
 
 # Load the spatial barcode count matrix
 f <- function(p){return(rhdf5::h5read(sb_path, p))}
@@ -165,7 +167,6 @@ stopifnot(sort(names(dt)) == c("cb", "umi", "x", "y"))
 
 ### DBSCAN #####################################################################
 
-xlims = range(dt$x) ; ylims = range(dt$y)
 data.list <- split(dt, by="cb", drop=TRUE, keep.by=FALSE)
 for (dl in data.list) {stopifnot(nrow(dl) > 0, dl$umi > 0)}
 rm(dt) ; invisible(gc())
@@ -183,47 +184,38 @@ mydbscan <- function(dl, eps, minPts) {dbscan::dbscan(x = dl[,.(x,y)],
                                                       weights = dl$umi,
                                                       borderPoints = TRUE)$cluster}
 
-# Run DBSCAN optimization
+### Run DBSCAN optimization ###
 ms <- 1L # minPts step size
-eps = epsilon * 15 # TODO: make this a vector, or pass-in-able
-mranges <- furrr::future_map(data.list, function(dl){
+eps <- epsilon * 15 # TODO: make this a vector, or pass-in-able
+mranges <- furrr::future_map(data.list, function(dl) {
   # base case
-  v2 <- mydbscan(dl, eps, ms)
-  if (max(v2) == 0) {return(list(i2=1L, c2=v2, i1=0L, c1=v2))}
-  if (max(v2) == 1) {i2=1L ; c2=v2}
+  v2 <- mydbscan(dl, eps, 1L * ms)
+  if (max(v2) == 0) {return(data.table(i2=0L, i1=0L))}
+  if (max(v2) == 1) {i2=1L}
   
   # loop
   i <- 1L
   while (max(v2) > 0) {
     i <- i + 1L
     v1 <- v2
-    v2 <- mydbscan(dl, eps, i*ms)
-    if (max(v1) > 1 & max(v2) <= 1) {i2=i-1L ; c2=v1}
+    v2 <- mydbscan(dl, eps, i * ms)
+    if (max(v1) > 1 & max(v2) <= 1) {i2=i-1L}
   }
   
-  # i2/c2 is the index/clusters at the highest minPts that produces DBSCAN=2+ (if applicable)
-  # i1/c1 is the index/clusters at the lowest minPts that produces DBSCAN=0, minus 1 step
-  return(list(i2=i2, c2=c2, i1=i-1L, c1=v1))
+  # i2 is the index at the highest minPts that produces DBSCAN=2+ (if applicable)
+  # i1 is the index at the lowest minPts that produces DBSCAN=0, minus 1 step
+  return(data.table(i2=i2, i1=i-1L))
 }, .options = myoptions) %>% rbindlist
+stopifnot(nrow(mranges) == len(data.list))
 
-stopifnot(len(res)==len(data.list), names(res)==names(data.list))
-
-# Consolidate results
-mranges <- data.table(start = map_int(res, ~.$i2+1L),
-                      end = map_int(res, ~.$i1))
-for (i in seq_along(data.list)) {
-  data.list[[i]][, clusters2 := mydbscan(data.list[[i]], eps, res[[i]]$i2) %T>% {stopifnot(.==res[[i]]$c2)}]
-  data.list[[i]][, clusters1 := mydbscan(data.list[[i]], eps, res[[i]]$i1) %T>% {stopifnot(.==res[[i]]$c1)}]
-}
-#rm(res) ; invisible(gc())
 
 ### Global DBSCAN ###
 
 # Compute minPts that places the greatest number of cells
-i_opt <- IRanges::IRanges(start=mranges$start, end=mranges$end) %>% 
+i_opt <- IRanges::IRanges(start=mranges$i2+1L, end=mranges$i1) %>% 
   IRanges::coverage() %>% as.integer %>% 
   {which(.==max(.))} %>% tail(1)
-minPts <- i_opt*ms
+minPts <- i_opt * ms
 print(g("Global optimum minPts: {minPts}"))
 
 # Rerun DBSCAN with the optimal minPts
@@ -263,7 +255,15 @@ fwrite(coords_global, file.path(out_path, "coords_global.csv"))
 
 
 ### Dynamic DBSCAN ###
-coords_dynamic <- pmap(list(data.list, names(data.list), res), function(dl, cb, r) {
+
+# Rerun DBSCAN at the computed minPts values
+for (i in seq_along(data.list)) {
+  data.list[[i]][, clusters2 := mydbscan(data.list[[i]], eps, mranges[i,i2])]
+  data.list[[i]][, clusters1 := mydbscan(data.list[[i]], eps, mranges[i,i1])]
+}
+
+# Assign the centroid via a weighted mean
+coords_dynamic <- imap(data.list, function(dl, cb) {
   ret <- dl[,.(cb=cb,
                umi=sum(umi),
                beads=.N,
@@ -272,42 +272,41 @@ coords_dynamic <- pmap(list(data.list, names(data.list), res), function(dl, cb, 
                x2=NA_real_, y2=NA_real_, sumi2=NA_real_, sbeads2=NA_integer_, h2=NA_integer_, cluster2=NA_integer_)]
   
   # Position the cell, using the highest minPts that produces DBSCAN=1
-  if (max(r$c1) == 1) {
-    s <- dl[r$c1 == 1, .(x=weighted.mean(x, umi),
-                         y=weighted.mean(y, umi),
-                         sumi=sum(umi),
-                         sbeads=.N,
-                         h=h_index(umi))]
+  if (max(dl$clusters1) == 1) {
+    s <- dl[clusters1 == 1, .(x=weighted.mean(x, umi),
+                              y=weighted.mean(y, umi),
+                              sumi=sum(umi),
+                              sbeads=.N,
+                              h=h_index(umi))]
     ret[, names(s) := s]
   }
   
   # Compute the score, using the highest minPts that produces DBSCAN=2
-  if (max(r$c2) >= 2) {
+  if (max(dl$clusters2) >= 2) {
     s <- dl[, .(x=weighted.mean(x, umi),
                 y=weighted.mean(y, umi),
                 sumi=sum(umi),
                 sbeads=.N,
                 h=h_index(umi)
-               ), r$c2][r > 0][order(-sumi, r)]
-    setcolorder(s, c("x", "y", "sumi", "sbeads", "h", "r"))
+               ), clusters2][clusters2 > 0][order(-sumi, clusters2)]
+    setcolorder(s, c("x", "y", "sumi", "sbeads", "h", "clusters2"))
     ret[, c("x1","y1","sumi1","sbeads1","h1","cluster1") := s[1]] # Highest UMI DBSCAN cluster
     ret[, c("x2","y2","sumi2","sbeads2","h2","cluster2") := s[2]] # Second-highest UMI DBSCAN cluster
-  } else if (max(r$c2) == 1) {
-      s <- dl[r$c2 == 1, .(x1=weighted.mean(x, umi),
-                           y1=weighted.mean(y, umi),
-                           sumi1=sum(umi),
-                           sbeads1=.N,
-                           h1=h_index(umi),
-                           cluster1=1L)]
+  } else if (max(dl$clusters2) == 1) {
+      s <- dl[clusters2 == 1, .(x1=weighted.mean(x, umi),
+                                y1=weighted.mean(y, umi),
+                                sumi1=sum(umi),
+                                sbeads1=.N,
+                                h1=h_index(umi),
+                                cluster1=1L)]
       ret[, names(s) := s]
   }
   
-  ret[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
-                                                     minPts2=r$i2*ms,
-                                                     minPts1=r$i1*ms)]
-  
 }) %>% rbindlist
 
+coords_dynamic[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
+                                                              minPts2=mranges$i2*ms,
+                                                              minPts1=mranges$i1*ms)]
 
 # Plots
 plot_ddbscan_xy(coords_dynamic) %>% make.pdf(file.path(out_path, "DDBSCANxy.pdf"), 7, 8)
@@ -317,44 +316,9 @@ fwrite(coords_dynamic, file.path(out_path, "coords_dynamic.csv"))
 
 
 ### Cell plots ###
-plot_global_cellplots(data.list)
-
-plot_dynamic_cellplots
-
-dynamic_cellplot <- function(CB) {
-  subdf <- data.list[[CB]][!is.na(x) & !is.na(y)][order(umi)]
-  #subdf1 <- subdf[clusters==1]
-  #subdf2 <- subdf[clusters==2]
-  
-}
-
-# plots <- sample_bead_plots(data.list, coords)
-# make.pdf(plots, file.path(out_path, "beadplots.pdf"), 7, 8)
-
-cellbeadplot <- function(data.list, res, coords, CB) {
-  stopifnot(CB %in% names(data.list))
-  dl <- data.list[[CB]]
-  
-  stopifnot(CB %in% names(res))
-  r <- res[[CB]]
-  
-  stopifnot(CB %in% coords$cb)
-  row <- coords[cb == CB]
-  
-  ggplot() + geom_point(data=puckdf, mapping=aes(x=x,y=y), shape=1, col="grey") + 
-             geom_point(data=dl[order(umi)], mapping=aes(x=x,y=y,col=umi)) + 
-             geom_point(data=dl[clusters2==1], mapping=aes(x=x,y=y), col="red", shape=1, stroke=0.2, size=1.5) +
-             geom_point(data=dl[clusters2==2], mapping=aes(x=x,y=y), col="green", shape=1, stroke=0.2, size=1.5) + 
-             geom_point(data=row, mapping=aes(x=x1,y=y1),col="red",shape=0) + 
-             geom_point(data=row, mapping=aes(x=x2,y=y2),col="green",shape=0) + 
-             geom_point(data=row, mapping=aes(x=x,y=y),col="red",shape=5) +
-    xlim(row[,c(min(x1,x2)-2*abs(x1-x2), max(x1,x2)+2*abs(x1-x2))]) + 
-    ylim(row[,c(min(y1,y2)-2*abs(y1-y2), max(y1,y2)+2*abs(y1-y2))]) +
-             coord_fixed(ratio=1)
-  plot_grid(p, p)
-  
-}
+plot_global_cellplots(data.list) %>% make.pdf(file.path(out_path, "DBSCAN.pdf"), 7, 8)
+#dynamic_plots <- plot_dynamic_cellplots(data.list, coords_dynamic)
 
 ### Final check ###
 stopifnot(coords_global$cb_index == coords_dynamic$cb_index)
-stopifnot(file.exists(file.path(out_path,c("coords_global.csv", "coords_dynamic.csv"))))
+stopifnot(file.exists(file.path(out_path, c("coords_global.csv", "coords_dynamic.csv"))))
