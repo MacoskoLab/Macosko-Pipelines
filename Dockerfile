@@ -136,8 +136,10 @@ RUN R -e "install.packages(c('tidyverse', \
 RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager', repos='http://cloud.r-project.org')}; \
           BiocManager::install(c('IRanges', 'GenomicRanges', 'GenomicFeatures', 'GenomicAlignments', \
                                  'ShortRead', 'Rsamtools', 'VariantAnnotation', 'rtracklayer', \
-                                 'AnnotationDbi', 'BiocParallel', 'rhdf5' \
+                                 'AnnotationDbi', 'BiocParallel', 'SingleCellExperiment', 'rhdf5' \
                                 ), Ncpus=$(nproc)L)"
+# Install other R packages
+RUN R -e "devtools::install_github('immunogenomics/presto')"
 
 # Install micromamba
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
