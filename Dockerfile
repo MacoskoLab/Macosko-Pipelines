@@ -128,7 +128,7 @@ RUN R -e "install.packages(c('tidyverse', \
                              'Seurat', 'SeuratObject', \
                              'rdist', 'sf', 'dbscan', \
                              'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2', \
-                             'devtools', 'remotes', 'R.utils', \
+                             'devtools', 'remotes', 'R.utils', 'optparse', \
                              'shiny', 'IRkernel', 'duckdb'), \
                              repos='http://cloud.r-project.org', \
                              Ncpus=$(nproc)L)"
