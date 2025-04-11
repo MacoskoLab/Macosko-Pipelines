@@ -10,10 +10,8 @@ library(ggplot2)
 library(cowplot)
 # library(ggrastr)
 # library(rhdf5)
-#library(rlist)
 library(viridisLite)
 library(viridis)
-#library(jsonlite) # flatten
 library(qpdf)
 
 ### Helper methods #############################################################
@@ -22,7 +20,9 @@ gdraw <- function(text, s=14) {cowplot::ggdraw()+cowplot::draw_label(text, size=
 plot.tab <- function(df) {return(cowplot::plot_grid(gridExtra::tableGrob(df, rows=NULL)))}
 dec2pct <- function(x, d=2) {return(paste0(round(x*100, digits=d), "%"))}
 add.commas <- function(num) {prettyNum(num, big.mark=",")}
-h_index <- function(vec) {return(data.table(x=vec)[,.(n=.N),x][order(-x), max(pmin(x, cumsum(n)))])}
+h_index <- function(vec) {
+  return(data.table(x=vec)[,.(n=.N),x][order(-x), max(pmin(x, cumsum(n)), default=0)])
+}
 make.pdf <- function(plots, name, w, h) {
   if (any(c("gg", "ggplot", "Heatmap") %in% class(plots))) {plots = list(plots)}
   pdf(file=name, width=w, height=h)
@@ -31,22 +31,22 @@ make.pdf <- function(plots, name, w, h) {
 }
 
 remap_10X_CB <- function(vec) {
-  basemap = setNames(c("AG","TC","CA","GT"), c("TC","AG","GT","CA"))
+  basemap <- setNames(c("AG","TC","CA","GT"), c("TC","AG","GT","CA"))
   return(paste0(substr(vec,1,7), basemap[substr(vec,8,9)], substr(vec,10,16)))
 }
 
 determine_remap_10X_CB <- function(vec, dt) {
   if (class(vec) != "character") {
-    return(F)
+    return(FALSE)
   } else if (!all(nchar(vec) == 16)) {
-    return(F)
+    return(FALSE)
   } else if (!all(unique(substr(vec,8,9)) %in% c("TC","AG","GT","CA"))) {
-    return(F)
+    return(FALSE)
   }
   
   # Determine which mapping has more reads
-  reads_noremap <- dt[cb %in% cb_whitelist, reads] %>% sum
-  reads_remap <- dt[cb %in% remap_10X_CB(cb_whitelist), reads] %>% sum
+  reads_noremap <- dt[cb %in% cb_whitelist, sum(reads)]
+  reads_remap <- dt[cb %in% remap_10X_CB(cb_whitelist), sum(reads)]
   return(reads_remap > reads_noremap)
 }
 
@@ -57,17 +57,6 @@ listHD1neighbors <- function(input_string) {
            setdiff(bases, substr(input_string, i, i)),
            substr(input_string, i+1, nchar(input_string)))
   }) %>% list_c
-}
-
-count_umis <- function(df) {
-  # return(df %>% group_by(cb_index, sb_index) %>% summarize(umi=n()) %>% arrange(desc(umi)))
-  stopifnot(ncol(df) == 4, names(df) == c("cb_index", "umi_2bit", "sb_index", "reads"))
-  gdf = df %>% filter(reads > 0) %>% select(cb_index, sb_index) %>% arrange(cb_index, sb_index) 
-  bnds = (gdf$cb_index!=lead(gdf$cb_index) | gdf$sb_index!=lead(gdf$sb_index)) %>% tidyr::replace_na(T) %>% which
-  gdf %<>% distinct()
-  gdf$umi = (bnds - lag(bnds)) %>% tidyr::replace_na(bnds[[1]])
-  gdf %<>% arrange(desc(umi))
-  return(gdf)
 }
 
 ################################################################################
@@ -155,9 +144,9 @@ ReadSpatialMatrix <- function(f) {
   cb_list <- f("lists/cb_list")
   sb_list <- f("lists/sb_list")
   
-  dt <- data.table(cb = f("matrix/cb_index") %>% as.integer %>% factor(levels=seq(len(cb_list)), labels=cb_list),
+  dt <- data.table(cb = f("matrix/cb_index") %>% as.integer %>% factor(levels=seq_along(cb_list), labels=cb_list),
                    umi = f("matrix/umi") %>% as.integer,
-                   sb = f("matrix/sb_index") %>% as.integer %>% factor(levels=seq(len(sb_list)), labels=sb_list),
+                   sb = f("matrix/sb_index") %>% as.integer %>% factor(levels=seq_along(sb_list), labels=sb_list),
                    reads = f("matrix/reads") %>% as.integer)
   
   return(dt)
@@ -192,11 +181,6 @@ ReadPuck <- function(f) {
                        x=f("puck/x") %>% as.numeric,
                        y=f("puck/y") %>% as.numeric,
                        puck_index=f("puck/puck_index") %>% as.integer)
-  
-  # Compute eps scale
-  epsilon <- RANN::nn2(data = puckdf[, .(x, y)],
-                       query = puckdf[sample(.N, 10000), .(x,y)],
-                       k = 2)$nn.dists[,2] %>% median
   
   # Add degeneracy statistics
   most_character_count <- function(vec) {
@@ -258,7 +242,7 @@ ReadPuck <- function(f) {
   puckmeta$puck_boundaries = c(starts, max(puckdf$x))
   puckdf[, sb := factor(sb)]
   
-  return(list(puckdf, puckmeta, epsilon))
+  return(list(puckdf, puckmeta))
 }
 
 ################################################################################
@@ -581,10 +565,10 @@ plot_SBmetrics <- function(metadata) {
 ### DBSCAN plots ###############################################################
 ################################################################################
 
-plot_gdbscan_opt <- function(coords, mranges) {
+plot_gdbscan_opt <- function(coords_global, mranges) {
   # Panel 1: DBSCAN cluster distribution
-  d <- coords[, .(pct=.N/len(cb_whitelist)*100), pmin(clusters,5)]
-  d[, pmin := factor(pmin, levels=0:5, labels=c(0:4,"5+"))]
+  d <- coords_global[, .(pct=.N/len(cb_whitelist)*100), pmin(clusters, 5)]
+  d[, pmin := factor(pmin, levels=0:5, labels=c(0:4, "5+"))]
   p1 <- ggplot(d, aes(x=pmin, y=pct)) + geom_col() +
                geom_text(aes(label=sprintf("%1.0f%%",pct), y=pct), vjust=-0.5) +
                theme_classic() +
@@ -592,26 +576,27 @@ plot_gdbscan_opt <- function(coords, mranges) {
                labs(x="DBSCAN clusters", y="Percent", title="Cluster distribution")
   
   # Panel 2: minPts search
-  d <- IRanges::IRanges(start=mranges$i2+1L, end=mranges$i1) %>% IRanges::coverage() %>% as.integer %>% {data.table(x=seq_along(.)*ms, y=.)}
-  minPts <- d[y==max(y), tail(x,1)]
-  pct.placed <- round(d[,max(y)]/len(cb_whitelist)*100, 2)
-  d <- d[x >=2 & x <= max(20, minPts*2)]
-  p2 <- ggplot(d, aes(x=x, y=y/len(cb_whitelist)*100)) + geom_line() +
+  d <- IRanges::IRanges(start=mranges$i2+1L, end=mranges$i1) %>% IRanges::coverage() %>% as.integer %>% {data.table(i=seq_along(.), p=.)}
+  i_opt <- d[p==max(p), tail(i, 1)]
+  minPts <- i_opt * ms
+  pct.placed <- d[, round(max(p)/len(cb_whitelist)*100, 2)]
+  d <- d[i >= 2 & i <= max(20, i_opt*2)]
+  p2 <- ggplot(d, aes(x=i*ms, y=p/len(cb_whitelist)*100)) + geom_line() +
                geom_vline(xintercept=minPts, color="red", linetype="dashed") +
                annotate(geom='text',
-                        label=g("eps: {round(eps,2)}\nminPts: {minPts}\nplaced: {pct.placed}%"),
-                        x=minPts+1, y=0,
+                        label=g("minPts: {minPts}\nplaced: {pct.placed}%\neps: {round(eps,2)} | k: {k}"),
+                        x=minPts+ms, y=0,
                         hjust=0, vjust=0, col="red") + 
                theme_bw() +
                labs(x="minPts", y="%Placed", title="Parameter optimization")
   
   # Panel 3: SB UMI distribution
-  p3 <- ggplot(coords, aes(x=factor(pmin(clusters,5), levels=0:5, labels=c(0:4,"5+")), y=log10(umi))) + 
+  p3 <- ggplot(coords_global, aes(x=factor(pmin(clusters,5), levels=0:5, labels=c(0:4,"5+")), y=log10(umi))) + 
                geom_violin(scale="count") + 
                theme_classic() +
                labs(x="DBSCAN clusters", y="log10 SB UMI", title="SB UMI distribution") +
                annotate("text", x=Inf, y=-Inf,
-                        label=g("Mean SB UMI per cell: {round(coords[,sum(umi)/len(cb_whitelist)],1)}"), 
+                        label=g("Mean SB UMI per cell: {round(coords_global[,sum(umi)/len(cb_whitelist)],1)}"), 
                         hjust=1.05, vjust=-0.75, size=3)
   
   # Panel 4: Start vs. End
@@ -634,15 +619,16 @@ plot_gdbscan_opt <- function(coords, mranges) {
 }
 
 plot_gdbscan_1 <- function(coords_global) {
-  coords <- coords_global[!is.na(x) & !is.na(y) & clusters==1]
+  coords <- coords_global[clusters==1]
   
   # Panel 1: placements
-  p1 <- ggplot(coords, aes(x=x,y=y)) + geom_point(size=0.1) +
+  p1 <- ggplot(coords, aes(x=x1, y=y1)) + geom_point(size=0.1) +
     coord_fixed(ratio=1) + theme_classic() + 
+    xlim(range(puckdf$x)) + ylim(range(puckdf$y)) +
     labs(x="x-position", y="y-position", title="DBSCAN=1 Placements")
   
   # Helper
-  densplot <- function(coords, var, name, percent) {
+  mydensplot <- function(coords, var, name, percent) {
     stopifnot(var %in% names(coords))
     max_density_x = mean(coords[[var]], na.rm=TRUE)
     ggplot(coords, aes(x = .data[[var]])) + geom_density() + 
@@ -656,17 +642,63 @@ plot_gdbscan_1 <- function(coords_global) {
   }
   
   # Panel 2: SNR
-  coords[, SNR := sumi/umi]
-  p2 <- densplot(coords, "SNR", "SNR", TRUE)
+  coords[, SNR := umi1/umi]
+  p2 <- mydensplot(coords, "SNR", "SNR", TRUE)
   
   # Panel 3: RMS
-  p3 <- densplot(coords, "rmsd", "RMSD", FALSE)
+  p3 <- mydensplot(coords, "rmsd1", "RMSD", FALSE)
   
   # Panel 4: h-index
-  p4 <- densplot(coords, "h", "h-index", FALSE)
+  p4 <- mydensplot(coords, "h1", "h-index", FALSE)
   
   plot <- plot_grid(gdraw("Global DBSCAN=1 Results"),
                     plot_grid(p1, p2, p3, p4, ncol=2),
+                    ncol=1, rel_heights=c(0.05,0.95))
+  return(plot)
+}
+
+plot_gdbscan_2 <- function(coords_global) {
+  coords <- coords_global[clusters==2]
+  
+  # Panel 1: DBSCAN=1 placements
+  p1 <- ggplot(coords, aes(x=x1, y=y1)) + geom_point(size=0.1) +
+    coord_fixed(ratio=1) + theme_classic() + 
+    xlim(range(puckdf$x)) + ylim(range(puckdf$y)) +
+    labs(x="x-position", y="y-position", title="DBSCAN=1 Positions")
+  
+  # Panel 2: DBSCAN=2 placements
+  p2 <- ggplot(coords, aes(x=x2, y=y2)) + geom_point(size=0.1) +
+    coord_fixed(ratio=1) + theme_classic() + 
+    xlim(range(puckdf$x)) + ylim(range(puckdf$y)) +
+    labs(x="x-position", y="y-position", title="DBSCAN=2 Positions")
+  
+  # Panel 3: Violins
+  p3 <- plot_grid(
+    coords[,.(umi1,umi2)] %>% melt(measure.vars=c("umi1","umi2"), variable.name="pair", value.name="value") %>% 
+      ggplot(aes(x=pair, y=log10(value), fill=pair)) + geom_violin(scale="count") + 
+      theme_minimal() + 
+      labs(x=NULL, y="log10(UMI)", title=NULL) + 
+      guides(fill="none"),
+    coords[,.(h1,h2)] %>% melt(measure.vars=c("h1","h2"), variable.name="pair", value.name="value") %>% 
+      ggplot(aes(x=pair, y=value, fill=pair)) + geom_violin(scale="count") + 
+      theme_minimal() + 
+      labs(x=NULL, y="h-index", title=NULL) + 
+      guides(fill="none"),
+    coords[,.(rmsd1,rmsd2)] %>% melt(measure.vars=c("rmsd1","rmsd2"), variable.name="pair", value.name="value") %>% 
+      ggplot(aes(x=pair, y=value, fill=pair)) + geom_violin(scale="count") + 
+      theme_minimal() + 
+      labs(x=NULL, y="RMSD", title=NULL) + 
+      guides(fill="none"),
+    nrow=1
+  )
+  
+  # Panel 4: DBSCAN 1-2 Distance
+  p4 <- ggplot(coords, aes(x=sqrt((x1-x2)^2+(y1-y2)^2))) + geom_histogram() + 
+    theme_classic() +
+    labs(x="Distance", y="Cells", title="DBSCAN 1-2 Distance")
+  
+  plot <- plot_grid(gdraw("Global DBSCAN=2 Results"),
+                    plot_grid(p1, p2, plot_grid(gdraw("Distributions"),p3,ncol=1,rel_heights=c(0.05,0.95)), p4, ncol=2),
                     ncol=1, rel_heights=c(0.05,0.95))
   return(plot)
 }
