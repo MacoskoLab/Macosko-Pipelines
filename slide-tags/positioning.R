@@ -276,7 +276,7 @@ plot_gdbscan_1(coords_global) %>% make.pdf(file.path(out_path, "GDBSCAN1.pdf"), 
 plot_gdbscan_2(coords_global) %>% make.pdf(file.path(out_path, "GDBSCAN2.pdf"), 7, 8)
 
 # Save coords
-fwrite(coords_global, file.path(out_path, "coords_global.csv"))
+fwrite(coords_global, file.path(out_path, "coords.csv"))
 
 
 ### Dynamic DBSCAN ###
@@ -289,42 +289,47 @@ for (i in seq_along(data.list)) {
 
 # Assign the centroid via a weighted mean
 coords_dynamic <- imap(data.list, function(dl, cb) {
-  ret <- dl[,.(cb=cb,
-               umi=sum(umi),
-               beads=.N,
-               x=NA_real_,  y=NA_real_,  umi=NA_real_,  beads=NA_integer_, h=NA_integer_,
-               x1=NA_real_, y1=NA_real_, umi1=NA_real_, beads1=NA_integer_, h1=NA_integer_, cluster1=NA_integer_,
-               x2=NA_real_, y2=NA_real_, umi2=NA_real_, beads2=NA_integer_, h2=NA_integer_, cluster2=NA_integer_)]
+  ret <- dl[,.(cb=cb, umi=sum(umi), beads=.N)]
   
   # Position the cell, using the highest minPts that produces DBSCAN=1
-  if (max(dl$clusters1) == 1) {
-    s <- dl[clusters1 == 1, .(x=weighted.mean(x, umi),
-                              y=weighted.mean(y, umi),
-                              sumi=sum(umi),
-                              sbeads=.N,
-                              h=h_index(umi))]
-    ret[, names(s) := s]
+  if (max(dl$cluster1) == 1) {
+    s <- dl[cluster1 == 1, .(x=weighted.mean(x, umi),
+                             y=weighted.mean(y, umi),
+                             umi1s=sum(umi),
+                             beads1s=.N,
+                             h1s=h_index(umi))]
+    
+  } else {
+    s <- data.table(x=NA_real_, y=NA_real_, umi1s=NA_real_, beads1s=NA_integer_, h1s=NA_integer_)
   }
+  ret[, names(s) := s]
   
   # Compute the score, using the highest minPts that produces DBSCAN=2
-  if (max(dl$clusters2) >= 2) {
+  if (max(dl$cluster2) >= 2) {
     s <- dl[, .(x=weighted.mean(x, umi),
                 y=weighted.mean(y, umi),
-                sumi=sum(umi),
-                sbeads=.N,
+                umi=sum(umi),
+                beads=.N,
                 h=h_index(umi)
-               ), clusters2][clusters2 > 0][order(-sumi, clusters2)]
-    setcolorder(s, c("x", "y", "sumi", "sbeads", "h", "clusters2"))
-    ret[, c("x1","y1","sumi1","sbeads1","h1","cluster1") := s[1]] # Highest UMI DBSCAN cluster
-    ret[, c("x2","y2","sumi2","sbeads2","h2","cluster2") := s[2]] # Second-highest UMI DBSCAN cluster
-  } else if (max(dl$clusters2) == 1) {
-      s <- dl[clusters2 == 1, .(x1=weighted.mean(x, umi),
-                                y1=weighted.mean(y, umi),
-                                sumi1=sum(umi),
-                                sbeads1=.N,
-                                h1=h_index(umi),
-                                cluster1=1L)]
+               ), cluster2][cluster2 > 0][order(-umi, cluster2)]
+    setcolorder(s, c("x", "y", "umi", "beads", "h", "cluster2"))
+    ret[, c("x1","y1","umi1","beads1","h1","cluster1") := s[1]] # Highest UMI DBSCAN cluster
+    ret[, c("x2","y2","umi2","beads2","h2","cluster2") := s[2]] # Second-highest UMI DBSCAN cluster
+  } else if (max(dl$cluster2) == 1) {
+      s <- dl[cluster2 == 1, .(x1=weighted.mean(x, umi),
+                               y1=weighted.mean(y, umi),
+                               umi1=sum(umi),
+                               beads1=.N,
+                               h1=h_index(umi),
+                               cluster1=1L)]
       ret[, names(s) := s]
+      s <- data.table(x2=NA_real_, y2=NA_real_, umi2=NA_real_, beads2=NA_integer_, h2=NA_integer_, cluster2=NA_integer_)
+      ret[, names(s) := s]
+  } else {
+    s <- data.table(x1=NA_real_, y1=NA_real_, umi1=NA_real_, beads1=NA_integer_, h1=NA_integer_, cluster1=NA_integer_)
+    ret[, names(s) := s]
+    s <- data.table(x2=NA_real_, y2=NA_real_, umi2=NA_real_, beads2=NA_integer_, h2=NA_integer_, cluster2=NA_integer_)
+    ret[, names(s) := s]
   }
   
 }) %>% rbindlist
@@ -337,7 +342,7 @@ coords_dynamic[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
 plot_ddbscan_xy(coords_dynamic) %>% make.pdf(file.path(out_path, "DDBSCANxy.pdf"), 7, 8)
 
 # Save coords
-fwrite(coords_dynamic, file.path(out_path, "coords_dynamic.csv"))
+fwrite(coords_dynamic, file.path(out_path, "coords2.csv"))
 
 
 ### Cell plots ###
@@ -346,4 +351,4 @@ plot_global_cellplots(data.list) %>% make.pdf(file.path(out_path, "DBSCAN.pdf"),
 
 ### Final check ###
 stopifnot(coords_global$cb_index == coords_dynamic$cb_index)
-stopifnot(file.exists(file.path(out_path, c("coords_global.csv", "coords_dynamic.csv"))))
+stopifnot(file.exists(file.path(out_path, c("coords.csv", "coords2.csv"))))
