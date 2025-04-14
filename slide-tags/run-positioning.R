@@ -1,26 +1,36 @@
-library(Seurat)
-library(qs)
+suppressMessages(library(Seurat))
+suppressMessages(library(qs))
 
 # Helper files required for loading spatial data and positioning cells
 stopifnot(file.exists("positioning.R", "helpers.R"))
 Sys.setenv(PATH = paste(Sys.getenv("PATH"), "/usr/local/bin", sep = ":"))
-stopifnot(Sys.which("Rscript") != "")
-source("helpers.R")
-# setDTthreads(parallelly::availableCores())
+stopifnot("Rscript not found" = Sys.which("Rscript") != "")
+suppressMessages(source("helpers.R"))
+setDTthreads(parallelly::availableCores())
 
 # Load arguments
-args <- commandArgs(trailingOnly = TRUE)
-if (length(args) == 2) {
-  RNApath <- args[[1]]
-  SBpath <- args[[2]]
-  out_path <- "."
-} else if (length(args) == 3) {
-  RNApath <- args[[1]]
-  SBpath <- args[[2]]
-  out_path <- args[[3]]
-} else {
-  stop("Usage: Rscript run-positioning.R RNApath SBpath [output_path]", call. = FALSE)
-}
+library(optparse)
+arguments <- OptionParser(
+  usage = "Usage: Rscript run-positioning.R RNA_path SB_path output_path [options]",
+  option_list = list(
+    make_option(c("-d", "--downsampling"), type="double", default=1.0, help = "Percentage of reads to retain [default: 100%]", metavar="prob")
+  )
+) %>% parse_args(positional_arguments=3)
+
+RNApath <- arguments$args[[1]]
+SBpath <- arguments$args[[2]]
+out_path <- arguments$args[[3]]
+p <- arguments$options$downsampling
+rm(arguments)
+
+# Print arguments
+print(g("<Input Arguments>"))
+print(g("RNA dir: {normalizePath(RNApath)}"))
+print(g("RNA files: {list.files(RNApath) %>% paste0(collapse=', ')}"))
+print(g("SB file: {normalizePath(SBpath)}"))
+print(g("Output dir: {normalizePath(out_path)}"))
+if (p < 1.0) {print(g("Downsampling: {p}"))}
+cat("\n")
 
 # Check input arguments
 stopifnot("RNA dir not found" = dir.exists(RNApath))
@@ -30,12 +40,6 @@ stopifnot("SB path is not SBcounts.h5" = str_sub(SBpath, -11, -1) == "SBcounts.h
 stopifnot("SBcounts.h5 not found" = file.exists(SBpath))
 if (!dir.exists(out_path)) { dir.create(out_path, recursive = T) }
 stopifnot("Could not create output path" = dir.exists(out_path))
-
-# Print arguments
-print(g("RNA dir: {normalizePath(RNApath)}"))
-print(g("RNA files: {list.files(RNApath) %>% paste0(collapse=', ')}"))
-print(g("SB file: {normalizePath(SBpath)}"))
-print(g("Output dir: {normalizePath(out_path)}"))
 
 # Determine the RNA method
 if (dir.exists(file.path(RNApath, "filtered_feature_bc_matrix"))) {
@@ -69,7 +73,7 @@ if (rna_source == "10X") {
   mat <- ReadOptimus(matrix_path)
 }
 obj <- CreateSeuratObject(mat, project = "Slide-tags")
-rm(mat) ; gc()
+rm(mat) ; invisible(gc())
 
 # Add metadata
 obj[["logumi"]] <- log10(obj$nCount_RNA+1)
@@ -100,10 +104,10 @@ print(g("Loaded {ncol(obj)} cells"))
 plot_metrics_csv(metrics_df) %>% make.pdf(file.path(out_path, "RNAmetrics.pdf"), 7, 8)
 
 # Page 2
-plot_cellcalling(intronic_path, obj$cb) %>% make.pdf(file.path(out_path,"RNAcalls.pdf"), 7, 8)
+plot_cellcalling(intronic_path, obj$cb) %>% make.pdf(file.path(out_path,"RNAlibrary.pdf"), 7, 8)
 
 # Page 3
-plot_umaps(obj) %>% make.pdf(file.path(out_path,"RNAumap.pdf"), 7, 8)
+plot_umaps(obj) %>% make.pdf(file.path(out_path,"RNAplot.pdf"), 7, 8)
 
 ### DBSCAN #####################################################################
 
@@ -116,12 +120,12 @@ system(g("Rscript --vanilla positioning.R {SBpath} {file.path(out_path, 'cb_whit
 
 stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
                       file.path(out_path, "spatial_metadata.json"),
-                      file.path(out_path, "coords_global.csv"),
-                      file.path(out_path, "coords_dynamic.csv")))
+                      file.path(out_path, "coords.csv"),
+                      file.path(out_path, "coords2.csv")))
 Misc(obj, "SB_metadata") <- jsonlite::fromJSON(file.path(out_path, "spatial_metadata.json"))
 
-coords_global <- fread(file.path(out_path, "coords_global.csv"), header=TRUE, sep=",")
-coords_dynamic <- fread(file.path(out_path, "coords_dynamic.csv"), header=TRUE, sep=",")
+coords_global <- fread(file.path(out_path, "coords.csv"), header=TRUE, sep=",")
+coords_dynamic <- fread(file.path(out_path, "coords2.csv"), header=TRUE, sep=",")
 Misc(obj, "coords_global") <- coords_global
 Misc(obj, "coords_dynamic") <- coords_dynamic
 
@@ -139,13 +143,13 @@ plot_clusters(obj, reduction="dbscan") %>% make.pdf(file.path(out_path,"DimPlot.
 plot_RNAvsSB(obj) %>% make.pdf(file.path(out_path, "RNAvsSB.pdf"), 7, 8)
 
 # Merge the PDF files
-plotlist <- c(c("RNAmetrics.pdf","RNAcalls.pdf","RNAumap.pdf"),
-              c("SBlibrary.pdf","SBmetrics.pdf","SBplot.pdf"),
-              c("GDBSCANopt.pdf", "GDBSCAN1.pdf", "DDBSCANxy.pdf"),
-              c("DimPlot.pdf", "RNAvsSB.pdf", "DBSCAN.pdf"))
+plotlist <- c("RNAmetrics.pdf","RNAlibrary.pdf","RNAplot.pdf",
+              "SBmetrics.pdf","SBlibrary.pdf","SBplot.pdf",
+              "GDBSCANopt.pdf", "GDBSCAN1.pdf", "GDBSCAN2.pdf", "DDBSCANxy.pdf",
+              "DimPlot.pdf", "RNAvsSB.pdf", "DBSCAN.pdf")
 pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)
-qpdf::pdf_combine(input=pdfs, output=file.path(out_path,"summary.pdf"))
+qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "summary.pdf"))
 file.remove(pdfs)
 
 # Save the seurat object
