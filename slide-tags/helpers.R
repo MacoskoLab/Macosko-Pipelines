@@ -705,12 +705,12 @@ plot_gdbscan_2 <- function(coords_global) {
 
 plot_ddbscan_xy <- function(coords_dynamic) {
   d <- coords_dynamic[!is.na(x1) & !is.na(y1)]
-  p1 <- ggplot(d, aes(x=x1, y=y1, col=log10(sumi1))) + geom_point(size=0.2) + 
+  p1 <- ggplot(d, aes(x=x1, y=y1, col=log10(umi1))) + geom_point(size=0.2) + 
                theme_classic() + coord_fixed(ratio=1) + 
                labs(title="1st DBSCAN", x="x", y="y", col="UMI")
   
   d <- coords_dynamic[!is.na(x2) & !is.na(y2)]
-  p2 <- ggplot(d, aes(x=x2, y=y2,col=log10(sumi2))) + geom_point(size=0.2) + 
+  p2 <- ggplot(d, aes(x=x2, y=y2,col=log10(umi2))) + geom_point(size=0.2) + 
                theme_classic() + coord_fixed(ratio=1) + 
                labs(title="2nd DBSCAN", x="x", y="y", col="UMI")
   
@@ -744,7 +744,7 @@ plot_ddbscan_xy <- function(coords_dynamic) {
 ### Per-cell plots #############################################################
 ################################################################################
 
-cellplottheme <- theme(plot.title=element_text(hjust=0.5),
+cellplottheme <- theme(plot.title=element_text(hjust=0.5, size=12),
                        legend.background=element_blank(),
                        legend.margin=margin(0,0,0,0),
                        legend.key=element_blank(),
@@ -772,8 +772,8 @@ my_geom_circle <- function(cx, cy, r) {
 
 global_cellplot <- function(CB) {
   subdf <- data.list[[CB]][!is.na(x) & !is.na(y)][order(umi)]
-  subdf1 <- subdf[clusters==1]
-  subdf2 <- subdf[clusters==2]
+  subdf1 <- subdf[cluster==1]
+  subdf2 <- subdf[cluster==2]
   
   plot <- ggplot() + coord_fixed(ratio=1 ,xlim=range(puckdf$x), ylim=range(puckdf$y)) + theme_void() +
     geom_point(data=subdf, mapping=aes(x=x, y=y, col=umi), size=1, shape=20) +
@@ -797,9 +797,9 @@ global_cellplot <- function(CB) {
 }
 
 plot_global_cellplots <- function(data.list) {
-  list0 <- map_lgl(data.list, ~max(.$clusters)==0 & nrow(.)>0) %>% {names(.)[.]}
-  list1 <- map_lgl(data.list, ~max(.$clusters)==1 & nrow(.)>0) %>% {names(.)[.]}
-  list2 <- map_lgl(data.list, ~max(.$clusters)==2 & nrow(.)>0) %>% {names(.)[.]}
+  list0 <- map_lgl(data.list, ~max(.$cluster)==0 & nrow(.)>0) %>% {names(.)[.]}
+  list1 <- map_lgl(data.list, ~max(.$cluster)==1 & nrow(.)>0) %>% {names(.)[.]}
+  list2 <- map_lgl(data.list, ~max(.$cluster)==2 & nrow(.)>0) %>% {names(.)[.]}
   
   if(len(list0) > 0) {
     p0s <- sample(list0, min(12,len(list0)), replace=FALSE) %>% map(global_cellplot)
