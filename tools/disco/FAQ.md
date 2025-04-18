@@ -183,6 +183,7 @@ Q: Can I completely reset podman state?
 A: Yes. Run these commands on each node that has podman state:
 
 ```
+rm -rf /local/podman/containers-user-$UID
 rm -rf /tmp/containers-user-$UID
 rm -rf /tmp/podman-run-$UID
 podman rmi -a -f
