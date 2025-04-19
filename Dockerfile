@@ -8,7 +8,7 @@ RUN echo "\numask 002" >> /etc/profile
 RUN apt-get update && apt-get install -y  \
     sudo zip unzip less tree expect       \
     wget curl rsync socat                 \
-    vim nano tmux screen htop ncdu dstat  \ 
+    vim nano tmux screen htop ncdu dstat  \
     procps moreutils gnupg ssh git-all    \
     iproute2 net-tools lsof               \
     libudunits2-dev libgdal-dev           \
@@ -151,7 +151,8 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    matplotlib seaborn plotly pypdf \
                    networkx rustworkx igraph graph-tool \
                    umap-learn pynndescent leidenalg"
-RUN /bin/bash -lc "micromamba run pip install sparse_dot_topn"
+RUN /bin/bash -lc "micromamba install -c bioconda cellsnp-lite"
+RUN /bin/bash -lc "micromamba run pip install sparse_dot_topn vireoSNP"
 
 # Install IRkernel
 RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
