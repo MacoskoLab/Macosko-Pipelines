@@ -93,6 +93,13 @@ task mkfastq {
           --output-dir mkfastq                              \
           --sample-sheet Indexes.csv                        \
           ~{params} |& ts
+    elif [[ ~{technique} == "bclconvert" ]]; then
+        echo; echo "Running bclconvert"
+        time stdbuf -oL -eL bcl-convert                       \
+          --input-dir BCL \
+          --output-dir mkfastq \
+          --sample-sheet Indexes.csv \
+          ~{params} |& ts
     else
         echo "ERROR: could not recognize technique ~{technique}"
     fi
@@ -197,12 +204,12 @@ workflow bcl2fastq {
     input {
         String bcl
         String samplesheet
-        String technique
+        String technique = "bclconvert"
         String params = ""
         String fastq_output_path = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(bcl,"/")
         String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
-        String docker = "us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/img:latest"
+        String docker = "us-central1-docker.pkg.dev/velina-208320/docker-bcl2fastq/bclconvert:4.2.7"
     }
     call getdisksize {
         input:
