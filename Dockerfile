@@ -146,7 +146,7 @@ RUN curl -L micro.mamba.pm/install.sh | /bin/bash
 RUN /bin/bash -lc "micromamba clean --locks"
 
 # Install python packages
-RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
+RUN /bin/bash -lc "micromamba install -c conda-forge python=3.11.2 jupyterlab \
                    numpy pandas scipy scikit-learn \
                    matplotlib seaborn plotly pypdf \
                    networkx rustworkx igraph graph-tool \
