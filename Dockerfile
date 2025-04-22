@@ -151,8 +151,10 @@ RUN /bin/bash -lc "micromamba install -c conda-forge jupyterlab \
                    matplotlib seaborn plotly pypdf \
                    networkx rustworkx igraph graph-tool \
                    umap-learn pynndescent leidenalg"
-RUN /bin/bash -lc "micromamba install -c bioconda cellsnp-lite"
-RUN /bin/bash -lc "micromamba run pip install sparse_dot_topn vireoSNP"
+RUN /bin/bash -lc "micromamba run pip install sparse_dot_topn"
+
+# Install vireo
+RUN /bin/bash -lc "micromamba create -n vireo bioconda::cellsnp-lite bioconda::vireosnp"
 
 # Install IRkernel
 RUN /bin/bash -lc "micromamba run R -e 'IRkernel::installspec(user = FALSE)'"
