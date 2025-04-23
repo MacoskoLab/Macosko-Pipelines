@@ -1,8 +1,9 @@
 Overview
 --------
 <pre>
-FASTQs                   Diffusion matrix          KNN matrix             (sb,x,y)
-R1s/R2s &rarr; recon-count.jl &rarr; matrix.csv.gz &rarr; knn.py &rarr; knn2.npz &rarr; recon.py &rarr; Puck.csv  
+         recon-count.jl                 knn.py            recon.py      
+R1s/R2s ---------------> matrix.csv.gz -------> knn2.npz ---------> Puck.csv  
+FASTQs                  Diffusion matrix       KNN matrix           (sb,x,y)
 </pre>
 
 recon-count.jl
