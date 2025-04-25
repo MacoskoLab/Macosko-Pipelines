@@ -179,8 +179,8 @@ def convergence_plot(embeddings):
     
 #     return fig, axes
 
-# TODO: annotate number of beads with incomplete neighbors
-def knn_plot(knn_indices, knn_dists, tlu):
+
+def knn_plot(nnd, fnd, ies, tlu, n_neighbors):
     fig, axs = plt.subplots(2, 2, figsize=(8, 8))
 
     def my_histogram(ax, vec, title, xlab):
@@ -195,21 +195,25 @@ def knn_plot(knn_indices, knn_dists, tlu):
                 f'Mean: {xmean:.2f}', color='red', ha='left')
 
     # Nearest neighbor distance
-    nnd = knn_dists[:,1]
-    nnd = nnd[np.isfinite(nnd)]
     my_histogram(axs[0,0], nnd, "Nearest neighbor distance", "Cosine distance")
+    
     # Furthest neighbor distance
-    fnd = knn_dists[:,-1]
-    fnd = fnd[np.isfinite(fnd)]
-    my_histogram(axs[0,1], fnd, f"Furthest neighbor ({knn_dists.shape[1]}) distance", "Cosine distance")
+    my_histogram(axs[0,1], fnd, f"Furthest neighbor ({n_neighbors}) distance", "Cosine distance")
+    
     # Number of in-edges
-    unique, counts = np.unique(knn_indices[:,1:], return_counts=True)
-    my_histogram(axs[1,0], counts[unique >= 0], f"Number of in-edges", "In-edges")
+    my_histogram(axs[1,0], ies, f"Number of in-edges", "In-edges")
+    
     # Clustering coefficient
     my_histogram(axs[1,1], tlu, f"Clustering coefficient", "transitivity_local_undirected")
-
+    # from scipy.stats import gaussian_kde
+    # x = np.linspace(np.min(tlu), np.max(tlu), 1000)
+    # xmode = x[np.argmax(gaussian_kde(tlu)(x))]
+    # sd = np.mean(tlu[tlu >= xmode] - xmode) * np.sqrt(np.pi / 2)
+    # z3 = xmode - sd * 3
+    # axs[1,1].axvline(z3, color='blue', linestyle='dotted', linewidth=1.5)
+    
     plt.tight_layout()
-    return fig, axs
+    return fig
 
 ### MISC. HELPERS ##############################################################
 
@@ -243,6 +247,7 @@ class KNNMask:
         v = np.where(self.mask)[0]
         assert len(v) == len(mask)
         self.mask[v[~mask]] = False
+        assert np.sum(self.mask) == np.sum(mask)
         
         # filter matrix
         return(knn_matrix[mask,:][:,mask])
@@ -308,7 +313,7 @@ def csr_k_nearest(csr, k):
         cols.extend(row_indices)
         data.extend(row_data)
 
-    return sp.csr_matrix((data, (rows, cols)), shape=csr.shape)
+    return sp.csr_matrix((data, (rows, cols)), shape=csr.shape) # , dtype=np.float32
 
 def csr_nbytes(csr):
     assert type(csr) == sp._csr.csr_matrix
@@ -327,15 +332,15 @@ def validate_knn_indist(knn_indices, knn_dists):
 
 ### UMAP METHODS ###############################################################
 
-def my_umap(mat, knn, init, opts, n_jobs=-1):
+def my_umap(knn_matrix, init, opts, n_jobs=-1):
     from umap import UMAP
     reducer = UMAP(n_components = 2,
-                   metric = "cosine",
+                   metric = "precomputed",
                    random_state = None,
                    verbose = True,
                    low_memory=True,
                    
-                   n_neighbors = opts["n_neighbors"],
+                   n_neighbors = opts["n_neighbors"] - 1,
                    min_dist = opts["min_dist"],
                    spread = opts["spread"],
                    local_connectivity = opts["local_connectivity"],
@@ -343,9 +348,9 @@ def my_umap(mat, knn, init, opts, n_jobs=-1):
                    negative_sample_rate = opts["negative_sample_rate"],
                    n_epochs = opts["n_epochs"],
 
-                   precomputed_knn = knn,
+                   #precomputed_knn = knn,
                    init = init,
                    n_jobs = n_jobs
                   )
-    embedding = reducer.fit_transform(np.log1p(mat))
+    embedding = reducer.fit_transform(knn_matrix)
     return(embedding)
