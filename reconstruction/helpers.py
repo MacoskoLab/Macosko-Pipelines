@@ -237,9 +237,10 @@ class KNNMask:
     def __init__(self, knn_matrix):
         assert knn_matrix.shape[0] == knn_matrix.shape[1]
         self.mask = np.ones(knn_matrix.shape[0], dtype=bool)
+        self.history = []
 
     # input knn_matrix and mask, return filtered matrix
-    def apply_mask(self, knn_matrix, mask):
+    def apply_mask(self, knn_matrix, mask, name):
         assert knn_matrix.shape[0] == knn_matrix.shape[1] == len(mask)
         assert mask.dtype == bool
         
@@ -248,15 +249,18 @@ class KNNMask:
         assert len(v) == len(mask)
         self.mask[v[~mask]] = False
         assert np.sum(self.mask) == np.sum(mask)
+
+        # update history
+        self.history.append((name, np.sum(~mask)))
         
         # filter matrix
         return(knn_matrix[mask,:][:,mask])
 
 # Convert knn_matrix to (knn_indices, knn_dists)
-def knn_matrix2indist(knn_matrix):
+def knn_matrix2indist(knn_matrix, k=None):
     lil = knn_matrix.tolil(copy=False)
     nrows = lil.shape[0]
-    ncols = max(len(row) for row in lil.rows) + 1
+    ncols = max(len(row) for row in lil.rows) + 1 if (k is None) else k
     
     knn_indices = np.full((nrows, ncols), -1, dtype=np.int32)
     knn_dists = np.full((nrows, ncols), np.inf, dtype=np.float32)
@@ -266,8 +270,8 @@ def knn_matrix2indist(knn_matrix):
         vals = np.array([0]+lil.data[i], dtype=np.float32)
 
         sorted_indices = np.argsort(vals)
-        inds = inds[sorted_indices]
-        vals = vals[sorted_indices]
+        inds = inds[sorted_indices][:ncols]
+        vals = vals[sorted_indices][:ncols]
 
         knn_indices[i, :len(inds)] = inds
         knn_dists[i, :len(vals)] = vals
