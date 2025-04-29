@@ -333,28 +333,3 @@ def validate_knn_indist(knn_indices, knn_dists):
     assert not np.any(np.isnan(knn_dists))
 
 # do checks
-
-### UMAP METHODS ###############################################################
-
-def my_umap(knn_matrix, init, opts, n_jobs=-1):
-    from umap import UMAP
-    reducer = UMAP(n_components = 2,
-                   metric = "precomputed",
-                   random_state = None,
-                   verbose = True,
-                   low_memory=True,
-                   
-                   n_neighbors = opts["n_neighbors"] - 1,
-                   min_dist = opts["min_dist"],
-                   spread = opts["spread"],
-                   local_connectivity = opts["local_connectivity"],
-                   repulsion_strength = opts["repulsion_strength"],
-                   negative_sample_rate = opts["negative_sample_rate"],
-                   n_epochs = opts["n_epochs"],
-
-                   #precomputed_knn = knn,
-                   init = init,
-                   n_jobs = n_jobs
-                  )
-    embedding = reducer.fit_transform(knn_matrix)
-    return(embedding)
