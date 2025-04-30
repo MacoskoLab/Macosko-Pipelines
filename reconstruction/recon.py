@@ -1,6 +1,7 @@
 import os
 import gc
 import csv
+import gzip
 import argparse
 import numpy as np
 import pandas as pd
@@ -102,6 +103,13 @@ else:
     df = df.sort_values('sb_index')
     umi = df['umi'].to_numpy()
     del df
+
+# Compute scaling factor
+with gzip.open(os.path.join(in_dir, 'sb1.txt.gz'), 'rt') as f:
+    num_sb1 = sum(1 for _ in f)
+with gzip.open(os.path.join(in_dir, 'sb2.txt.gz'), 'rt') as f:
+    num_sb2 = sum(1 for _ in f)
+sf = num_sb1+num_sb2
 
 knn = KNN(knn_matrix, sb, umi)
 del knn_matrix, sb, umi ; gc.collect()
@@ -240,17 +248,17 @@ def leiden_init(G):
                    n_jobs = -1
                   )
     embedding = reducer.fit_transform(ic_edges)
-    embedding -= np.mean(embedding, axis=0) # center
+    embedding -= np.mean(embedding, axis=0)
     return membership, ic_edges, embedding
 
 print("\nGenerating Leiden embedding...")
-assert G.vcount() == knn_matrix.shape[0] == knn_matrix.shape[1]
+assert G.vcount() == knn.matrix.shape[0] == knn.matrix.shape[1]
 membership, ic_edges, embedding = leiden_init(G)
-assert membership.shape[0] == knn_matrix.shape[0] == knn_matrix.shape[1]
 assert G.vcount() == embedding.shape[0] == np.unique(membership).shape[0]
+assert membership.shape[0] == knn.matrix.shape[0] == knn.matrix.shape[1]
 del G ; gc.collect()
 
-### Process Initialization #####################################################
+### Plot Initialization ########################################################
 
 print("\nLeiden plots...")
 fig, ax = plt.subplots(1, 1, figsize=(8, 8))
@@ -260,49 +268,61 @@ ax.axis('equal')
 fig.savefig(os.path.join(out_dir, "init.pdf"), dpi=200)
 del fig, ax
 
-fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+fig, axs = plt.subplots(3, 2, figsize=(8, 8))
 def my_plot(embedding, vec, lab, axs):
     axs[0].hist(vec, bins=30, color='skyblue', edgecolor='black')
     axs[0].set_title(lab)
 
-    axs[1].scatter(x=embedding[:,0], y=embedding[:,1], c=vec, cmap='viridis', s=2)
+    axs[1].scatter(x=embedding[:,0], y=embedding[:,1], c=vec, cmap='viridis', s=1)
     axs[1].set(xticks=[], yticks=[], xticklabels=[], yticklabels=[])
     [spine.set_visible(False) for spine in axs[1].spines.values()]
     axs[1].set_aspect('equal')
     axs[1].set_title(lab)
 
-my_plot(embedding, np.bincount(membership), '#Beads', axs[0])
-my_plot(embedding, np.sum(ic_edges, axis=0).A1, '#Edges', axs[1])
+vec_beads = np.bincount(membership)
+vec_strength = np.sum(ic_edges, axis=0).A1
+vec_logumi = np.log10(np.bincount(membership, weights=knn.umi))
+
+my_plot(embedding, vec_beads, 'Beads', axs[0])
+my_plot(embedding, vec_strength, 'Strength', axs[1])
+my_plot(embedding, vec_logumi, 'log10(UMI)', axs[2])
+
+plt.tight_layout()
 fig.savefig(os.path.join(out_dir, "init2.pdf"), dpi=200)
 del fig, axs, my_plot, ic_edges
 
+### Process Initialization #####################################################
+
 print("\nLeiden filter...")
-# TODO
-# (make sure to update knn_mask/knn_matrix and membership/ic_edges/embedding)
+# TODO (make sure to update both knn and membership)
 
 print(f"\nFiltering beads with <{opts['n_neighbors']} neighbors...")
-while any(np.diff(knn_matrix.indptr) < opts['n_neighbors'] - 1):
-    m = np.diff(knn_matrix.indptr) >= opts['n_neighbors'] - 1
-    knn_matrix = knn_mask.apply_mask(knn_matrix, m, "Too few neighbors")
+while any(np.diff(knn.matrix.indptr) < opts['n_neighbors'] - 1):
+    m = np.diff(knn.matrix.indptr) >= opts['n_neighbors'] - 1
+    knn.apply_mask(m, "Too few neighbors")
     membership = membership[m]
-    print(f"{np.sum(~m)} beads removed")
     del m ; gc.collect()
-assert all(np.diff(knn_matrix.indptr) >= opts['n_neighbors'] - 1)
-assert knn_matrix.shape[0] == knn_matrix.shape[1] == membership.shape[0]
 
 print("\nRemoving disconnected components...")
-knn_matrix_k = csr_k_nearest(knn_matrix, k=opts['n_neighbors']-1)
+knn_matrix_k = csr_k_nearest(knn.matrix, k=opts['n_neighbors']-1)
 n_components, labels = sp.csgraph.connected_components(knn_matrix_k, directed=False, return_labels=True)
 m = labels == np.bincount(labels).argmax()
-knn_matrix = knn_mask.apply_mask(knn_matrix, m, "Disconnected")
+knn.apply_mask(m, "Disconnected")
 membership = membership[m]
-print(f"{np.sum(~m)} beads removed")
 del m, n_components, labels, knn_matrix_k ; gc.collect()
-assert knn_matrix.shape[0] == knn_matrix.shape[1] == membership.shape[0]
 
-### NO MORE FILTERING PAST THIS POINT ###
+# NO MORE FILTERING PAST THIS POINT!
 
-print("\nLeiden initialization...")
+assert knn.matrix.shape[0] == knn.matrix.shape[1] == membership.shape[0]
+assert np.unique(membership).shape[0] <= embedding.shape[0] and np.max(membership) < embedding.shape[0]
+
+fig, ax = plt.subplots(figsize=(8, 8))
+lines = [in_dir, name, "", "<Beads filtered>"] + [f"{n}: {b}" for n,b in knn.history]
+[ax.text(0.01, 1-0.05*i, line, fontsize=10, va='top', ha='left') for i,line in enumerate(lines)]
+ax.axis('off')
+fig.savefig(os.path.join(out_dir, "name.pdf"))
+
+print("\nInitializing bead coordinates...")
 # Generate bead initialization - stacked
 '''
 init = embedding[membership]
@@ -315,7 +335,7 @@ sd = np.mean(KDTree(embedding).query(embedding, k=2)[0][:,1]) / 1000
 init += np.random.normal(loc=0, scale=sd, size=(init.shape[0],2))
 '''
 # Generate bead initialization - weighted average
-knn_indices, knn_dists = knn_matrix2indist(knn_matrix, opts["n_neighbors"])
+knn_indices, knn_dists = knn_matrix2indist(knn.matrix, opts["n_neighbors"])
 weights = 1-knn_dists ; weights[knn_indices < 0] = 0
 init = embedding[membership]
 for _ in range(3):
@@ -323,10 +343,9 @@ for _ in range(3):
                      np.average(init[knn_indices, 1], axis=1, weights=weights)), axis=1)
 del knn_indices, knn_dists, weights
 
-print("Saving Leiden initialization...")
+print("\nSaving initialization...")
 np.savez_compressed(os.path.join(out_dir, 'init.npz'), embedding=embedding, membership=membership, init=init)
-assert np.unique(membership).shape[0] <= embedding.shape[0] and np.max(membership) < embedding.shape[0]
-assert init.shape[0] == knn_matrix.shape[0] == knn_matrix.shape[1]
+assert init.shape[0] == knn.matrix.shape[0] == knn.matrix.shape[1]
 del membership, embedding ; gc.collect()
 
 ### UMAP TIME ##################################################################
@@ -342,42 +361,41 @@ reducer = UMAP(n_components = 2,
                n_jobs = cores,
                **opts
               )
-embedding = reducer.fit_transform(knn_matrix.maximum(knn_matrix.T))
+embedding = reducer.fit_transform(knn.matrix.maximum(knn.matrix.T))
+embedding -= np.mean(embedding, axis=0)
 assert np.all(np.isfinite(embedding))
+assert embedding.shape[0] == knn.sb.shape[0] == knn.umi.shape[0]
 
 ### WRITE RESULTS ##############################################################
 
 print("\nWriting results...")
 
 # Create the Puck file
-sb = sb[knn_mask.mask].reset_index(drop=True)
-assert embedding.shape[0] == len(sb)
-pd.concat([sb, pd.DataFrame(embedding)], axis=1).to_csv(os.path.join(out_dir, 'Puck.csv'), index=False, header=False)
+embedding_scaled = embedding / np.mean(np.ptp(embedding, axis=0)) * sf
+np.savetxt(os.path.join(out_dir, 'Puck.csv'),
+           np.column_stack([knn.sb, embedding_scaled]),
+           delimiter=',', fmt='%s')
 
 # Plot the umap
-title = f"UMAP hexbin ({embedding.shape[0]:} beads) [{opts['n_epochs']} epochs]"
+title = f"UMAP hexbin ({embedding.shape[0]:} beads)"
 fig, ax = hexmap(embedding, title=title)
 fig.savefig(os.path.join(out_dir, "umap.pdf"), dpi=200)
 
-# Plot the weighted embeddings
-# title = f"UMAP hexbin (logUMI-weighted)"
-# weights = np.log1p(mat).sum(axis=1).A1
-# fig, ax = hexmap(embedding, weights, title=title)
-# fig.savefig(os.path.join(out_dir, "umap_umi.pdf"), dpi=200)
+# Plot the umap (UMI-weighted)
+title = f"UMAP hexbin (UMI-weighted)"
+fig, ax = hexmap(embedding, knn.umi, title=title, legend=True)
+fig.savefig(os.path.join(out_dir, "umap_umi.pdf"), dpi=200)
 
 # Make summary pdf
-# creation order: knn,  init, init2, umap, umap_umi
-names = ["umap", "umap_umi", "knn", "init", "init2"]
+# creation order: knn, init, init2, name, umap, umap_umi
+names = ["umap", "umap_umi", "knn", "init", "init2", "name"]
 paths = [os.path.join(out_dir, n+".pdf") for n in names]
 files = [p for p in paths if os.path.isfile(p)]
 if len(files) > 0:
     merger = PdfWriter()
-
-    for file_name in files:
-        merger.append(file_name)
-
+    [merger.append(file_name) for file_name in files]
     merger.write(os.path.join(out_dir, "summary.pdf"))
     merger.close()
-    #[os.remove(file) for file in files]
+    [os.remove(file) for file in files]
 
 print("Done!")
