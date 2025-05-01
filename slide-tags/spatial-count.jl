@@ -503,6 +503,10 @@ df, cb_whitelist, metadata = process_fastqs(R1s, R2s)
 
 println("...done\n") ; flush(stdout) ; GC.gc()
 
+##### Save results #############################################################
+
+print("Saving results... ") ; flush(stdout)
+
 # Create a downsampling curve
 downsampling = UInt32[]
 table = countmap(df.reads)
@@ -511,10 +515,6 @@ for p in 0:0.05:1
     append!(downsampling, sum(s))
     GC.gc()
 end
-
-##### Save results #############################################################
-
-print("Saving results... ") ; flush(stdout)
 
 h5open(joinpath(out_path, "SBcounts.h5"), "w") do file
     create_group(file, "lists")
