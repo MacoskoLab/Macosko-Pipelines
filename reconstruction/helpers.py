@@ -1,3 +1,6 @@
+import os
+import gc
+import gzip
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
@@ -6,7 +9,7 @@ import matplotlib.pyplot as plt
 ### PLOTTING METHODS ###########################################################
 
 # (x, y)
-def hexmap(embedding, weights=None, title="", fontsize=12):
+def hexmap(embedding, weights=None, title="", fontsize=12, legend=False):
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
     x, y = embedding[:, 0], embedding[:, 1]
     hb = ax.hexbin(x, y, cmap='viridis' if weights is None else 'inferno', C = weights, linewidths=0.5)
@@ -14,9 +17,12 @@ def hexmap(embedding, weights=None, title="", fontsize=12):
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title(f'{title}', fontsize=fontsize)
-    for spine in ax.spines.values():
-        spine.set_visible(False)
+    [spine.set_visible(False) for spine in ax.spines.values()]
     plt.tight_layout()
+
+    if legend:
+        cbar = fig.colorbar(hb, ax=ax, shrink=0.75)
+    
     return fig, ax
 
 # [(x, y)]
@@ -101,120 +107,6 @@ def convergence_plot(embeddings):
     plt.tight_layout()
     return fig, axes
 
-# # TODO: highlight reciprocated ones
-# def embedding_neighbor_locations(knn_indices, knn_dists, embedding, nn=45, n=16):
-#     from matplotlib.cm import viridis
-#     from matplotlib.colors import Normalize
-#     assert knn_indices.shape[0] == knn_dists.shape[0] == embedding.shape[0]
-#     assert knn_indices.shape[1] == knn_dists.shape[1]
-    
-#     # Create the grid
-#     nrows = np.ceil(np.sqrt(n)).astype(int)
-#     fig, axes = plt.subplots(nrows, nrows, figsize=(8, 8))
-#     if type(axes) != np.ndarray:
-#         axes = np.array([axes])
-#     axes = axes.flatten()
-
-#     selected_indices = np.random.randint(0, embedding.shape[0], size=n)
-#     x = embedding[:,0] ; y = embedding[:,1]
-
-#     # Plot the data
-#     for ax, i in zip(axes, selected_indices):
-#         indices = knn_indices[i, 1:nn]
-#         dists = knn_dists[i, 1:nn]
-#         colors = viridis(Normalize(vmin=0, vmax=1)(dists))
-
-#         ax.scatter(x, y, color='grey', s=10, alpha=0.5)
-#         ax.scatter(x[indices], y[indices], color=colors, s=20)
-#         ax.scatter(x[i], y[i], color='red', s=30)
-
-#         ax.set_xlim(min(x[indices]), max(x[indices]))
-#         ax.set_ylim(min(y[indices]), max(y[indices]))
-#         ax.set_aspect('equal', adjustable='box')
-#         ax.set_title(i)
-    
-#     for ax in axes[n:]:
-#         ax.set_visible(False)
-    
-#     fig.tight_layout()
-#     return fig, axes
-
-# def embedding_neighbor_distances(knn_indices, knn_dists, embedding, nn=45):
-#     assert knn_indices.shape[0] == knn_dists.shape[0] == embedding.shape[0]
-#     assert knn_indices.shape[1] == knn_dists.shape[1]
-
-#     dists = np.vstack([np.linalg.norm(embedding[inds] - embedding[inds[0]], axis=1) for inds in knn_indices])
-    
-#     def n_hist(ax, dists, nn):
-#         data = dists[:,nn]
-#         ax.hist(np.log10(data), bins=100)
-#         ax.set_xlabel('UMAP distance (log10)')
-#         ax.set_ylabel('Count')
-#         ax.set_title(f'UMAP Distance to neighbor {nn}')
-#         meanval = np.log10(np.mean(data))
-#         ax.axvline(meanval, color='red', linestyle='dashed')
-#         ax.text(meanval+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='left')
-
-#     fig, axes = plt.subplots(2, 2, figsize=(8, 8))
-    
-#     n_hist(axes[0,0], dists, 1)
-#     n_hist(axes[0,1], dists, nn)
-    
-#     ax=axes[1,0]
-#     data = np.mean(dists[:,1:nn], axis=1)
-#     ax.hist(np.log10(data), bins=100)
-#     ax.set_xlabel('UMAP distance (log10)')
-#     ax.set_ylabel('Count')
-#     ax.set_title(f'UMAP Distance to average neighbor (45)')
-#     meanval = np.log10(np.mean(data))
-#     ax.axvline(meanval, color='red', linestyle='dashed')
-#     ax.text(meanval+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='left')
-    
-#     axes[1,1].hexbin(np.log10(dists[:,1:nn]), knn_dists[:,1:nn], gridsize=100, bins='log', cmap='plasma')
-#     axes[1,1].set_xlabel('UMAP distance (log10)')
-#     axes[1,1].set_ylabel('Cosine Distance')
-#     axes[1,1].set_title(f'Cosine vs. UMAP Distance ({nn})')
-    
-#     fig.tight_layout()
-    
-#     return fig, axes
-
-
-def knn_plot(nnd, fnd, ies, tlu, n_neighbors):
-    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
-
-    def my_histogram(ax, vec, title, xlab):
-        ax.hist(vec, bins=100)
-        ax.set_title(title)
-        ax.set_xlabel(xlab)
-        ax.set_ylabel("Counts")
-        
-        xmean = np.mean(vec)
-        ax.axvline(xmean, color='red', linestyle='dotted', linewidth=1.5)
-        ax.text(xmean + ax.get_xlim()[1] * 0.02, ax.get_ylim()[1] * 0.95,
-                f'Mean: {xmean:.2f}', color='red', ha='left')
-
-    # Nearest neighbor distance
-    my_histogram(axs[0,0], nnd, "Nearest neighbor distance", "Cosine distance")
-    
-    # Furthest neighbor distance
-    my_histogram(axs[0,1], fnd, f"Furthest neighbor ({n_neighbors}) distance", "Cosine distance")
-    
-    # Number of in-edges
-    my_histogram(axs[1,0], ies, f"Number of in-edges", "In-edges")
-    
-    # Clustering coefficient
-    my_histogram(axs[1,1], tlu, f"Clustering coefficient", "transitivity_local_undirected")
-    # from scipy.stats import gaussian_kde
-    # x = np.linspace(np.min(tlu), np.max(tlu), 1000)
-    # xmode = x[np.argmax(gaussian_kde(tlu)(x))]
-    # sd = np.mean(tlu[tlu >= xmode] - xmode) * np.sqrt(np.pi / 2)
-    # z3 = xmode - sd * 3
-    # axs[1,1].axvline(z3, color='blue', linestyle='dotted', linewidth=1.5)
-    
-    plt.tight_layout()
-    return fig
-
 ### MISC. HELPERS ##############################################################
 
 # embedding1, embedding2
@@ -230,19 +122,49 @@ def procrustes_distance(p1, p2):
     _, _, disparity = procrustes(p1, p2)
     return disparity
 
+def estimate_diameter(in_dir):
+    with gzip.open(os.path.join(in_dir, 'sb1.txt.gz'), 'rt') as f:
+        num_sb1 = sum(1 for _ in f)
+    with gzip.open(os.path.join(in_dir, 'sb2.txt.gz'), 'rt') as f:
+        num_sb2 = sum(1 for _ in f)
+    n = num_sb1+num_sb2
+    
+    if n > 17*1e6:
+        diameter_micron = 70_000
+    elif n > 8.43*1e6:
+        diameter_micron = 40_000
+    elif n > 4.22*1e6:
+        diameter_micron = 30_000
+    elif n > 1.63*1e6:
+        diameter_micron = 20_000
+    elif n > 0.8*1e6:
+        diameter_micron = 12_000
+    else:
+        sys.exit("Unknown puck size")
+
+    return diameter_micron
+
 ### KNN METHODS ################################################################
 
-class KNNMask:
-    # initialize the valid indices
-    def __init__(self, knn_matrix):
-        assert knn_matrix.shape[0] == knn_matrix.shape[1]
+class KNN:
+    def __init__(self, knn_matrix, sb, umi):
+        assert knn_matrix.shape[0] == knn_matrix.shape[1] == sb.shape[0] == umi.shape[0]
+        self.matrix = knn_matrix
+        self.sb = sb
+        self.umi = umi
         self.mask = np.ones(knn_matrix.shape[0], dtype=bool)
         self.history = []
 
-    # input knn_matrix and mask, return filtered matrix
-    def apply_mask(self, knn_matrix, mask, name):
-        assert knn_matrix.shape[0] == knn_matrix.shape[1] == len(mask)
-        assert mask.dtype == bool
+    # subset data to mask
+    def apply_mask(self, mask, name):
+        assert self.matrix.shape[0] == self.matrix.shape[1] == self.sb.shape[0] == self.umi.shape[0] == mask.shape[0]
+        assert mask.dtype == bool and mask.ndim == 1
+
+        # update data
+        self.matrix = self.matrix[mask,:][:,mask]
+        self.sb = self.sb[mask]
+        self.umi = self.umi[mask]
+        assert self.matrix.shape[0] == self.matrix.shape[1] == self.sb.shape[0] == self.umi.shape[0] == np.sum(mask)
         
         # update mask
         v = np.where(self.mask)[0]
@@ -252,9 +174,10 @@ class KNNMask:
 
         # update history
         self.history.append((name, np.sum(~mask)))
-        
-        # filter matrix
-        return(knn_matrix[mask,:][:,mask])
+
+        print(f"{np.sum(~mask)} beads removed")
+        gc.collect()
+        return None
 
 # Convert knn_matrix to (knn_indices, knn_dists)
 def knn_matrix2indist(knn_matrix, k=None):
@@ -276,6 +199,7 @@ def knn_matrix2indist(knn_matrix, k=None):
         knn_indices[i, :len(inds)] = inds
         knn_dists[i, :len(vals)] = vals
 
+    assert knn_indices.shape[0] == knn_matrix.shape[0]
     validate_knn_indist(knn_indices, knn_dists)
     return knn_indices, knn_dists
 
@@ -318,10 +242,6 @@ def csr_k_nearest(csr, k):
         data.extend(row_data)
 
     return sp.csr_matrix((data, (rows, cols)), shape=csr.shape) # , dtype=np.float32
-
-def csr_nbytes(csr):
-    assert type(csr) == sp._csr.csr_matrix
-    return(csr.data.nbytes + csr.indptr.nbytes + csr.indices.nbytes)
 
 def validate_knn_indist(knn_indices, knn_dists):
     assert knn_indices.shape == knn_dists.shape
