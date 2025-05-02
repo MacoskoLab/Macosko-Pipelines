@@ -294,8 +294,8 @@ print("\nLeiden filter...")
 # TODO (make sure to update both knn and membership)
 
 print(f"\nFiltering beads with <{opts['n_neighbors']} neighbors...")
-while any(np.diff(knn.matrix.indptr) < opts['n_neighbors'] - 1):
-    m = np.diff(knn.matrix.indptr) >= opts['n_neighbors'] - 1
+while any(np.diff(knn.matrix.indptr) < opts['n_neighbors']):
+    m = np.diff(knn.matrix.indptr) >= opts['n_neighbors']
     knn.apply_mask(m, "Too few neighbors")
     membership = membership[m]
     del m ; gc.collect()
