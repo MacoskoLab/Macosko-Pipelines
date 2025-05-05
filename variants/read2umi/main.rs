@@ -21,7 +21,7 @@ const BUFF_CUTOFF: SeqPos = 15;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
-        panic!("Usage: summary reads.h5");
+        panic!("Usage: read2umi reads.h5");
     }
     
     eprintln!("Loading reads...");
