@@ -27,7 +27,7 @@ make.pdf <- function(plots, name, w, h) {
   if (any(c("gg", "ggplot", "Heatmap") %in% class(plots))) {plots = list(plots)}
   pdf(file=name, width=w, height=h)
   lapply(plots, print)
-  dev.off()
+  invisible(dev.off())
 }
 
 remap_10X_CB <- function(vec) {
@@ -149,6 +149,7 @@ ReadSpatialMatrix <- function(f) {
                    sb = f("matrix/sb_index") %>% as.integer %>% factor(levels=seq_along(sb_list), labels=sb_list),
                    reads = f("matrix/reads") %>% as.integer)
   
+  invisible(gc())
   return(dt)
 }
 
@@ -565,7 +566,7 @@ plot_SBmetrics <- function(metadata) {
 ### DBSCAN plots ###############################################################
 ################################################################################
 
-plot_gdbscan_opt <- function(coords_global, mranges) {
+plot_gdbscan_opt <- function(coords_global, mranges, k, eps) {
   # Panel 1: DBSCAN cluster distribution
   d <- coords_global[, .(pct=.N/len(cb_whitelist)*100), pmin(clusters, 5)]
   d[, pmin := factor(pmin, levels=0:5, labels=c(0:4, "5+"))]
@@ -600,21 +601,44 @@ plot_gdbscan_opt <- function(coords_global, mranges) {
                         hjust=1.05, vjust=-0.75, size=3)
   
   # Panel 4: Start vs. End
-  p4 <- ggplot() + geom_density(data=mranges, aes(x=log10((i2+1L)*ms), color=factor("min",levels=c("min","max")))) +
-                   geom_density(data=mranges, aes(x=log10(i1*ms), color=factor("max",levels=c("min","max")))) + 
-                   geom_vline(xintercept=log10(minPts), color="blue", linetype="dashed") + 
-                   theme_bw() +
-                   labs(x="log10(minPts)", y="Density", title="minPts placement intervals") + 
-                   scale_color_manual(name=NULL, values=c("min"="green3", "max"="red3")) +
-                   theme(legend.position = "inside",
-                         legend.position.inside = c(.99, .99),
-                         legend.justification.inside = c("right", "top"),
-                         legend.background = element_blank(),
-                         legend.spacing.y = unit(0.1,"lines"))
+  # p4 <- ggplot() + geom_density(data=mranges, aes(x=log10((i2+1L)*ms), color=factor("min",levels=c("min","max")))) +
+  #                  geom_density(data=mranges, aes(x=log10(i1*ms), color=factor("max",levels=c("min","max")))) + 
+  #                  geom_vline(xintercept=log10(minPts), color="blue", linetype="dashed") + 
+  #                  theme_bw() +
+  #                  labs(x="log10(minPts)", y="Density", title="minPts placement intervals") + 
+  #                  scale_color_manual(name=NULL, values=c("min"="green3", "max"="red3")) +
+  #                  theme(legend.position = "inside",
+  #                        legend.position.inside = c(.99, .99),
+  #                        legend.justification.inside = c("right", "top"),
+  #                        legend.background = element_blank(),
+  #                        legend.spacing.y = unit(0.1,"lines"))
+  p4 <- ggplot() + 
+    geom_point(data=mranges, size=0.5,
+               mapping=aes(x=(i2+1L)*ms,
+                           y=(i1-i2)*ms,
+                           col=pmin(coords_global$clusters,2) %>% factor(levels=c(0,1,2), labels = c("0","1","2+")))) + 
+    geom_vline(xintercept = minPts) +
+    geom_line(data=data.table(x=seq_len(minPts))[,y:=minPts-x+1], mapping=aes(x=x,y=y)) +
+    theme_bw() +
+    scale_x_continuous(trans='log10') + scale_y_continuous(trans='log10') +
+    labs(x="Minimum minPts", y="Placement Interval Width", col="DBSCAN") +
+    scale_color_manual(values = c("#619CFF", "#F8766D", "#00BA38")) +
+    theme(legend.position = "inside",
+          legend.position.inside = c(0,1),
+          legend.justification.inside = c("left", "top"),
+          legend.box.background = element_blank(),
+          legend.background = element_blank(),
+          legend.key = element_blank(),
+          #legend.margin = margin(t=0, r=0, b=0, l=0),
+          legend.key.height = unit(0.5, "lines"),
+          legend.key.width = unit(0.5, "lines"),
+          legend.spacing.y = unit(0.0, "lines"),
+          legend.text = element_text(size=7),
+          legend.title = element_text(size=8))
   
   plot <- plot_grid(gdraw("Global DBSCAN Optimization"),
                    plot_grid(p1, p2, p3, p4, ncol=2),
-                   ncol=1, rel_heights=c(0.05,0.95))
+                   ncol=1, rel_heights=c(0.05,0.95)) %>% suppressWarnings
   return(plot)
 }
 
@@ -633,7 +657,7 @@ plot_gdbscan_1 <- function(coords_global) {
     max_density_x = mean(coords[[var]], na.rm=TRUE)
     ggplot(coords, aes(x = .data[[var]])) + geom_density() + 
       theme_minimal() +
-      labs(x=name, y="Density", title=g("{name} density")) + 
+      labs(x=name, y="Density", title=g("{name} distribution")) + 
       geom_vline(xintercept=max_density_x, color="red", linetype="dashed") +
       annotate(geom='text',
                label=ifelse(percent, g(" Mean: {round(max_density_x*100, 1)}%"), g(" Mean: {round(max_density_x, 2)}")),
@@ -649,7 +673,13 @@ plot_gdbscan_1 <- function(coords_global) {
   p3 <- mydensplot(coords, "rmsd1", "RMSD", FALSE)
   
   # Panel 4: h-index
-  p4 <- mydensplot(coords, "h1", "h-index", FALSE)
+  p4 <- ggplot(coords, aes(x=h1)) + geom_bar() + theme_minimal() +
+    labs(x="h1", y="Count", title="h-index distribution") + 
+    geom_vline(xintercept=mean(coords$h1), color="red", linetype="dashed") +
+    annotate(geom='text',
+             label=g(" Mean: {round(mean(coords$h1), 2)}"),
+             x=mean(coords$h1), y=Inf,
+             hjust=0, vjust=1, col="red")
   
   plot <- plot_grid(gdraw("Global DBSCAN=1 Results"),
                     plot_grid(p1, p2, p3, p4, ncol=2),
@@ -657,7 +687,7 @@ plot_gdbscan_1 <- function(coords_global) {
   return(plot)
 }
 
-plot_gdbscan_2 <- function(coords_global) {
+plot_gdbscan_2 <- function(coords_global, cmes) {
   coords <- coords_global[clusters==2]
   
   # Panel 1: DBSCAN=1 placements
@@ -672,33 +702,23 @@ plot_gdbscan_2 <- function(coords_global) {
     xlim(range(puckdf$x)) + ylim(range(puckdf$y)) +
     labs(x="x-position", y="y-position", title="DBSCAN=2 Positions")
   
-  # Panel 3: Violins
-  p3 <- plot_grid(
-    coords[,.(umi1,umi2)] %>% melt(measure.vars=c("umi1","umi2"), variable.name="pair", value.name="value") %>% 
-      ggplot(aes(x=pair, y=log10(value), fill=pair)) + geom_violin(scale="count") + 
-      theme_minimal() + 
-      labs(x=NULL, y="log10(UMI)", title=NULL) + 
-      guides(fill="none"),
-    coords[,.(h1,h2)] %>% melt(measure.vars=c("h1","h2"), variable.name="pair", value.name="value") %>% 
-      ggplot(aes(x=pair, y=value, fill=pair)) + geom_violin(scale="count") + 
-      theme_minimal() + 
-      labs(x=NULL, y="h-index", title=NULL) + 
-      guides(fill="none"),
-    coords[,.(rmsd1,rmsd2)] %>% melt(measure.vars=c("rmsd1","rmsd2"), variable.name="pair", value.name="value") %>% 
-      ggplot(aes(x=pair, y=value, fill=pair)) + geom_violin(scale="count") + 
-      theme_minimal() + 
-      labs(x=NULL, y="RMSD", title=NULL) + 
-      guides(fill="none"),
-    nrow=1
-  )
+  # Panel 3: UMI comparison
+  p3 <- ggplot(coords, aes(x=log10(umi1),y=log10(umi2))) + geom_point() +
+    coord_fixed(ratio=1) + theme_bw() + 
+    labs(x="log10(UMI1)", y="log10(UMI2)", title="SB UMI counts")
   
   # Panel 4: DBSCAN 1-2 Distance
-  p4 <- ggplot(coords, aes(x=sqrt((x1-x2)^2+(y1-y2)^2))) + geom_histogram() + 
+  p4 <- ggplot(coords, aes(x=sqrt((x1-x2)^2+(y1-y2)^2))) + geom_histogram(bins=30) + 
     theme_classic() +
-    labs(x="Distance", y="Cells", title="DBSCAN 1-2 Distance")
+    labs(x="Distance", y="Cells", title="DBSCAN 1-2 Distance") +
+    geom_vline(xintercept=cmes*eps, color="red", linetype="dashed") +
+    annotate(geom='text',
+             label=g(" CMES: {round(cmes, 2)}"),
+             x=cmes*eps, y=Inf,
+             hjust=0, vjust=1, col="red")
   
   plot <- plot_grid(gdraw("Global DBSCAN=2 Results"),
-                    plot_grid(p1, p2, plot_grid(gdraw("Distributions"),p3,ncol=1,rel_heights=c(0.05,0.95)), p4, ncol=2),
+                    plot_grid(p1, p2, p3, p4, ncol=2),
                     ncol=1, rel_heights=c(0.05,0.95))
   return(plot)
 }
@@ -796,7 +816,7 @@ global_cellplot <- function(CB) {
   return(plot)
 }
 
-plot_global_cellplots <- function(data.list) {
+plot_gdbscan_cellplots <- function(data.list) {
   list0 <- map_lgl(data.list, ~max(.$cluster)==0 & nrow(.)>0) %>% {names(.)[.]}
   list1 <- map_lgl(data.list, ~max(.$cluster)==1 & nrow(.)>0) %>% {names(.)[.]}
   list2 <- map_lgl(data.list, ~max(.$cluster)==2 & nrow(.)>0) %>% {names(.)[.]}
