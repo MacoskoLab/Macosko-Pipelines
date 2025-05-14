@@ -5,27 +5,46 @@
 ################################################################################
 
 suppressMessages(source("helpers.R"))
+setDTthreads(parallelly::availableCores())
 
 # Load arguments
 library(optparse)
 arguments <- OptionParser(
   usage = "Usage: Rscript positioning.R SBcounts_path CBwhitelist_path output_path [options]",
   option_list = list(
-    make_option(c("-k", "--knn"), type="integer", default=51, help = "Number of bead neighbors used to compute eps [default: %default]", metavar="K")
+    make_option("--knn", type="integer", default=51L, help = "Number of bead neighbors used to compute eps [default: %default]", metavar="K"),
+    make_option("--cmes", type="double", default=1.0, help = "???"),
+    make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]", metavar="prob")
   )
 ) %>% parse_args(positional_arguments=3)
 
 sb_path <- arguments$args[[1]]
 cb_path <- arguments$args[[2]]
 out_path <- arguments$args[[3]]
-k <- arguments$options$knn
+knn <- arguments$options$knn
+cmes <- arguments$options$cmes
+prob <- arguments$options$prob
 rm(arguments)
 
 # Print arguments
 print(g("sb_path: {sb_path}"))
 print(g("cb_path: {cb_path}"))
 print(g("out_path: {out_path}"))
-print(g("k: {k}"))
+print(g("knn: {knn}"))
+print(g("cmes: {cmes}"))
+print(g("prob: {prob}"))
+
+# sb_path <- "RNA/SBcounts.h5"
+# cb_path <- "output/cb_whitelist.txt"
+# out_path <- "output"
+# knn <- 51L
+# cmes <- 2.0
+# prob <- 1.0
+
+# sb_path <- "GG/SBcounts.h5"
+# cb_path <- "GG/cb_whitelist.txt"
+# out_path <- "GGo"
+# k <- 51L
 
 # Check input arguments
 if (!dir.exists(out_path)) {dir.create(out_path, recursive=TRUE)}
@@ -40,10 +59,12 @@ print(g("{add.commas(sum(dt$reads))} spatial barcode reads loaded"))
 # load the CB whitelist
 cb_whitelist <- readLines(cb_path)
 
+# determine CB remap
 remap <- determine_remap_10X_CB(cb_whitelist, dt)
 if (remap) { cb_whitelist %<>% remap_10X_CB }
 metadata$SB_info$remap_10X_CB <- remap
 
+# validate CB whitelist
 stopifnot(class(cb_whitelist) == "character")
 stopifnot(!duplicated(cb_whitelist))
 stopifnot(uniqueN(nchar(cb_whitelist)) == 1)
@@ -93,6 +114,7 @@ rm(df) ; invisible(gc())
 dt <- rbindlist(list(dt[is.na(cb)],
                      dt[!is.na(cb), .(reads=sum(reads)), .(cb,umi,sb)]),
                 fill = TRUE)
+invisible(gc())
 
 ### Load puck ##################################################################
 
@@ -106,7 +128,7 @@ rm(res) ; invisible(gc())
 # Compute eps scale using the kth neighbor
 eps <- RANN::nn2(data = puckdf[, .(x,y)],
                  query = puckdf[sample(.N, 10000), .(x,y)],
-                 k = k)$nn.dists[,k] %>% median
+                 k = knn)$nn.dists[,knn] %>% median
 print(g("eps: {eps}"))
 
 # Filter reads with a low-quality spatial barcode
@@ -176,9 +198,10 @@ stopifnot(sort(names(dt)) == c("cb", "umi", "x", "y"))
 data.list <- split(dt, by="cb", drop=TRUE, keep.by=FALSE)
 for (dl in data.list) {stopifnot(nrow(dl) > 0, dl$umi > 0)}
 rm(dt) ; invisible(gc())
+if(len(cb_whitelist) != len(data.list)) {print(g("Removed {len(cb_whitelist)-len(data.list)} cell(s) without spatial barcodes"))}
 print(g("Running positioning on {len(data.list)} cells"))
 
-# prepare for positioning
+# Prepare for positioning
 library(future)
 library(furrr)
 options(future.globals.maxSize = 1024 * 1024 * 1024)
@@ -213,7 +236,22 @@ mranges <- furrr::future_map(data.list, function(dl) {
 }, .options = myoptions) %>% rbindlist
 stopifnot(nrow(mranges) == len(data.list))
 
-# TODO: Walk it back by filtering nearby DBSCAN=2
+# Decrease minPts lower-bound if all centroids are within [eps * cmes] of DBSCAN=1
+centroid_dists <- function(dl) {
+  if (dl[,max(cluster)] < 2) {return(0)}
+  centroids <- dl[cluster>0, .(x=weighted.mean(x,umi),
+                               y=weighted.mean(y,umi)), cluster][order(cluster)]
+  cdist(centroids[,.(x,y)], centroids[cluster==1,.(x,y)]) %>% as.numeric
+}
+mranges$i2 <- furrr::future_map2_int(data.list, mranges$i2, function(dl, i2) {
+  dl[, cluster := mydbscan(dl, eps, i2 * ms)]
+  while (i2 > 1 && max(centroid_dists(dl)) < eps * cmes) {
+    i2 <- i2 - 1
+    dl[, cluster := mydbscan(dl, eps, i2 * ms)]
+  }
+  return(i2)
+}, .options = myoptions)
+stopifnot(mranges$i2 <= mranges$i1)
 
 ### Global DBSCAN ###
 
@@ -227,6 +265,13 @@ print(g("Global optimum minPts: {minPts}"))
 # Rerun DBSCAN with the optimal minPts
 for (i in seq_along(data.list)) {
   data.list[[i]][, cluster := mydbscan(data.list[[i]], eps, minPts)]
+}
+
+# Merge clusters within [eps * cmes] of DBSCAN=1
+for (i in seq_along(data.list)) {
+  near_centroids <- which(centroid_dists(data.list[[i]]) < eps * cmes)
+  data.list[[i]][cluster %in% near_centroids, cluster := pmin(cluster, 1)]
+  data.list[[i]][cluster>0, cluster := match(cluster, sort(unique(cluster)))]
 }
 
 # Assign the centroid via a weighted mean
@@ -270,85 +315,87 @@ coords_global[, `:=`(eps=eps, minPts=minPts)]
 coords_global[clusters==1, `:=`(x=x1, y=y1)]
 print(g("Placed: {round(coords_global[,sum(clusters==1)/.N]*100, 2)}%"))
 
+stopifnot(len(data.list) == nrow(mranges))
+stopifnot(nrow(mranges) == nrow(coords_global))
+
 # Plots
-plot_gdbscan_opt(coords_global, mranges) %>% make.pdf(file.path(out_path, "GDBSCANopt.pdf"), 7, 8)
+plot_gdbscan_opt(coords_global, mranges, knn, eps) %>% make.pdf(file.path(out_path, "GDBSCANopt.pdf"), 7, 8)
 plot_gdbscan_1(coords_global) %>% make.pdf(file.path(out_path, "GDBSCAN1.pdf"), 7, 8)
-plot_gdbscan_2(coords_global) %>% make.pdf(file.path(out_path, "GDBSCAN2.pdf"), 7, 8)
+plot_gdbscan_2(coords_global, cmes) %>% make.pdf(file.path(out_path, "GDBSCAN2.pdf"), 7, 8)
+plot_gdbscan_cellplots(data.list) %>% make.pdf(file.path(out_path, "GDBSCANs.pdf"), 7, 8)
 
 # Save coords
+setcolorder(coords_global, c("cb","x","y"))
 fwrite(coords_global, file.path(out_path, "coords.csv"))
 
+# rm(minPts)
 
 ### Dynamic DBSCAN ###
-
-# Rerun DBSCAN at the computed minPts values
-for (i in seq_along(data.list)) {
-  data.list[[i]][, cluster2 := mydbscan(data.list[[i]], eps, mranges[i,i2])]
-  data.list[[i]][, cluster1 := mydbscan(data.list[[i]], eps, mranges[i,i1])]
-}
-
-# Assign the centroid via a weighted mean
-coords_dynamic <- imap(data.list, function(dl, cb) {
-  ret <- dl[,.(cb=cb, umi=sum(umi), beads=.N)]
-  
-  # Position the cell, using the highest minPts that produces DBSCAN=1
-  if (max(dl$cluster1) == 1) {
-    s <- dl[cluster1 == 1, .(x=weighted.mean(x, umi),
-                             y=weighted.mean(y, umi),
-                             umi1s=sum(umi),
-                             beads1s=.N,
-                             h1s=h_index(umi))]
-    
-  } else {
-    s <- data.table(x=NA_real_, y=NA_real_, umi1s=NA_real_, beads1s=NA_integer_, h1s=NA_integer_)
-  }
-  ret[, names(s) := s]
-  
-  # Compute the score, using the highest minPts that produces DBSCAN=2
-  if (max(dl$cluster2) >= 2) {
-    s <- dl[, .(x=weighted.mean(x, umi),
-                y=weighted.mean(y, umi),
-                umi=sum(umi),
-                beads=.N,
-                h=h_index(umi)
-               ), cluster2][cluster2 > 0][order(-umi, cluster2)]
-    setcolorder(s, c("x", "y", "umi", "beads", "h", "cluster2"))
-    ret[, c("x1","y1","umi1","beads1","h1","cluster1") := s[1]] # Highest UMI DBSCAN cluster
-    ret[, c("x2","y2","umi2","beads2","h2","cluster2") := s[2]] # Second-highest UMI DBSCAN cluster
-  } else if (max(dl$cluster2) == 1) {
-      s <- dl[cluster2 == 1, .(x1=weighted.mean(x, umi),
-                               y1=weighted.mean(y, umi),
-                               umi1=sum(umi),
-                               beads1=.N,
-                               h1=h_index(umi),
-                               cluster1=1L)]
-      ret[, names(s) := s]
-      s <- data.table(x2=NA_real_, y2=NA_real_, umi2=NA_real_, beads2=NA_integer_, h2=NA_integer_, cluster2=NA_integer_)
-      ret[, names(s) := s]
-  } else {
-    s <- data.table(x1=NA_real_, y1=NA_real_, umi1=NA_real_, beads1=NA_integer_, h1=NA_integer_, cluster1=NA_integer_)
-    ret[, names(s) := s]
-    s <- data.table(x2=NA_real_, y2=NA_real_, umi2=NA_real_, beads2=NA_integer_, h2=NA_integer_, cluster2=NA_integer_)
-    ret[, names(s) := s]
-  }
-  
-}) %>% rbindlist
-
-coords_dynamic[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
-                                                              minPts2=mranges$i2*ms,
-                                                              minPts1=mranges$i1*ms)]
-
-# Plots
-plot_ddbscan_xy(coords_dynamic) %>% make.pdf(file.path(out_path, "DDBSCANxy.pdf"), 7, 8)
-
-# Save coords
-fwrite(coords_dynamic, file.path(out_path, "coords2.csv"))
-
-
-### Cell plots ###
-plot_global_cellplots(data.list) %>% make.pdf(file.path(out_path, "DBSCAN.pdf"), 7, 8)
-#dynamic_plots <- plot_dynamic_cellplots(data.list, coords_dynamic)
+# 
+# # Rerun DBSCAN at the computed minPts values
+# for (i in seq_along(data.list)) {
+#   data.list[[i]][, cluster2 := mydbscan(data.list[[i]], eps, mranges[i,i2])]
+#   data.list[[i]][, cluster1 := mydbscan(data.list[[i]], eps, mranges[i,i1])]
+# }
+# 
+# # Assign the centroid via a weighted mean
+# coords_dynamic <- imap(data.list, function(dl, cb) {
+#   ret <- dl[,.(cb=cb, umi=sum(umi), beads=.N)]
+#   
+#   # Position the cell, using the highest minPts that produces DBSCAN=1
+#   if (max(dl$cluster1) == 1) {
+#     s <- dl[cluster1 == 1, .(x=weighted.mean(x, umi),
+#                              y=weighted.mean(y, umi),
+#                              umi1s=sum(umi),
+#                              beads1s=.N,
+#                              h1s=h_index(umi))]
+#     
+#   } else {
+#     s <- data.table(x=NA_real_, y=NA_real_, umi1s=NA_real_, beads1s=NA_integer_, h1s=NA_integer_)
+#   }
+#   ret[, names(s) := s]
+#   
+#   # Compute the score, using the highest minPts that produces DBSCAN=2
+#   if (max(dl$cluster2) >= 2) {
+#     s <- dl[, .(x=weighted.mean(x, umi),
+#                 y=weighted.mean(y, umi),
+#                 umi=sum(umi),
+#                 beads=.N,
+#                 h=h_index(umi)
+#                ), cluster2][cluster2 > 0][order(-umi, cluster2)]
+#     setcolorder(s, c("x", "y", "umi", "beads", "h", "cluster2"))
+#     ret[, c("x1","y1","umi1","beads1","h1","cluster1") := s[1]] # Highest UMI DBSCAN cluster
+#     ret[, c("x2","y2","umi2","beads2","h2","cluster2") := s[2]] # Second-highest UMI DBSCAN cluster
+#   } else if (max(dl$cluster2) == 1) {
+#       s <- dl[cluster2 == 1, .(x1=weighted.mean(x, umi),
+#                                y1=weighted.mean(y, umi),
+#                                umi1=sum(umi),
+#                                beads1=.N,
+#                                h1=h_index(umi),
+#                                cluster1=1L)]
+#       ret[, names(s) := s]
+#       s <- data.table(x2=NA_real_, y2=NA_real_, umi2=NA_real_, beads2=NA_integer_, h2=NA_integer_, cluster2=NA_integer_)
+#       ret[, names(s) := s]
+#   } else {
+#     s <- data.table(x1=NA_real_, y1=NA_real_, umi1=NA_real_, beads1=NA_integer_, h1=NA_integer_, cluster1=NA_integer_)
+#     ret[, names(s) := s]
+#     s <- data.table(x2=NA_real_, y2=NA_real_, umi2=NA_real_, beads2=NA_integer_, h2=NA_integer_, cluster2=NA_integer_)
+#     ret[, names(s) := s]
+#   }
+#   
+# }) %>% rbindlist
+# 
+# coords_dynamic[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
+#                                                               minPts2=mranges$i2*ms,
+#                                                               minPts1=mranges$i1*ms)]
+# 
+# # Plots
+# plot_ddbscan_xy(coords_dynamic) %>% make.pdf(file.path(out_path, "DDBSCANxy.pdf"), 7, 8)
+# 
+# dynamic_plots <- plot_dynamic_cellplots(data.list, coords_dynamic)
+# # Save coords
+# fwrite(coords_dynamic, file.path(out_path, "coords2.csv"))
 
 ### Final check ###
-stopifnot(coords_global$cb_index == coords_dynamic$cb_index)
-stopifnot(file.exists(file.path(out_path, c("coords.csv", "coords2.csv"))))
+#stopifnot(coords_global$cb_index == coords_dynamic$cb_index)
+#stopifnot(file.exists(file.path(out_path, c("coords.csv", "coords2.csv"))))
