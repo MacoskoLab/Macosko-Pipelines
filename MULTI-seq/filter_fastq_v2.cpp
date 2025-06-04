@@ -122,7 +122,6 @@ int main(int argc, char const *argv[])
 			if (j % 4 == 0)
 			{
 				string bc = line2.substr(0, 41);
-
 				if (mp.find(bc) == mp.end())
 				{
 					// calculate hamming distance		

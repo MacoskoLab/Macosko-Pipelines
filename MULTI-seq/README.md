@@ -13,9 +13,9 @@ https://github.com/Hoohm/CITE-seq-Count
 ### Helpful links
 [MULTI-seq Sample Multiplexing for Single Cell Analysis and Sequencing](https://www.sigmaaldrich.com/US/en/technical-documents/technical-article/genomics/sequencing/multi-seq-sample-multiplexing-single-cell-analysis-sequencing)
 
-| Binary            | line 124   | line 171   |
-| ----------------- | ---------- | ---------- |
-| filter_fastq      | substr(16) | substr(16) |
-| filter_fastq_v2   | substr(41) | substr(16) |
-| filter_fastq_v3   | substr(32) | substr(16) |
-| filter_fastq_PONI | substr(16) | substr(16) |
+| Binary            | line 124       | line 171   |
+| ----------------- | -------------- | ---------- |
+| filter_fastq      | substr(0, 16)  | substr(16) |
+| filter_fastq_v2   | substr(0, 41)  | substr(41) |
+| filter_fastq_v3   | substr(0, 32)  | substr(32) |
+| filter_fastq_PONI | substr(46, 59) | substr(16) |
