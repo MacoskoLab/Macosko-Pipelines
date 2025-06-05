@@ -1,3 +1,5 @@
+This step has been deprecated in favor of the CITE-seq-Count option `-wl WHITELIST, --whitelist WHITELIST`
+
 ```
 qsub -o /broad/macosko/jilong/nicolas/filterfastq/run.log \
      -l h_vmem=90g -notify -l h_rt=16:0:0 -j y -P macosko_lab -l os=RedHat7 \
@@ -7,8 +9,6 @@ qsub -o /broad/macosko/jilong/nicolas/filterfastq/run.log \
      <out_R1.fastq> <out_R2.fastq> \
      1 true true
 ```
-
-This step has been deprecated in favor of the CITE-seq-Count option `-wl WHITELIST, --whitelist WHITELIST`
 
 | Binary            | line 124       | line 171   |
 | ----------------- | -------------- | ---------- |
