@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y  \
     gdebi-core build-essential cmake pkg-config alien \
     libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev \
     apt-transport-https ca-certificates libssl-dev libxml2-dev \
-    libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libcairo2-dev
+    libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libcairo2-dev \
+    libzmq3-dev
 
 # Install Google Cloud SDK
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
@@ -71,7 +72,7 @@ RUN wget -P /opt https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckd
     unzip /opt/duckdb_cli-linux-amd64.zip -d /opt && \
     rm /opt/duckdb_cli-linux-amd64.zip && \
     ln -s /opt/duckdb /usr/local/bin/duckdb
-    
+
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
@@ -119,7 +120,8 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
     rstudio-server stop && sleep 1
 
 # Install R libraries
-RUN R -e "install.packages(c('tidyverse', \
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bookworm/latest')); \
+          install.packages(c('tidyverse', \
                              'dplyr', 'tidyr', 'purrr', 'magrittr', \
                              'future', 'furrr', 'parallelly', \
                              'data.table', 'rlist', 'stringr', 'stringi', 'glue', \
@@ -130,16 +132,18 @@ RUN R -e "install.packages(c('tidyverse', \
                              'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2', \
                              'devtools', 'remotes', 'R.utils', 'optparse', \
                              'shiny', 'IRkernel', 'duckdb'), \
-                             repos='http://cloud.r-project.org', \
+                             repos='https://packagemanager.posit.co/cran/__linux__/bookworm/latest', \
                              Ncpus=$(nproc)L)"
 # Install Bioconductor packages
-RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager', repos='http://cloud.r-project.org')}; \
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bookworm/latest')); \
+          if (!require('BiocManager', quietly=T)) {install.packages('BiocManager', repos='https://packagemanager.posit.co/cran/__linux__/bookworm/latest')}; \
           BiocManager::install(c('IRanges', 'GenomicRanges', 'GenomicFeatures', 'GenomicAlignments', \
                                  'ShortRead', 'Rsamtools', 'VariantAnnotation', 'rtracklayer', \
                                  'AnnotationDbi', 'BiocParallel', 'SingleCellExperiment', 'rhdf5' \
                                 ), Ncpus=$(nproc)L)"
 # Install other R packages
-RUN R -e "devtools::install_github('immunogenomics/presto')"
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bookworm/latest')); \
+          devtools::install_github('immunogenomics/presto')"
 
 # Install micromamba
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
@@ -180,9 +184,11 @@ RUN . /root/.cargo/env && \
     cd /opt/removefastawhitespace && \
     cargo build --release && \
     ln -s /opt/removefastawhitespace/target/release/removefastawhitespace /usr/local/bin/removefastawhitespace
-    
+
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
 
 # podman build -f Dockerfile -t pipeline-image .
 # podman save -o /broad/macosko/pipelines/scripts/pipeline-image.tar pipeline-image:latest
+
+# ./gcloud_build.sh -f Dockerfile -t us.gcr.io/mccarroll-scrna-seq/macosko-pipelines:$(git describe --match='' --always --abbrev=7 --dirty)_$(date +%s) --timeout=3h --region=us-central1
