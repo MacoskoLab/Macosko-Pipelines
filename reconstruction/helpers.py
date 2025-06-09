@@ -147,24 +147,42 @@ def estimate_diameter(in_dir):
 ### KNN METHODS ################################################################
 
 class KNN:
-    def __init__(self, knn_matrix, sb, umi):
-        assert knn_matrix.shape[0] == knn_matrix.shape[1] == sb.shape[0] == umi.shape[0]
-        self.matrix = knn_matrix
+    def __init__(self, matrix, sb, umi, n_neighbors):
+        self.matrix = matrix
         self.sb = sb
         self.umi = umi
-        self.mask = np.ones(knn_matrix.shape[0], dtype=bool)
+        self.membership = np.full(matrix.shape[0], -1)
+        
+        self.mask = np.ones(matrix.shape[0], dtype=bool)
+        self.n_neighbors = n_neighbors
         self.history = []
 
-    # subset data to mask
+        self.check()
+
+    # Validate internal state
+    def check(self):
+        assert self.matrix.shape[0] == self.matrix.shape[1] == self.sb.shape[0]
+        assert self.sb.shape[0] == self.umi.shape[0] == self.membership.shape[0]
+        assert type(self.matrix) == sp._csr.csr_matrix and self.matrix.dtype == np.float32
+        assert type(self.sb) == np.ndarray and self.sb.ndim == 1
+        assert type(self.umi) == np.ndarray and self.umi.ndim == 1
+        assert type(self.membership) == np.ndarray and self.membership.ndim == 1
+        assert type(self.mask) == np.ndarray and self.mask.ndim == 1 and self.mask.dtype == bool
+        assert np.diff(self.matrix.indptr).max() >= self.n_neighbors
+        assert self.matrix.shape[0] > 0
+    
+    # Subset data to input mask
     def apply_mask(self, mask, name):
-        assert self.matrix.shape[0] == self.matrix.shape[1] == self.sb.shape[0] == self.umi.shape[0] == mask.shape[0]
-        assert mask.dtype == bool and mask.ndim == 1
+        assert type(mask) == np.ndarray and mask.dtype == bool and mask.ndim == 1
+        assert self.matrix.shape[0] == mask.shape[0]
+        self.check()
 
         # update data
         self.matrix = self.matrix[mask,:][:,mask]
         self.sb = self.sb[mask]
         self.umi = self.umi[mask]
-        assert self.matrix.shape[0] == self.matrix.shape[1] == self.sb.shape[0] == self.umi.shape[0] == np.sum(mask)
+        self.membership = self.membership[mask]
+        assert self.matrix.shape[0] == np.sum(mask)
         
         # update mask
         v = np.where(self.mask)[0]
@@ -176,80 +194,193 @@ class KNN:
         self.history.append((name, np.sum(~mask)))
 
         print(f"{np.sum(~mask)} beads removed")
-        gc.collect()
+        self.check() ; gc.collect()
         return None
 
-# Convert knn_matrix to (knn_indices, knn_dists)
-def knn_matrix2indist(knn_matrix, k=None):
-    lil = knn_matrix.tolil(copy=False)
-    nrows = lil.shape[0]
-    ncols = max(len(row) for row in lil.rows) + 1 if (k is None) else k
-    
-    knn_indices = np.full((nrows, ncols), -1, dtype=np.int32)
-    knn_dists = np.full((nrows, ncols), np.inf, dtype=np.float32)
-    
-    for i in range(nrows):
-        inds = np.array([i]+lil.rows[i], dtype=np.int32)
-        vals = np.array([0]+lil.data[i], dtype=np.float32)
+    # Iteratively filter beads with fewer than n_neighbors
+    def filter_toofewneighbors(self):
+        print(f"\nFiltering beads with <{self.n_neighbors} neighbors...")
+        while any(np.diff(self.matrix.indptr) < self.n_neighbors):
+            m = np.diff(self.matrix.indptr) >= self.n_neighbors
+            self.apply_mask(m, "Too few neighbors")
 
+    # Filter beads disconnected from the main graph
+    def filter_disconnected(self):
+        print(f"\nRemoving disconnected components...")
+        n_components, labels = sp.csgraph.connected_components(self.matrix_k(), directed=False, return_labels=True)
+        m = labels == np.bincount(labels).argmax()
+        if np.sum(~m) > 0:
+            self.apply_mask(m, "Disconnected")
+    
+    # Convert knn_matrix -> (knn_indices, knn_dists)
+    def inddist(self):
+        self.check()
+        knn_indices = np.zeros((self.matrix.shape[0], self.n_neighbors), dtype=int)
+        knn_dists = np.zeros((self.matrix.shape[0], self.n_neighbors), dtype=float)
+        
+        for row_id in range(self.matrix.shape[0]):
+            row_data = self.matrix[row_id].data
+            row_indices = self.matrix[row_id].indices
+            assert len(row_data) >= self.n_neighbors
+            row_nn_data_indices = np.argsort(row_data)[: self.n_neighbors]
+            knn_indices[row_id] = row_indices[row_nn_data_indices]
+            knn_dists[row_id] = row_data[row_nn_data_indices]
+
+        # check output?
+        return knn_indices, knn_dists
+
+    # Return the matrix subsetted to n_neighbors    
+    def matrix_k(self):
+        self.check()
+        rows, cols, data = [], [], []
+        for i in range(self.matrix.shape[0]):
+            row_start, row_end = self.matrix.indptr[i], self.matrix.indptr[i+1]
+            row_data = self.matrix.data[row_start:row_end]
+            row_indices = self.matrix.indices[row_start:row_end]
+    
+            if len(row_data) > self.n_neighbors:
+                top_k_indices = np.argpartition(row_data, self.n_neighbors)[:self.n_neighbors]
+                row_data = row_data[top_k_indices]
+                row_indices = row_indices[top_k_indices]
+    
+            rows.extend([i] * len(row_data))
+            cols.extend(row_indices)
+            data.extend(row_data)
+
+        # check output? sort output?
+        return sp.csr_matrix((data, (rows, cols)), shape=self.matrix.shape, dtype=np.float32)
+
+    # Return an undirected igraph, weighted by cosine similarity
+    def graph(self):
+        import igraph as ig
+        matrix_k = self.matrix_k()
+        G = ig.Graph(n = matrix_k.shape[0],
+                     edges = zip(*matrix_k.nonzero()),
+                     edge_attrs = {'weight': 1-matrix_k.data}, # cosine similarity weights
+                     directed = False)
+        G.simplify(multiple=True, loops=True, combine_edges="max")
+        return G
+
+### LEIDEN METHODS #############################################################
+
+def leiden_init(G, K=15, cores=1):
+    print(f"    Leiden cluster...")
+    # https://igraph.org/python/api/0.9.7/igraph._igraph.GraphBase.html#community_edge_betweenness
+    # G.community_leiden(objective_function='modularity', weights=None, resolution=160, beta=0.01, n_iterations=2)
+    # G.community_edge_betweenness()
+    # G.community_fastgreedy
+    # G.community_infomap
+    # G.community_label_propagation
+    # G.community_leading_eigenvector
+    # G.community_leading_eigenvector_naive
+    # G.community_leiden
+    # G.community_multilevel
+    # G.community_optimal_modularity
+    # G.community_spinglass
+    # G.community_walktrap
+    
+    # https://leidenalg.readthedocs.io/en/stable/reference.html
+    import leidenalg as la
+    partition = la.find_partition(graph=G,
+                                  partition_type=la.RBConfigurationVertexPartition,
+                                  weights='weight',
+                                  n_iterations=2,
+                                  #max_comm_size=1000,
+                                  resolution_parameter=160)
+    membership = np.array(partition.membership)
+    print(f'    Number of clusters: {len(np.unique(membership))}')
+    print(f'    Modularity: {partition.modularity}')
+
+    # Contract KNN graph -> Leiden graph
+    print(f"    Leiden graph...")
+    G.contract_vertices(membership, combine_attrs=None)
+    G.simplify(multiple=True, loops=True, combine_edges=sum)
+    
+    # Convert Leiden graph to symmetric CSR
+    i, j = zip(*G.get_edgelist())
+    ic_edges = sp.csr_matrix((G.es["weight"], (i,j)), shape=(G.vcount(), G.vcount()))
+    ic_edges = ic_edges.maximum(ic_edges.T)
+    assert ic_edges.has_canonical_format
+    assert np.all(ic_edges.diagonal() == 0)
+    ic_edges.eliminate_zeros()
+
+    # Create the Leiden KNN
+    print(f"    Leiden KNN...")
+    def my_knn(mat):
+        from sklearn.preprocessing import normalize
+        from sparse_dot_topn import sp_matmul_topn
+        mat_norm = normalize(mat, norm='l2', axis=1, copy=True)
+        C = sp_matmul_topn(mat_norm, mat_norm.T, top_n=K+1, n_threads=cores)
+        C.data = 1 - C.data # cosine similarity -> distance
+        C.data = np.maximum(C.data, 0)
+        C.data = np.minimum(C.data, 1)
+        C.setdiag(0)
+        C.eliminate_zeros()
+        # assert isinstance(C, sp.csr_matrix) and np.all(np.diff(C.indptr) == 14)
+        return(C)
+    
+    leiden_knn_matrix = my_knn(ic_edges)
+
+    # Create knn_indices, knn_dists
+    lil = leiden_knn_matrix.tolil(copy=True)
+    knn_indices = np.full((lil.shape[0], K), -1, dtype=np.int32)
+    knn_dists = np.full((lil.shape[0], K), np.inf, dtype=np.float32)
+    for i in range(lil.shape[0]):
+        inds = np.array(lil.rows[i], dtype=np.int32)
+        vals = np.array(lil.data[i], dtype=np.float32)
         sorted_indices = np.argsort(vals)
-        inds = inds[sorted_indices][:ncols]
-        vals = vals[sorted_indices][:ncols]
-
+        inds = inds[sorted_indices][:K]
+        vals = vals[sorted_indices][:K]
         knn_indices[i, :len(inds)] = inds
         knn_dists[i, :len(vals)] = vals
-
-    assert knn_indices.shape[0] == knn_matrix.shape[0]
-    validate_knn_indist(knn_indices, knn_dists)
-    return knn_indices, knn_dists
-
-# convert (knn_indices, knn_dists) back into knn_matrix
-def knn_indist2matrix(knn_indices, knn_dists):
-    validate_knn_indist(knn_indices, knn_dists)
-    rows = np.repeat(knn_indices[:,0], knn_indices.shape[1]-1)
-    cols = knn_indices[:,1:].ravel()
-    vals = knn_dists[:,1:].ravel()
     
-    # remove missing elements before constructing matrix
-    remove = (cols < 0) | (vals <= 0) | ~np.isfinite(cols) | ~np.isfinite(vals)
-    rows = rows[~remove]
-    cols = cols[~remove]
-    vals = vals[~remove]
-    if np.sum(remove) > 0:
-        print(f"{np.sum(remove)} values removed during matrix construction")
+    print(f"    Leiden UMAP...")
+    from umap import UMAP
+    reducer = UMAP(n_components = 2,
+                   metric = "cosine",
+                   precomputed_knn = (knn_indices, knn_dists),
+                   random_state = None,
+                   verbose = False,
+                   init = "spectral",
+                   n_jobs = cores,
+                   n_epochs = 5000,
+                   n_neighbors=K,
+                   min_dist=0.1
+                  )
+    embedding = reducer.fit_transform(ic_edges)
+    assert np.all(np.isfinite(embedding))
     
-    knn_matrix = sp.csr_matrix((vals, (rows, cols)), shape=(knn_indices.shape[0], knn_indices.shape[0]))
+    embedding -= np.mean(embedding, axis=0)
+    return membership, ic_edges, embedding
+
+
+def leiden_plots(embedding, knn, ic_edges, out_dir):
+    print("\nLeiden plot 1...")
+    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+    ax.scatter(x=embedding[:, 0], y=embedding[:, 1], s=1)
+    ax.set_title('Leiden Initialization')
+    ax.axis('equal')
+    fig.savefig(os.path.join(out_dir, "init.pdf"), dpi=200)
+
+    print("\nLeiden plot 2...")
+    fig, axs = plt.subplots(3, 2, figsize=(8, 8))
+    def my_plot(embedding, vec, lab, axs):
+        axs[0].hist(vec, bins=30, color='skyblue', edgecolor='black')
+        axs[0].set_title(lab)
     
-    return knn_matrix
-
-# subset a knn_matrix to the closest k neighbors in each row
-def csr_k_nearest(csr, k):
-    assert type(csr) == sp._csr.csr_matrix
-    rows, cols, data = [], [], []
+        axs[1].scatter(x=embedding[:,0], y=embedding[:,1], c=vec, cmap='viridis', s=1)
+        axs[1].set(xticks=[], yticks=[], xticklabels=[], yticklabels=[])
+        [spine.set_visible(False) for spine in axs[1].spines.values()]
+        axs[1].set_aspect('equal')
+        axs[1].set_title(lab)
     
-    for i in range(csr.shape[0]):
-        row_start, row_end = csr.indptr[i], csr.indptr[i+1]
-        row_data = csr.data[row_start:row_end]
-        row_indices = csr.indices[row_start:row_end]
-
-        if len(row_data) > k:
-            top_k_indices = np.argpartition(row_data, k)[:k]
-            row_data = row_data[top_k_indices]
-            row_indices = row_indices[top_k_indices]
-
-        rows.extend([i] * len(row_data))
-        cols.extend(row_indices)
-        data.extend(row_data)
-
-    return sp.csr_matrix((data, (rows, cols)), shape=csr.shape) # , dtype=np.float32
-
-def validate_knn_indist(knn_indices, knn_dists):
-    assert knn_indices.shape == knn_dists.shape
-    assert knn_indices.dtype == np.int32 and knn_dists.dtype == np.float32
-    assert np.array_equal(knn_indices[:,0], np.arange(len(knn_indices)))
-    assert np.all(-1 <= knn_indices) and np.all(knn_indices < len(knn_indices))
-    assert np.all(knn_dists[:,0] == 0)
-    assert np.all(knn_dists[:,1:] > 0)
-    assert not np.any(np.isnan(knn_dists))
-
-# do checks
+    vec_beads = np.bincount(knn.membership)
+    vec_strength = np.sum(ic_edges, axis=0).A1
+    vec_logumi = np.log10(np.bincount(knn.membership, weights=knn.umi))
+    
+    my_plot(embedding, vec_beads, 'Beads', axs[0])
+    my_plot(embedding, vec_strength, 'Strength', axs[1])
+    my_plot(embedding, vec_logumi, 'log10(UMI)', axs[2])
+    
+    plt.tight_layout()
+    fig.savefig(os.path.join(out_dir, "init2.pdf"), dpi=200)
