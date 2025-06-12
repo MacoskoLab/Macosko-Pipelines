@@ -1,8 +1,5 @@
 #!/bin/bash
 
-source /broad/software/scripts/useuse
-reuse UGER
-
 # Read the command line
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <BCL-FULL-PATH>"
@@ -22,20 +19,17 @@ done
 
 ROOT="/broad/macosko/pipelines"
 BINARY="/broad/macosko/pipelines/software/bcl-convert-4.3.6-2.el7.x86_64/bin/bcl-convert"
-OUTDIR="$ROOT/fastqs/$BCL"
 LOGDIR="$ROOT/logs/$BCL"
 
 BCLCONVERT_PARAMS="--bcl-input-directory=$BCLPATH \
-                   --output-directory=$OUTDIR \
+                   --output-directory=$ROOT/fastqs/$BCL \
                    --sample-sheet=$ROOT/samplesheets/$BCL/SampleSheet.csv \
                    --strict-mode=true"
 
-SBATCH_PARAMS="-c 32 --mem 128G --time 72:00:00"
-
-UGER_PARAMS="-l h_rt=24:00:00 -l mem_total=128G -pe smp 8 -binding linear:8
-             -l os=RedHat7 -N bcl-convert-$BCL -o $LOGDIR/bcl-convert.log -j y \
-             -m eas -M macosko-pipelines@broadinstitute.org -P macosko_lab -w e -notify"
+SBATCH_PARAMS="-C RedHat7 -o $LOGDIR/bcl-convert.log -J bcl-convert-$BCL \
+               -c 32 --mem 128G --time 72:00:00 \
+               --mail-user macosko-pipelines@broadinstitute.org --mail-type END,FAIL,REQUEUE,INVALID_DEPEND,STAGE_OUT,TIME_LIMIT"
 
 mkdir -p $LOGDIR
 cd $ROOT/fastqs
-qsub $UGER_PARAMS -b y $BINARY $BCLCONVERT_PARAMS
+sbatch $SBATCH_PARAMS --wrap "$BINARY $BCLCONVERT_PARAMS"

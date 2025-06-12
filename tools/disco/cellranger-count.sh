@@ -1,8 +1,5 @@
 #!/bin/bash
 
-source /broad/software/scripts/useuse
-reuse UGER
-
 # Read the command line
 if [ "$#" -ne 4 ]; then
     echo "Usage: $0 <BCL> <INDEX> <TRANSCRIPTOME> <CHEMISTRY>"
