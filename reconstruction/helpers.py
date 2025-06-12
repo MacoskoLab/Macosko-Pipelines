@@ -213,16 +213,19 @@ class KNN:
             self.apply_mask(m, "Disconnected")
     
     # Convert knn_matrix -> (knn_indices, knn_dists)
-    def inddist(self):
+    def inddist(self, K=None):
         self.check()
-        knn_indices = np.zeros((self.matrix.shape[0], self.n_neighbors), dtype=int)
-        knn_dists = np.zeros((self.matrix.shape[0], self.n_neighbors), dtype=float)
+        if K is None:
+            K = self.n_neighbors
+        
+        knn_indices = np.zeros((self.matrix.shape[0], K), dtype=int)
+        knn_dists = np.zeros((self.matrix.shape[0], K), dtype=float)
         
         for row_id in range(self.matrix.shape[0]):
             row_data = self.matrix[row_id].data
             row_indices = self.matrix[row_id].indices
-            assert len(row_data) >= self.n_neighbors
-            row_nn_data_indices = np.argsort(row_data)[: self.n_neighbors]
+            assert len(row_data) >= K
+            row_nn_data_indices = np.argsort(row_data)[: K]
             knn_indices[row_id] = row_indices[row_nn_data_indices]
             knn_dists[row_id] = row_data[row_nn_data_indices]
 
@@ -354,7 +357,7 @@ def leiden_init(G, K=15, cores=1):
     return membership, ic_edges, embedding
 
 
-def leiden_plots(embedding, knn, ic_edges, out_dir):
+def save_leiden_plots(embedding, knn, ic_edges, out_dir):
     print("\nLeiden plot 1...")
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
     ax.scatter(x=embedding[:, 0], y=embedding[:, 1], s=1)
@@ -384,3 +387,54 @@ def leiden_plots(embedding, knn, ic_edges, out_dir):
     
     plt.tight_layout()
     fig.savefig(os.path.join(out_dir, "init2.pdf"), dpi=200)
+
+
+def save_umap_neighbor_plots(embedding, knn, out_dir):
+    knn_indices, knn_dists = knn.inddist()
+
+    # 1) Plot UMAP embedding neighbor distances
+    dists = np.linalg.norm(embedding[knn_indices] - embedding[:,None,:], axis=2)
+    def my_hist(ax, dists, nn):
+        ax.hist(np.log10(dists[:,nn]), bins=100)
+        ax.set(xlabel='Distance (log10)', ylabel='Count', title=f'Distance to neighbor {nn+1}')
+        meanval = np.mean(dists[:,nn])
+        ax.axvline(np.log10(meanval), color='red', linestyle='dashed')
+        ax.text(np.log10(meanval)+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {meanval:.2f}', color='black', ha='left')
+    fig, axes = plt.subplots(2, 2, figsize=(8, 8))
+    my_hist(axes[0,0], dists, 0)
+    my_hist(axes[0,1], dists, dists.shape[1]-1)
+    my_hist(axes[1,0], dists, round(dists.shape[1]/2))
+    
+    axes[1,1].hexbin(x=np.log10(dists), y=knn_dists,
+                     gridsize=100, bins='log', cmap='plasma')
+    axes[1,1].set_xlabel('UMAP Embedding distance (log10)')
+    axes[1,1].set_ylabel('Cosine Distance')
+    axes[1,1].set_title(f'Cosine vs. UMAP Distance ({knn.n_neighbors} neighbors)')
+    
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "umap_dists.pdf"), dpi=200)
+
+    # 2) Plot UMAP embedding neighborhoods
+    i = 0
+    fig, axs = plt.subplots(4, 4, figsize=(8, 8))
+    axs = axs.flatten() if type(axs) == np.ndarray else np.array([axs])
+    for ind in np.random.permutation(embedding.shape[0]):
+        neighbors = embedding[knn_indices[ind]]
+        allbeads = embedding[(embedding[:,0] >= np.min(neighbors[:,0])) & 
+                             (embedding[:,0] <= np.max(neighbors[:,0])) &
+                             (embedding[:,1] >= np.min(neighbors[:,1])) &
+                             (embedding[:,1] <= np.max(neighbors[:,1]))]
+        if allbeads.shape[0] > 100_000/16:
+            continue # Don't plot neighborhoods that are excessively large (too many background points)
+    
+        axs[i].scatter(allbeads[:,0], allbeads[:,1], color='grey', s=15, alpha=0.5)
+        axs[i].scatter(neighbors[:,0], neighbors[:,1], c=1-knn_dists[ind,:], s=15, cmap='viridis', vmin=0, vmax=1)
+        axs[i].scatter(embedding[ind,0], embedding[ind,1], color='red', s=15)
+        axs[i].set_aspect('equal', adjustable='box')
+        axs[i].tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+        axs[i].set_title(knn.sb[ind], fontsize=8)
+        
+        i += 1
+        if i >= len(axs):
+            break
+    fig.savefig(os.path.join(out_dir, "umap_neighbors.pdf"), dpi=200)
