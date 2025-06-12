@@ -38,11 +38,11 @@ CELLRANGER_PARAMS="--id $INDEX \
                    --nosecondary \
                    --disable-ui"
 
-SBATCH_PARAMS="-C RedHat8 -o $LOGDIR/cellranger-count.log -J cellranger-count-$BCL-$INDEX \
-               -c 16 --mem 128G --time 96:00:00 \
-               --mail-user macosko-pipelines@broadinstitute.org --mail-type END,FAIL,REQUEUE,INVALID_DEPEND,STAGE_OUT,TIME_LIMIT"
+UGER_PARAMS="-l h_rt=96:00:00 -l h_vmem=16G -pe smp 8 -binding linear:8 \
+             -l os=RedHat8 -N cellranger-count-$BCL-$INDEX -o $LOGDIR/cellranger-count.log -j y \
+             -m eas -M macosko-pipelines@broadinstitute.org -P macosko_lab -w e -notify"
 
 mkdir -p $OUTDIR
 mkdir -p $LOGDIR
 cd $OUTDIR
-sbatch $SBATCH_PARAMS --wrap "$BINARY count $CELLRANGER_PARAMS"
+qsub $UGER_PARAMS -b y $BINARY count $CELLRANGER_PARAMS
