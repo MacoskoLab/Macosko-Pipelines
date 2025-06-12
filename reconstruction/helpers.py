@@ -391,50 +391,53 @@ def save_leiden_plots(embedding, knn, ic_edges, out_dir):
 
 def save_umap_neighbor_plots(embedding, knn, out_dir):
     knn_indices, knn_dists = knn.inddist()
-
+    
     # 1) Plot UMAP embedding neighbor distances
-    dists = np.linalg.norm(embedding[knn_indices] - embedding[:,None,:], axis=2)
+    fig, axes = plt.subplots(2, 2, figsize=(8, 8))
     def my_hist(ax, dists, nn):
         ax.hist(np.log10(dists[:,nn]), bins=100)
         ax.set(xlabel='Distance (log10)', ylabel='Count', title=f'Distance to neighbor {nn+1}')
         meanval = np.mean(dists[:,nn])
         ax.axvline(np.log10(meanval), color='red', linestyle='dashed')
         ax.text(np.log10(meanval)+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {meanval:.2f}', color='black', ha='left')
-    fig, axes = plt.subplots(2, 2, figsize=(8, 8))
+
+    dists = np.linalg.norm(embedding[knn_indices] - embedding[:,None,:], axis=2)
     my_hist(axes[0,0], dists, 0)
     my_hist(axes[0,1], dists, dists.shape[1]-1)
-    my_hist(axes[1,0], dists, round(dists.shape[1]/2))
+    my_hist(axes[1,0], dists, dists.shape[1]//2)
     
     axes[1,1].hexbin(x=np.log10(dists), y=knn_dists,
                      gridsize=100, bins='log', cmap='plasma')
     axes[1,1].set_xlabel('UMAP Embedding distance (log10)')
     axes[1,1].set_ylabel('Cosine Distance')
-    axes[1,1].set_title(f'Cosine vs. UMAP Distance ({knn.n_neighbors} neighbors)')
+    axes[1,1].set_title(f'Cosine vs. UMAP Distance ({knn.n_neighbors})')
     
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, "umap_dists.pdf"), dpi=200)
 
     # 2) Plot UMAP embedding neighborhoods
-    i = 0
     fig, axs = plt.subplots(4, 4, figsize=(8, 8))
     axs = axs.flatten() if type(axs) == np.ndarray else np.array([axs])
-    for ind in np.random.permutation(embedding.shape[0]):
+    for i,ind in enumerate(np.random.choice(embedding.shape[0], size=16, replace=False)):
         neighbors = embedding[knn_indices[ind]]
         allbeads = embedding[(embedding[:,0] >= np.min(neighbors[:,0])) & 
                              (embedding[:,0] <= np.max(neighbors[:,0])) &
                              (embedding[:,1] >= np.min(neighbors[:,1])) &
                              (embedding[:,1] <= np.max(neighbors[:,1]))]
         if allbeads.shape[0] > 100_000/16:
-            continue # Don't plot neighborhoods that are excessively large (too many background points)
+            # Don't plot neighborhoods that are excessively large (too many background points)
+            axs[i].text(x=0.5, y=0.5, s='Neighborhood\ntoo large',
+                horizontalalignment='center', verticalalignment='center',
+                transform=axs[i].transAxes, fontsize=10, color='red')
+            axs[i].set_axis_off()
+        else:
+            # Plot the neighborhood of a random bead (red) colored by cosine similarity
+            axs[i].scatter(allbeads[:,0], allbeads[:,1], color='grey', s=15, alpha=0.5)
+            axs[i].scatter(neighbors[:,0], neighbors[:,1], c=1-knn_dists[ind,:], s=15, cmap='viridis', vmin=0, vmax=1)
+            axs[i].scatter(embedding[ind,0], embedding[ind,1], color='red', s=15)
+            axs[i].set_aspect('equal', adjustable='box')
+            axs[i].tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+            axs[i].set_title(knn.sb[ind], fontsize=8)
     
-        axs[i].scatter(allbeads[:,0], allbeads[:,1], color='grey', s=15, alpha=0.5)
-        axs[i].scatter(neighbors[:,0], neighbors[:,1], c=1-knn_dists[ind,:], s=15, cmap='viridis', vmin=0, vmax=1)
-        axs[i].scatter(embedding[ind,0], embedding[ind,1], color='red', s=15)
-        axs[i].set_aspect('equal', adjustable='box')
-        axs[i].tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-        axs[i].set_title(knn.sb[ind], fontsize=8)
-        
-        i += 1
-        if i >= len(axs):
-            break
     fig.savefig(os.path.join(out_dir, "umap_neighbors.pdf"), dpi=200)
+

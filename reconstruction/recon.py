@@ -122,7 +122,7 @@ knn.filter_disconnected()
 print("\nCreating KNN graph...")
 G = knn.graph()
 
-print("\nPlotting KNN metrics...")
+print("\nComputing KNN metrics...")
 knn_indices, knn_dists = knn.inddist()
 nnd = knn_dists[:,0] ; nnd = nnd[np.isfinite(nnd)]
 fnd = knn_dists[:,-1] ; fnd = fnd[np.isfinite(fnd)]
@@ -130,7 +130,9 @@ ies = np.array(G.degree(mode="in"))
 tlu = np.array(G.transitivity_local_undirected(mode="zero", weights='weight'))
 sts = np.array(G.strength(weights="weight"))
 con = np.array(G.constraint(weights="weight"))
+del knn_indices, knn_dists
 
+print("\nPlotting KNN metrics...")
 def my_histogram(ax, vec, title, xlab):
     ax.hist(vec, bins=100)
     ax.set_title(title)
@@ -151,7 +153,7 @@ my_histogram(axs[2,0], sts, f"Strength", "strength")
 my_histogram(axs[2,1], con, f"Burt's constraint", "constraint")
 plt.tight_layout()
 fig.savefig(os.path.join(out_dir, "knn.pdf"), dpi=200)
-del fig, axs, knn_indices, knn_dists, my_histogram
+del fig, axs, my_histogram
 
 if knn_filter:
     print("Running KNN filter...")
@@ -181,8 +183,7 @@ knn.membership = membership
 del G, membership ; gc.collect()
 
 # Plot Leiden initialization
-leiden_plots(embedding, knn, ic_edges, out_dir)
-del ic_edges ; gc.collect()
+save_leiden_plots(embedding, knn, ic_edges, out_dir)
 
 print("\nLeiden filter...")
 # TODO
@@ -201,6 +202,7 @@ lines = top_lines + [""] + bot_lines
 [ax.text(0.01, 1-0.05*i, line, fontsize=10, va='top', ha='left') for i,line in enumerate(lines)]
 ax.axis('off')
 fig.savefig(os.path.join(out_dir, "name.pdf"))
+del fig, ax, lines, top_lines, bot_lines
 
 print("\nInitializing bead coordinates...")
 # Generate bead initialization - stacked
@@ -224,9 +226,9 @@ for _ in range(3):
 del knn_indices, knn_dists, weights
 
 print("\nSaving initialization...")
-np.savez_compressed(os.path.join(out_dir, 'init.npz'), embedding=embedding, membership=knn.membership, init=init)
+np.savez_compressed(os.path.join(out_dir, 'init.npz'), embedding=embedding, membership=knn.membership, init=init, ic_edges=ic_edges)
 assert init.shape[0] == knn.matrix.shape[0] == knn.matrix.shape[1]
-del embedding ; gc.collect()
+del embedding, ic_edges ; gc.collect()
 
 ### UMAP TIME ##################################################################
 
@@ -241,15 +243,14 @@ reducer = UMAP(n_components = 2,
                **opts
               )
 embedding = reducer.fit_transform(knn.matrix.maximum(knn.matrix.T))
-embedding -= np.mean(embedding, axis=0)
 assert np.all(np.isfinite(embedding))
+embedding -= np.mean(embedding, axis=0)
 
 ### WRITE RESULTS ##############################################################
 
 print("\nWriting results...")
 knn.check()
 assert embedding.shape[0] == knn.matrix.shape[0]
-knn_indices, knn_dists = knn.inddist()
 
 # Create the Puck file
 embedding_scaled = embedding / np.mean(np.ptp(embedding, axis=0)) * diameter_micron
@@ -257,66 +258,22 @@ np.savetxt(os.path.join(out_dir, 'Puck.csv'),
            np.column_stack([knn.sb, embedding_scaled]),
            delimiter=',', fmt='%s')
 
-# Plot the umap
+# Plot the UMAP embedding
 title = f"UMAP hexbin ({embedding.shape[0]:} beads)"
 fig, ax = hexmap(embedding, title=title)
 fig.savefig(os.path.join(out_dir, "umap.pdf"), dpi=200)
 
-# Plot the umap (UMI-weighted)
+# Plot the UMAP embedding (UMI-weighted)
 title = f"UMAP hexbin (UMI-weighted)"
 fig, ax = hexmap(embedding, knn.umi, title=title, legend=True)
 fig.savefig(os.path.join(out_dir, "umap_umi.pdf"), dpi=200)
 
-# Plot umap stats
-dists = np.linalg.norm(embedding_scaled[knn_indices] - embedding_scaled[knn_indices][:,0:1,:], axis=2)
-def my_hist(ax, dists, nn):
-    data = dists[:,nn]
-    ax.hist(np.log10(data), bins=100)
-    ax.set(xlabel='Distance (log10)', ylabel='Count', title=f'Distance to neighbor {nn}')
-    meanval = np.mean(np.log10(data))
-    ax.axvline(meanval, color='red', linestyle='dashed')
-    ax.text(meanval+0.1, ax.get_ylim()[1] * 0.95, f'Mean: {10**meanval:.2f}', color='black', ha='left')
-fig, axes = plt.subplots(2, 2, figsize=(8, 8))
-my_hist(axes[0,0], dists, 1)
-my_hist(axes[0,1], dists, opts["n_neighbors"]-1)
-my_hist(axes[1,0], dists, round(opts["n_neighbors"]/2))
-axes[1,1].hexbin(np.log10(dists[:,1:(opts["n_neighbors"]-1)]),
-                 knn_dists[:,1:(opts["n_neighbors"]-1)], gridsize=100, bins='log', cmap='plasma')
-axes[1,1].set_xlabel('UMAP distance (log10)')
-axes[1,1].set_ylabel('Cosine Distance')
-axes[1,1].set_title(f'Cosine vs. UMAP Distance ({opts["n_neighbors"]})')
-fig.tight_layout()
-fig.savefig(os.path.join(out_dir, "umap_stats.pdf"), dpi=200)
-
-# Plot UMAP neighborhoods
-i = 0
-fig, axs = plt.subplots(4, 4, figsize=(8, 8))
-axs = axs.flatten() if type(axs) == np.ndarray else np.array([axs])
-for ind in np.random.permutation(embedding.shape[0]):
-    neighbors = embedding[knn_indices[ind]]
-    dists = 1-knn_dists[ind,1:]
-    allbeads = embedding[(embedding[:,0] >= np.min(neighbors[:,0])) & 
-                         (embedding[:,0] <= np.max(neighbors[:,0])) &
-                         (embedding[:,1] >= np.min(neighbors[:,1])) &
-                         (embedding[:,1] <= np.max(neighbors[:,1]))]
-    if allbeads.shape[0] > 100_000/16:
-        continue
-
-    axs[i].scatter(allbeads[:,0], allbeads[:,1], color='grey', s=10, alpha=0.5)
-    axs[i].scatter(neighbors[1:,0], neighbors[1:,1], c=dists, s=20, cmap='viridis', vmin=0, vmax=1)
-    axs[i].scatter(neighbors[0,0], neighbors[0,1], color='red', s=30)
-    axs[i].set_aspect('equal', adjustable='box')
-    axs[i].tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-    axs[i].set_title(knn.sb[ind], fontsize=8)
-    
-    i += 1
-    if i >= len(axs):
-        break
-fig.savefig(os.path.join(out_dir, "umap_neighborhoods.pdf"), dpi=200)
+# Two additional informational plots
+save_umap_neighbor_plots(embedding_scaled, knn, out_dir)
 
 # Make summary pdf
 # creation order: knn, init, init2, name, umap, umap_umi, umap_stats, umap_neighborhoods
-names = ["umap", "umap_umi", "knn", "init", "init2", "umap_stats", "umap_neighborhoods", "name"]
+names = ["umap", "umap_umi", "knn", "init", "init2", "umap_dists", "umap_neighbors", "name"]
 paths = [os.path.join(out_dir, n+".pdf") for n in names]
 files = [p for p in paths if os.path.isfile(p)]
 if len(files) > 0:
