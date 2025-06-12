@@ -9,7 +9,6 @@ Example dotkits:
 
 
 ## Helpful commands
-`use UGER`  
 `qhost`: Show the status of UGER hosts  
 `qstat`: Show the status of UGER jobs  
 `qstat -j <jobID>`: Print job information  

@@ -21,7 +21,7 @@ for arg in "$@"; do
 done
 
 ROOT="/broad/macosko/pipelines"
-BINARY="/broad/macosko/pipelines/software/bcl-convert-4.3.6-2.el7.x86_64/bin/bcl-convert"
+BINARY="/broad/macosko/pipelines/software/bcl-convert-4.3.6-2.el8.x86_64/bin/bcl-convert"
 OUTDIR="$ROOT/fastqs/$BCL"
 LOGDIR="$ROOT/logs/$BCL"
 
@@ -30,10 +30,8 @@ BCLCONVERT_PARAMS="--bcl-input-directory=$BCLPATH \
                    --sample-sheet=$ROOT/samplesheets/$BCL/SampleSheet.csv \
                    --strict-mode=true"
 
-SBATCH_PARAMS="-c 32 --mem 128G --time 72:00:00"
-
-UGER_PARAMS="-l h_rt=24:00:00 -l mem_total=128G -pe smp 8 -binding linear:8
-             -l os=RedHat7 -N bcl-convert-$BCL -o $LOGDIR/bcl-convert.log -j y \
+UGER_PARAMS="-l h_rt=48:00:00 -l h_vmem=16G -pe smp 8 -binding linear:8 \
+             -l os=RedHat8 -N bcl-convert-$BCL -o $LOGDIR/bcl-convert.log -j y \
              -m eas -M macosko-pipelines@broadinstitute.org -P macosko_lab -w e -notify"
 
 mkdir -p $LOGDIR
