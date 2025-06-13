@@ -82,5 +82,6 @@ Command line flags override job script settings
 
 
 ## Helpful links:
-[Intro to UGER - Nov 2016](https://data.broadinstitute.org/bits_demo/user_education_sessions/Intro2UGER/I2U-Nov2106/Intro2UGER.pdf)
-[How to submit a job using qsub](https://bioinformatics.mdc-berlin.de/intro2UnixandSGE/sun_grid_engine_for_beginners/how_to_submit_a_job_using_qsub.html)
+[Grid Engine user documentation](https://backstage.broadinstitute.org/docs/default/component/ge-user-docs)  
+[Intro to UGER - Nov 2016](https://data.broadinstitute.org/bits_demo/user_education_sessions/Intro2UGER/I2U-Nov2106/Intro2UGER.pdf)  
+[How to submit a job using qsub](https://bioinformatics.mdc-berlin.de/intro2UnixandSGE/sun_grid_engine_for_beginners/how_to_submit_a_job_using_qsub.html)  
