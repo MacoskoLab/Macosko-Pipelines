@@ -186,3 +186,8 @@ CMD ["/bin/bash", "-i"]
 
 # podman build -f Dockerfile -t pipeline-image .
 # podman save -o /broad/macosko/pipelines/scripts/pipeline-image.tar pipeline-image:latest
+
+# gcloud auth login
+# gcloud config set project velina-208320
+# podman tag pipeline-image us-central1-docker.pkg.dev/velina-208320/pipeline-image/img
+# podman push us-central1-docker.pkg.dev/velina-208320/pipeline-image/img
