@@ -92,7 +92,7 @@ if os.path.isfile(os.path.join(in_dir, f"readumi_per_sb{bead}.csv.gz")):
     df = df.rename(columns={f'sb{bead}': 'sb'})
     umi = df.set_index('sb').loc[sb, "umis"].to_numpy()
     del df
-else:
+elif os.path.isfile(os.path.join(in_dir, f"matrix.csv.gz")):
     df = pd.read_csv(os.path.join(in_dir, f"matrix.csv.gz"),
                      sep=',', compression='gzip', usecols=[f'sb{bead}_index', 'umi'])
     df = df.rename(columns={f'sb{bead}_index': 'sb_index'})
@@ -101,6 +101,8 @@ else:
     df = df.sort_values('sb_index')
     umi = df['umi'].to_numpy()
     del df
+else:
+    assert False, "UMI file not available"
 
 # Compute scaling factor
 if diameter <= 0:
