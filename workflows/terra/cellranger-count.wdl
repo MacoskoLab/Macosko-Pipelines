@@ -62,7 +62,7 @@ workflow cellranger_count {
         Int mem_GB
         Int disk_GB
         String params = "--create-bam=true --include-introns=true --nosecondary --disable-ui"
-        String docker = "http://us-central1-docker.pkg.dev/velina-208320/pipeline-image/img:latest"
+        String docker = "us-central1-docker.pkg.dev/velina-208320/pipeline-image/img:latest"
     }
     call count {
         input:
