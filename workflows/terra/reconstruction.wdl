@@ -11,15 +11,12 @@ task recon {
     }
     command <<<
     set -euo pipefail
+    set -x
 
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/recon-count.jl
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/knn.py
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/recon.py
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/helpers.py
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/spatial-count.jl
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/run-positioning.R
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/positioning.R
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/helpers.R
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
@@ -56,6 +53,9 @@ task recon {
 
     echo "Uploading results"
     gcloud storage cp -r output/* "$recon_dir/"
+
+    echo "Checking results"
+    
 
     >>>
     runtime {

@@ -1,6 +1,6 @@
 version 1.0
 
-task abc {
+task tags {
     input {
         String bcl
         String index
@@ -11,15 +11,12 @@ task abc {
     }
     command <<<
     set -euo pipefail
+    set -x
 
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/recon-count.jl
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/knn.py
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/recon.py
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/helpers.py
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/spatial-count.jl
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/run-positioning.R
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/positioning.R
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/helpers.R
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
@@ -28,16 +25,15 @@ task abc {
     recon_dir="gs://$BUCKET/recon/~{bcl}/~{index}"
     tags_dir="gs://$BUCKET/slide-tags/~{bcl}/~{index}"
 
-    # Run abc-count
-    if gsutil -q stat "$abc_dir/abc.1"; then
+    # Run spatial-count
+    if gsutil -q stat "$tags_dir/SBcounts.h5"; then
         echo "Intermediate file exists: using cached result"
 
         mkdir cache
-        gcloud storage cp "$recon_dir/knn2.npz" "$recon_dir/matrix.csv.gz" "$recon_dir/sb1.txt.gz" "$recon_dir/sb2.txt.gz" cache
         gcloud storage cp "$tags_dir/SBcounts.h5" cache
         ls -1 cache
     else
-        echo "Running abc-count"
+        echo "Running spatial-count"
         
         mkdir fastqs
         gcloud storage cp "$fastq_dir/~{index}_*" fastqs
@@ -48,9 +44,7 @@ task abc {
         ls -1 pucks
 
         mkdir cache
-        julia --threads 8 recon-count.jl fastqs cache -x ~{bc1} -y ~{bc2} #-r ~{regex} -p ~{p}
         julia --threads 1 spatial-count.jl fastqs pucks cache #-r ~{regex} -p ~{p}
-        micromamba run python knn.py -i cache -o cache -n 150 -b 2 -c 8 -k 2
         ls -1 cache
 
         gcloud storage cp cache/* "$abc_dir"
@@ -61,13 +55,11 @@ task abc {
     mkdir RNA
     ls -1 RNA
 
-    echo "Running abc"
-    
-    micromamba run python recon.py -i cache -o output -c 8 -b 2 ~{params}
+    echo "Running slide-tags"
     Rscript run-positioning.R RNA cache output ~{params}
 
     echo "Uploading results"
-    gcloud storage cp -r output/* "$abc_path"
+    gcloud storage cp -r output/* "$tags_path/"
 
     >>>
     runtime {
@@ -88,7 +80,7 @@ workflow abc {
         Int disk_GB
         String docker = "us-central1-docker.pkg.dev/velina-208320/pipeline-image/img:latest"
     }
-    call abc {
+    call tags {
         input:
             bcl = bcl,
             index = index,
