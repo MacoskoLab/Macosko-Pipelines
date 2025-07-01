@@ -13,7 +13,7 @@ def get_args():
     parser.add_argument("-o", "--out_dir", help="output data folder", type=str, default=".")
     parser.add_argument("-c", "--cores", type=int, default=-1)
     parser.add_argument("-b", "--bead", type=int, default=2)
-    parser.add_argument("-D", "--diameter", type=float, default=0) #in microns, <= 0 estimates using bead count
+    parser.add_argument("-D", "--diameter", type=float, default=0) # in microns, <= 0 estimates using bead count
     parser.add_argument("-K", "--knn_filter", help="KNN graph filter", type=bool, default=False)
     
     parser.add_argument("-nn", "--n_neighbors", type=int, default=30)
@@ -22,7 +22,7 @@ def get_args():
     parser.add_argument("-lc", "--local_connectivity", type=int, default=1)
     parser.add_argument("-rs", "--repulsion_strength", type=float, default=1.0)
     parser.add_argument("-nsr", "--negative_sample_rate", type=int, default=10)
-    parser.add_argument("-ne", "--n_epochs", type=int, default=500)
+    parser.add_argument("-ne", "--n_epochs", type=int, default=1000)
     
     args, unknown = parser.parse_known_args()
     [print(f"WARNING: unknown command-line argument {u}") for u in unknown]
