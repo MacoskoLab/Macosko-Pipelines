@@ -25,7 +25,6 @@ RUN tar -xzf /opt/cellranger-arc-2.0.2.tar.gz -C /opt && \
     rm /opt/cellranger-arc-2.0.2.tar.gz && \
     ln -s /opt/cellranger-arc-2.0.2/bin/cellranger-arc /usr/local/bin/cellranger-arc
     
-
 # Install Cell Ranger ATAC
 COPY cellranger-atac-2.2.0.tar.gz /opt/
 RUN tar -xzf /opt/cellranger-atac-2.2.0.tar.gz -C /opt && \
@@ -37,3 +36,5 @@ RUN tar -xzf /opt/cellranger-atac-2.2.0.tar.gz -C /opt && \
 # cd /broad/macosko/pipelines/software
 # wget -O Dockerfile https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/bcl-convert/Dockerfile
 # podman build -f Dockerfile -t software-image
+# podman tag software-image us-central1-docker.pkg.dev/velina-208320/terra/software-image
+# podman push us-central1-docker.pkg.dev/velina-208320/terra/software-image
