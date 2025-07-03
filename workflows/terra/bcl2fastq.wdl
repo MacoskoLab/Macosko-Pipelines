@@ -4,7 +4,6 @@ task mkfastq {
   input {
     String bcl
     String samplesheet
-    String technique
     String params
     String fastq_output_path
     String log_output_path
@@ -64,38 +63,13 @@ task mkfastq {
         rm -f Indexes.csv
     fi
 
-    # Run the bcl2fastq/mkfastq command
-    if [[ ~{technique} == "cellranger" ]]; then
-        echo; echo "Running cellranger mkfastq"
-        time stdbuf -oL -eL cellranger mkfastq              \
-          --run=BCL                                         \
-          --id=mkfastq                                      \
-          --csv=Indexes.csv                                 \
-          --disable-ui ~{params} |& ts
-    elif [[ ~{technique} == "cellranger-arc" ]]; then
-        echo; echo "Running cellranger-arc mkfastq"
-        time stdbuf -oL -eL cellranger-arc mkfastq          \
-          --run=BCL                                         \
-          --id=mkfastq                                      \
-          --csv=Indexes.csv                                 \
-          --disable-ui ~{params} |& ts
-    elif [[ ~{technique} == "cellranger-atac" ]]; then
-        echo; echo "Running cellranger-atac mkfastq"
-        time stdbuf -oL -eL cellranger-atac mkfastq         \
-          --run=BCL                                         \
-          --id=mkfastq                                      \
-          --csv=Indexes.csv                                 \
-          --disable-ui ~{params} |& ts
-    elif [[ ~{technique} == "bcl2fastq" ]]; then
-        echo; echo "Running bcl2fastq"
-        time stdbuf -oL -eL bcl2fastq                       \
-          --runfolder-dir BCL                               \
-          --output-dir mkfastq                              \
-          --sample-sheet Indexes.csv                        \
-          ~{params} |& ts
-    else
-        echo "ERROR: could not recognize technique ~{technique}"
-    fi
+    # Run the bcl2fastq
+    echo; echo "Running bcl2fastq"
+    time stdbuf -oL -eL bcl2fastq                       \
+        --runfolder-dir BCL                               \
+        --output-dir mkfastq                              \
+        --sample-sheet Indexes.csv                        \
+        ~{params} |& ts
 
     # Delete undetermined fastqs
     find mkfastq -type f -name "Undetermined_S0_*.fastq.gz" -exec rm {} +
@@ -197,7 +171,6 @@ workflow bcl2fastq {
     input {
         String bcl
         String samplesheet
-        String technique
         String params = ""
         String fastq_output_path = "gs://"+bucket+"/fastqs/"+basename(bcl,"/")
         String log_output_path = "gs://"+bucket+"/logs/"+basename(bcl,"/")
@@ -213,7 +186,6 @@ workflow bcl2fastq {
         input:
             bcl = bcl,
             samplesheet = samplesheet,
-            technique = technique,
             params = params,
             fastq_output_path = fastq_output_path,
             log_output_path = log_output_path,

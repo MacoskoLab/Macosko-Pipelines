@@ -57,15 +57,6 @@ RUN wget -P /opt https://github.com/arq5x/bedtools2/releases/download/v2.29.1/be
     cd /opt/bedtools2 && \
     make && \
     ln -s /opt/bedtools2/bin/bedtools /usr/local/bin/bedtools
-# Install MMseqs2
-RUN git clone https://github.com/soedinglab/MMseqs2.git /opt/MMseqs2 && \
-    cd /opt/MMseqs2 && \
-    mkdir build && \
-    cd build && \
-    cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=. .. && \
-    make && \
-    make install && \
-    ln -s /opt/MMseqs2/build/bin/mmseqs /usr/local/bin/mmseqs
 # Install DuckDB
 RUN wget -P /opt https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip && \
     unzip /opt/duckdb_cli-linux-amd64.zip -d /opt && \
@@ -184,10 +175,6 @@ RUN . /root/.cargo/env && \
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]
 
-# podman build -f Dockerfile -t pipeline-image .
-# podman save -o /broad/macosko/pipelines/scripts/pipeline-image.tar pipeline-image:latest
-
-# gcloud auth login
-# gcloud config set project velina-208320
-# podman tag pipeline-image us-central1-docker.pkg.dev/velina-208320/pipeline-image/img
-# podman push us-central1-docker.pkg.dev/velina-208320/pipeline-image/img
+# podman build -f Dockerfile -t pipeline-image
+# podman tag pipeline-image us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image
+# podman push us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image
