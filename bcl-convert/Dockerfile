@@ -5,7 +5,8 @@ RUN cd /opt && \
     curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz && \
     tar -xf google-cloud-cli-linux-x86_64.tar.gz && \
     rm google-cloud-cli-linux-x86_64.tar.gz && \
-    ./google-cloud-sdk/install.sh --path-update true
+    ln -s /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud && \
+    ln -s /opt/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil
 
 # Install bcl-convert
 COPY bcl-convert-4.3.13-2.el8.x86_64.rpm /opt/

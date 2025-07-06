@@ -11,7 +11,6 @@ task tags {
     }
     command <<<
     set -euo pipefail
-    set -x
 
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/recon-count.jl
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/knn.py
@@ -20,10 +19,10 @@ task tags {
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
-    ref_dir="gs://$BUCKET/references"
     gex_dir="gs://$BUCKET/gene-expression/~{bcl}/~{index}"
-    recon_dir="gs://$BUCKET/recon/~{bcl}/~{index}"
     tags_dir="gs://$BUCKET/slide-tags/~{bcl}/~{index}"
+
+    echo "==================== START SLIDE-TAGS ===================="
 
     # Run spatial-count
     if gsutil -q stat "$tags_dir/SBcounts.h5"; then
@@ -60,6 +59,8 @@ task tags {
 
     echo "Uploading results"
     gcloud storage cp -r output/* "$tags_path/"
+
+    echo "==================== END SLIDE-TAGS ===================="
 
     >>>
     runtime {

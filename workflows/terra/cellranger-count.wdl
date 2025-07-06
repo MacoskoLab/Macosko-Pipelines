@@ -12,26 +12,30 @@ task count {
     }
     command <<<
     set -euo pipefail
-    set -x
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
     ref_dir="gs://$BUCKET/references"
     gex_dir="gs://$BUCKET/gene-expression/~{bcl}/~{index}"
-    recon_dir="gs://$BUCKET/recon/~{bcl}/~{index}"
-    tags_dir="gs://$BUCKET/slide-tags/~{bcl}/~{index}"
 
-    echo "Downloading FASTQs"
+    echo "==================== START CELLRANGER-COUNT ===================="
+
+    # Assert output does not already exist in bucket
+    if gsutil -q stat "$gex_dir/outs/filtered_feature_bc_matrix.h5" ; then
+        echo "Error: Output ~{index} already exists in the bucket!"
+        exit 1
+    fi
+
+    echo "----- Downloading FASTQs -----"
     mkdir fastqs
     gcloud storage cp "$fastq_dir/~{index}_*" fastqs
     ls -1 fastqs
 
-    echo "Downloading reference"
-    mkdir ~{reference}
+    echo "----- Downloading reference -----"
     gcloud storage cp -r "$ref_dir/~{reference}" .
     ls -1 ~{reference}
     
-    echo "Running cellranger-count"
+    echo "----- Running cellranger count -----"
     cellranger count                 \
         --id=~{index}                \
         --transcriptome=~{reference} \
@@ -41,8 +45,16 @@ task count {
     
     rm -rf ~{index}/SC_RNA_COUNTER_CS
 
-    echo "Uploading results"
-    gcloud storage cp -r "~{index}/*" "$gex_dir"
+    echo "----- Uploading results -----"
+    gcloud storage cp -r "~{index}/*" "$gex_dir/"
+
+    # Assert output had been successfully uploaded to the bucket
+    if ! gsutil -q stat "$gex_dir/outs/filtered_feature_bc_matrix.h5" ; then
+        echo "Error: Output ~{index} not found in the bucket!"
+        exit 1
+    fi
+
+    echo "==================== END CELLRANGER-COUNT ===================="
 
     >>>
     runtime {
@@ -62,7 +74,7 @@ workflow cellranger_count {
         Int mem_GB
         Int disk_GB
         String params = "--create-bam=true --include-introns=true --nosecondary --disable-ui"
-        String docker = "us-central1-docker.pkg.dev/velina-208320/pipeline-image/img:latest"
+        String docker = "us-central1-docker.pkg.dev/velina-208320/terra/software-image:latest"
     }
     call count {
         input:
