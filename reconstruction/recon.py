@@ -22,7 +22,7 @@ def get_args():
     parser.add_argument("-lc", "--local_connectivity", type=int, default=1)
     parser.add_argument("-rs", "--repulsion_strength", type=float, default=1.0)
     parser.add_argument("-nsr", "--negative_sample_rate", type=int, default=10)
-    parser.add_argument("-ne", "--n_epochs", type=int, default=1000)
+    parser.add_argument("-ne", "--n_epochs", type=int, default=2000)
     
     args, unknown = parser.parse_known_args()
     [print(f"WARNING: unknown command-line argument {u}") for u in unknown]

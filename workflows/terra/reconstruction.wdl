@@ -23,14 +23,13 @@ task recon {
 
     echo "==================== START RECONSTRUCTION ===================="
 
-    # Run recon-count
     if gsutil -q stat "$recon_dir/knn2.npz"; then
-        echo "Intermediate file exists: using cached result"
+        echo "----- Downloading cached intermediate files -----"
         mkdir cache
         gcloud storage cp "$recon_dir/knn2.npz" "$recon_dir/matrix.csv.gz" "$recon_dir/sb1.txt.gz" "$recon_dir/sb2.txt.gz" cache
         ls -1 cache
     else
-        echo "Running recon-count"
+        echo "----- Running recon-count.jl -----"
         
         mkdir fastqs
         gcloud storage cp "$fastq_dir/~{index}_*" fastqs
@@ -45,14 +44,11 @@ task recon {
         rm -rf fastqs
     fi
 
-
-    echo "Running recon.py"
+    echo "----- Running recon.py -----"
     /root/.local/bin/micromamba run python recon.py -i cache -o output -c 8 -b 2 ~{params}
 
-    echo "Uploading results"
+    echo "----- Uploading results -----"
     gcloud storage cp -r output/* "$recon_dir/"
-
-    echo "Checking results"
     
     echo "==================== END RECONSTRUCTION ===================="
 

@@ -11,11 +11,11 @@ task tags {
     }
     command <<<
     set -euo pipefail
-
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/recon-count.jl
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/knn.py
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/recon.py
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/reconstruction/helpers.py
+    
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/spatial-count.jl
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/run-positioning.R
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/positioning.R
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/helpers.R
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
@@ -24,15 +24,14 @@ task tags {
 
     echo "==================== START SLIDE-TAGS ===================="
 
-    # Run spatial-count
     if gsutil -q stat "$tags_dir/SBcounts.h5"; then
-        echo "Intermediate file exists: using cached result"
+        echo "----- Downloading cached intermediate files -----"
 
         mkdir cache
         gcloud storage cp "$tags_dir/SBcounts.h5" cache
         ls -1 cache
     else
-        echo "Running spatial-count"
+        echo "----- Running spatial-count.jl -----"
         
         mkdir fastqs
         gcloud storage cp "$fastq_dir/~{index}_*" fastqs
@@ -50,14 +49,14 @@ task tags {
         rm -rf fastqs pucks
     fi
 
-    echo "Downloading files"
+    echo "----- Downloading gene expression -----"
     mkdir RNA
     ls -1 RNA
 
-    echo "Running slide-tags"
+    echo "----- Running slide-tags -----"
     Rscript run-positioning.R RNA cache output ~{params}
 
-    echo "Uploading results"
+    echo "----- Uploading results -----"
     gcloud storage cp -r output/* "$tags_path/"
 
     echo "==================== END SLIDE-TAGS ===================="

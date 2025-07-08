@@ -57,11 +57,6 @@ RUN wget -P /opt https://github.com/arq5x/bedtools2/releases/download/v2.29.1/be
     cd /opt/bedtools2 && \
     make && \
     ln -s /opt/bedtools2/bin/bedtools /usr/local/bin/bedtools
-# Install DuckDB
-RUN wget -P /opt https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip && \
-    unzip /opt/duckdb_cli-linux-amd64.zip -d /opt && \
-    rm /opt/duckdb_cli-linux-amd64.zip && \
-    ln -s /opt/duckdb /usr/local/bin/duckdb
     
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
