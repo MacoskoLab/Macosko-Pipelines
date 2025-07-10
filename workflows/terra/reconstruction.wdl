@@ -6,6 +6,9 @@ task recon {
         String index
         Int mem_GB
         Int disk_GB
+        Int bc1
+        Int bc2
+        Int lanes
         String params
         String docker
     }
@@ -19,25 +22,29 @@ task recon {
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
-    recon_dir="gs://$BUCKET/recon/~{bcl}/~{index}"
+    recon_dir="gs://$BUCKET/recon/~{bcl}/~{index}-~{lanes}" ; recon_dir=${recon_dir%-12345678}
 
     echo "==================== START RECONSTRUCTION ===================="
 
-    if gsutil -q stat "$recon_dir/knn2.npz"; then
+    if gsutil -q stat "$recon_dir/knn2.npz"  &&
+       [ ~{bc1} -eq $(gcloud storage cat "$recon_dir/metadata.csv" | grep R1_barcodes_manual, | cut -d',' -f2) ] &&
+       [ ~{bc2} -eq $(gcloud storage cat "$recon_dir/metadata.csv" | grep R2_barcodes_manual, | cut -d',' -f2) ]; then
+        
         echo "----- Downloading cached intermediate files -----"
         mkdir cache
         gcloud storage cp "$recon_dir/knn2.npz" "$recon_dir/matrix.csv.gz" "$recon_dir/sb1.txt.gz" "$recon_dir/sb2.txt.gz" cache
         ls -1 cache
+
     else
         echo "----- Running recon-count.jl -----"
         
         mkdir fastqs
-        gcloud storage cp "$fastq_dir/~{index}_*" fastqs
+        gcloud storage cp "$fastq_dir/~{index}_*_L00[~{lanes}]_*" fastqs
         ls -1 fastqs
 
         mkdir cache
-        julia --threads 8 recon-count.jl fastqs cache #-x {bc1} -y {bc2} -r {regex} -p {p}
-        /root/.local/bin/micromamba run python knn.py -i cache -o cache -n 150 -b 2 -c 8 -k 2
+        julia --threads 8 recon-count.jl fastqs cache -x ~{bc1} -y ~{bc2} -r '_L00[~{lanes}]_'
+        /root/.local/bin/micromamba run python knn.py -i cache -o cache -b 2 -k 2
         ls -1 cache
 
         gcloud storage cp cache/* "$recon_dir/"
@@ -45,7 +52,7 @@ task recon {
     fi
 
     echo "----- Running recon.py -----"
-    /root/.local/bin/micromamba run python recon.py -i cache -o output -c 8 -b 2 ~{params}
+    /root/.local/bin/micromamba run python recon.py -i cache -o output -b 2 ~{params}
 
     echo "----- Uploading results -----"
     gcloud storage cp -r output/* "$recon_dir/"
@@ -68,8 +75,11 @@ workflow reconstruction {
         String index
         Int mem_GB
         Int disk_GB
+        Int bc1 = 0
+        Int bc2 = 0
+        Int lanes = 12345678
         String params = ""
-        String docker = "us-central1-docker.pkg.dev/velina-208320/pipeline-image/img:latest"
+        String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image:latest"
     }
     call recon {
         input:
@@ -77,6 +87,9 @@ workflow reconstruction {
             index = index,
             mem_GB = mem_GB,
             disk_GB = disk_GB,
+            bc1 = bc1,
+            bc2 = bc2,
+            lanes = lanes,
             params = params,
             docker = docker
     }

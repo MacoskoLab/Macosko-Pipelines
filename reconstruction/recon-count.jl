@@ -235,6 +235,7 @@ addprocs(length(R1s))
             s17 += get_V17(seq)[3] == UP1
         end
         myid() == 1 && println("V10: ", s10, " V17: ", s17)
+        (max(s10, s17) < 100000 * 0.1) && error("Unrecognized R1 bead structure for $R1")
         return(s10 >= s17 ? "V10" : "V17")
     end
     
@@ -252,7 +253,7 @@ addprocs(length(R1s))
         const encode_sb1 = encode_17
         const decode_sb1 = decode_17
     else
-        error("Error: The R1 bead type is not consistent ($R1_types)")
+        error("The R1 bead type is not consistent ($R1_types)")
     end
     myid() == 1 && println("R1 bead type: $bead1_type")
     
@@ -269,6 +270,7 @@ addprocs(length(R1s))
             s16 += get_V16(seq)[3] == UP2
         end
         myid() == 1 &&  println("V15: ", s15, " V16: ", s16)
+        (max(s15, s16) < 100000 * 0.1) && error("Unrecognized R2 bead structure for $R2")
         return(s15 >= s16 ? "V15" : "V16")
     end
     
@@ -286,7 +288,7 @@ addprocs(length(R1s))
         const encode_sb2 = encode_17
         const decode_sb2 = decode_17
     else
-        error("Error: The R2 bead type is not consistent ($R2_types)")
+        error("The R2 bead type is not consistent ($R2_types)")
     end
     myid() == 1 && println("R2 bead type: $bead2_type")
 end

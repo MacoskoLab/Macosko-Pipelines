@@ -4,9 +4,9 @@ task tags {
     input {
         String bcl
         String index
-        String params
         Int mem_GB
         Int disk_GB
+        String params
         String docker
     }
     command <<<
@@ -26,7 +26,6 @@ task tags {
 
     if gsutil -q stat "$tags_dir/SBcounts.h5"; then
         echo "----- Downloading cached intermediate files -----"
-
         mkdir cache
         gcloud storage cp "$tags_dir/SBcounts.h5" cache
         ls -1 cache
@@ -42,10 +41,10 @@ task tags {
         ls -1 pucks
 
         mkdir cache
-        julia --threads 1 spatial-count.jl fastqs pucks cache #-r ~{regex} -p ~{p}
+        julia --threads 1 spatial-count.jl fastqs pucks cache
         ls -1 cache
 
-        gcloud storage cp cache/* "$abc_dir"
+        gcloud storage cp cache/* "$tags_dir"
         rm -rf fastqs pucks
     fi
 
@@ -71,22 +70,22 @@ task tags {
     }
 }
 
-workflow abc {
+workflow slide_tags {
     input {
         String bcl
         String index
-        String params
         Int mem_GB
         Int disk_GB
-        String docker = "us-central1-docker.pkg.dev/velina-208320/pipeline-image/img:latest"
+        String params = ""
+        String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image:latest"
     }
     call tags {
         input:
             bcl = bcl,
             index = index,
-            params = params,
             mem_GB = mem_GB,
             disk_GB = disk_GB,
+            params = params,
             docker = docker
     }
 }
