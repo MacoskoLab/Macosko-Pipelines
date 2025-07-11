@@ -395,7 +395,7 @@ def save_umap_neighbor_plots(embedding, knn, out_dir):
     # 1) Plot UMAP embedding neighbor distances
     fig, axes = plt.subplots(2, 2, figsize=(8, 8))
     def my_hist(ax, dists, nn):
-        ax.hist(np.log10(dists[:,nn]), bins=100)
+        ax.hist(np.log10(dists[:,nn][dists[:,nn] > 0]), bins=100)
         ax.set(xlabel='Distance (log10)', ylabel='Count', title=f'Distance to neighbor {nn+1}')
         meanval = np.mean(dists[:,nn])
         ax.axvline(np.log10(meanval), color='red', linestyle='dashed')
@@ -406,7 +406,7 @@ def save_umap_neighbor_plots(embedding, knn, out_dir):
     my_hist(axes[0,1], dists, dists.shape[1]-1)
     my_hist(axes[1,0], dists, dists.shape[1]//2)
     
-    axes[1,1].hexbin(x=np.log10(dists), y=knn_dists,
+    axes[1,1].hexbin(x=np.log10(dists[dists > 0]), y=knn_dists[dists > 0],
                      gridsize=100, bins='log', cmap='plasma')
     axes[1,1].set_xlabel('UMAP Embedding distance (log10)')
     axes[1,1].set_ylabel('Cosine Distance')

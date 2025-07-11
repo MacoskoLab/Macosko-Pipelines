@@ -157,11 +157,11 @@ fastq_paths = readdir(fastq_path, join=true)
 fastq_paths = filter(fastq -> endswith(fastq, ".fastq.gz"), fastq_paths)
 fastq_paths = filter(fastq -> occursin(fastq_regex, fastq), fastq_paths)
 @assert length(fastq_paths) > 1 "ERROR: No FASTQ pairs found"
-const R1s = filter(s -> occursin("_R1_", s), fastq_paths) ; println("R1s: ", basename.(R1s))
-const R2s = filter(s -> occursin("_R2_", s), fastq_paths) ; println("R2s: ", basename.(R2s))
+const R1s = filter(s -> occursin("_R1_001", s), fastq_paths) ; println("R1s: ", basename.(R1s))
+const R2s = filter(s -> occursin("_R2_001", s), fastq_paths) ; println("R2s: ", basename.(R2s))
 @assert length(R1s) > 0 && length(R2s) > 0 "ERROR: No FASTQ pairs found"
 @assert length(R1s) == length(R2s) "ERROR: R1s and R2s are not all paired"
-@assert [replace(R1, "_R1_"=>"", count=1) for R1 in R1s] == [replace(R2, "_R2_"=>"", count=1) for R2 in R2s]
+@assert [replace(R1, "_R1_001"=>"", count=1) for R1 in R1s] == [replace(R2, "_R2_001"=>"", count=1) for R2 in R2s]
 println("$(length(R1s)) pair(s) of FASTQs found")
 
 println("") ; flush(stdout) ; GC.gc()
