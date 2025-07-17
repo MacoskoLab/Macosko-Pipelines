@@ -13,19 +13,19 @@ task mkfastq {
     set -euo pipefail
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
-    fastq_dir="gs://$BUCKET/fastqs/$(basename ~{bcl})"
+    fastq_dir="gs://$BUCKET/fastqs/$(basename '~{bcl}')"
 
     echo "==================== START BCL-CONVERT ===================="
 
     # Assert output does not already exist in bucket
-    if gsutil -q stat "$fastq_dir/Logs/FastqComplete.txt" ; then
+    if gsutil -q stat "$fastq_dir/Logs/FastqComplete.txt"; then
         echo "Error: Output already exists in the bucket!"
         exit 1
     fi
 
     echo "----- Downloading BCL -----"
     gcloud storage cp -r "~{bcl}" .
-    mv $(basename ~{bcl}) BCL
+    mv $(basename '~{bcl}') BCL
     ls -1 BCL
 
     echo "----- Downloading SampleSheet -----"
@@ -45,7 +45,7 @@ task mkfastq {
     gcloud storage cp -r fastqs/* "$fastq_dir/"
 
     # Assert output had been successfully uploaded to the bucket
-    if ! gsutil -q stat "$fastq_dir/Logs/FastqComplete.txt" ; then
+    if ! gsutil -q stat "$fastq_dir/Logs/FastqComplete.txt"; then
         echo "Error: Output not found in the bucket!"
         exit 1
     fi
@@ -79,10 +79,10 @@ task getdisksize {
 
         # Get the size of the BCL * 2.5
         gsutil du -sc "~{bcl}" | grep total | 
-        awk '{size=$1/1000/1000/1000 ; size=size*2.5 ; if (size<128) size=128 ; printf "%d\n", size}' > SIZE
+        awk '{size=$1/1000/1000/1000 ; size=size*2.5 ; if (size<128) size=128 ; printf "%d\n", size}' > disk_GB
 
-        # Assert that the disksize file exists
-        if [ ! -s SIZE ]; then
+        # Assert that the disk_GB file exists
+        if [ ! -s disk_GB ]; then
             echo "ERROR: gsutil du failed on ~{bcl}"
             exit 1
         fi
@@ -90,7 +90,7 @@ task getdisksize {
         echo "----- END CHECK -----"
     >>>
     output {
-        Int disk_GB = read_int("SIZE")
+        Int disk_GB = read_int("disk_GB")
     }
     runtime {
         cpu: 1

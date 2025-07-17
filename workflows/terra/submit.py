@@ -35,23 +35,6 @@ BUCKET = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
 bucket = storage.Client().bucket(BUCKET)
 bucket.reload() 
 
-'''
-workflow="cellranger-count"
-bcl="250527_SL-EXB_0558_B22Y57YLT4"
-index="all"
-dryrun=False
-
-workflow="recon"
-bcl="250521_SL-EXA_0515_A22YGT5LT4"
-index="all"
-dryrun=False
-
-workflow="slide-tags"
-bcl="250527_SL-EXB_0558_B22Y57YLT4"
-index="all"
-dryrun=False
-'''
-
 # Load the worksheet, select the columns
 sh = gspread.authorize(default()[0]).open_by_key("1NOaWXARQiSA6fquOtcouQPREPN4buYIf13tq_F6D9As")
 if workflow in ["cellranger-count", "slide-tags"]:

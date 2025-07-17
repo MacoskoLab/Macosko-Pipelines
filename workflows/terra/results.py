@@ -38,29 +38,29 @@ df = df.drop(columns=["QC", "summary", "FASTQs"])
 dups = df.duplicated(subset=["BCL", "Index"])
 assert not dups.any(), f"Recon sheet has duplicated BCL/Index pair:\n{df[dups]}"
 
-
-# Load recon PDF blobs
+# Query all PDF blobs
 recon = [blob.name for blob in bucket.list_blobs(prefix=f"recon") if blob.name.endswith(".pdf")]
 
-QC = [(r.split("/")[1], r.split("/")[2], r) for r in recon if r.endswith("QC.pdf")]
-summary = [(r.split("/")[1], r.split("/")[2], r) for r in recon if r.endswith("summary.pdf")]
-
+# Load QC.pdf blobs
+QC = [(r.split("/")[1], r.split("/")[2], blob2link(r)) for r in recon if r.endswith("QC.pdf")]
 QC = pd.DataFrame(QC, columns=["BCL", "Index", "QC"])
+assert not QC.duplicated(subset=["BCL", "Index"]).any()
+
+# Load summary.pdf blobs
+summary = [(r.split("/")[1], r.split("/")[2], r) for r in recon if r.endswith("summary.pdf")]
 summary = pd.DataFrame(summary, columns=["BCL", "Index", "summary"])
 summary = summary.groupby(['BCL', 'Index'], as_index=False).agg({'summary': lambda x: '\n'.join(x)})
-
-assert not QC.duplicated(subset=["BCL", "Index"]).any()
+summary['summary'] = summary['summary'].apply(blob2link)
 assert not summary.duplicated(subset=["BCL", "Index"]).any()
 
-
 # Update the sheet
-QC = pd.merge(df, QC, on=["BCL", "Index"], how="left").fillna('')["QC"]
-summary = pd.merge(df, summary, on=["BCL", "Index"], how="left").fillna('')["summary"]
-recon_fastqs = pd.merge(df, fastqs, on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
+QC =           pd.merge(df, QC,      on=["BCL", "Index"], how="left").fillna('')["QC"]
+summary =      pd.merge(df, summary, on=["BCL", "Index"], how="left").fillna('')["summary"]
+recon_fastqs = pd.merge(df, fastqs,  on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
 
-sh.worksheet("Recon").update(values=[[blob2link(v)] for v in QC], range_name=ranges["QC"], raw=False)
-sh.worksheet("Recon").update(values=[[blob2link(v)] for v in summary], range_name=ranges["summary"], raw=False)
-sh.worksheet("Recon").update(values=[[v] for v in recon_fastqs], range_name=ranges["FASTQs"], raw=False)
+sh.worksheet("Recon").update(values=[[v] for v in QC],           range_name=ranges["QC"],      raw=False)
+sh.worksheet("Recon").update(values=[[v] for v in summary],      range_name=ranges["summary"], raw=False)
+sh.worksheet("Recon").update(values=[[v] for v in recon_fastqs], range_name=ranges["FASTQs"],  raw=False)
 
 ################################################################################
 
@@ -68,7 +68,6 @@ sh.worksheet("Recon").update(values=[[v] for v in recon_fastqs], range_name=rang
 df = get_as_dataframe(sh.worksheet("Slide-tags"))
 ranges = {col: get_column_letter(df.columns.get_loc(col)+1)+"2" for col in ["web_summary", "summary", "FASTQs"]}
 df = df.drop(columns=["web_summary", "summary", "FASTQs"])
-
 df.rename(columns={'RNAIndex': 'Index'}, inplace=True)
 dups = df.duplicated(subset=["BCL", "Index"])
 assert not dups.any(), f"Slide-tags sheet has duplicated BCL/RNAIndex pair:\n{df[dups]}"
@@ -86,10 +85,10 @@ tags = pd.DataFrame(tags, columns=["BCL", "Index", "summary"])
 assert not tags.duplicated(subset=["BCL", "Index"]).any()
 
 # Update the sheet
-count = pd.merge(df, count, on=["BCL", "Index"], how="left").fillna('')["web_summary"]
-tags = pd.merge(df, tags, on=["BCL", "Index"], how="left").fillna('')["summary"]
+count =        pd.merge(df, count,  on=["BCL", "Index"], how="left").fillna('')["web_summary"]
+tags =         pd.merge(df, tags,   on=["BCL", "Index"], how="left").fillna('')["summary"]
 count_fastqs = pd.merge(df, fastqs, on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
 
-sh.worksheet("Slide-tags").update(values=[[v] for v in count], range_name=ranges["web_summary"], raw=False)
-sh.worksheet("Slide-tags").update(values=[[v] for v in tags], range_name=ranges["summary"], raw=False)
-sh.worksheet("Slide-tags").update(values=[[v] for v in count_fastqs], range_name=ranges["FASTQs"], raw=False)
+sh.worksheet("Slide-tags").update(values=[[v] for v in count],        range_name=ranges["web_summary"], raw=False)
+sh.worksheet("Slide-tags").update(values=[[v] for v in tags],         range_name=ranges["summary"],     raw=False)
+sh.worksheet("Slide-tags").update(values=[[v] for v in count_fastqs], range_name=ranges["FASTQs"],      raw=False)
