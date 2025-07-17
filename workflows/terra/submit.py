@@ -7,7 +7,6 @@ from google.auth import default
 from google.cloud import storage
 from gspread_dataframe import get_as_dataframe
 
-# TODO: caps
 wnamespace = "testmybroad"
 workspace = "Macosko-Pipelines"
 cnamespace = "macosko-pipelines"

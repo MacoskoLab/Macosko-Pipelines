@@ -42,11 +42,11 @@ task mkfastq {
     rm fastqs/Undetermined_S0_*
 
     echo "----- Uploading results -----"
-    gcloud storage cp -r fastqs "$fastq_dir"
+    gcloud storage cp -r fastqs/* "$fastq_dir/"
 
     # Assert output had been successfully uploaded to the bucket
     if ! gsutil -q stat "$fastq_dir/Logs/FastqComplete.txt" ; then
-        echo "Error: Output ~{index} not found in the bucket!"
+        echo "Error: Output not found in the bucket!"
         exit 1
     fi
 

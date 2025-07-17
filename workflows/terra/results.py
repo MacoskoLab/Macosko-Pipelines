@@ -93,30 +93,3 @@ count_fastqs = pd.merge(df, fastqs, on=["BCL", "Index"], how="left").fillna('')[
 sh.worksheet("Slide-tags").update(values=[[v] for v in count], range_name=ranges["web_summary"], raw=False)
 sh.worksheet("Slide-tags").update(values=[[v] for v in tags], range_name=ranges["summary"], raw=False)
 sh.worksheet("Slide-tags").update(values=[[v] for v in count_fastqs], range_name=ranges["FASTQs"], raw=False)
-
-'''
-# Upload sheet
-ws = sh.worksheet("Results")
-set_with_dataframe(ws, df)
-
-# Add horizontal lines
-requests = []
-for i in range(1, len(df)):
-    if df.loc[i, 'BCL'] != df.loc[i-1, 'BCL']:
-        requests.append({
-            "updateBorders": {
-                "range": {"sheetId": ws.id, "startRowIndex": i, "endRowIndex": i+1},
-                "bottom": {"style": "SOLID"}
-            }
-        })
-
-# Auto-resize all columns
-requests.append({
-    "autoResizeDimensions": {
-        "dimensions": {"sheetId": ws.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": ws.col_count}
-    }
-})
-
-# Submit changes
-ws.spreadsheet.batch_update({"requests": requests})
-'''
