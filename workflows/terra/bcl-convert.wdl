@@ -79,7 +79,7 @@ task getdisksize {
 
         # Get the size of the BCL * 2.5
         gsutil du -sc "~{bcl}" | grep total | 
-        awk '{size=$1/1000/1000/1000 ; size=size*2.5 ; if (size<128) size=128 ; printf "%d\n", size}' > disk_GB
+        awk '{size=$1/1000/1000/1000 ; size=size*2.5 ; if (size<1000) size=1000 ; printf "%d\n", size}' > disk_GB
 
         # Assert that the disk_GB file exists
         if [ ! -s disk_GB ]; then
