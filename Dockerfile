@@ -126,6 +126,7 @@ RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager
                                 ), Ncpus=$(nproc)L)"
 # Install other R packages
 RUN R -e "devtools::install_github('immunogenomics/presto')"
+RUN R -e "remotes::install_github('broadinstitute/DropSift')"
 
 # Install micromamba
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
