@@ -70,7 +70,7 @@ task tags {
     Rscript run-positioning.R rna cache output ~{params}
 
     echo "----- Uploading results -----"
-    gcloud storage cp -r output/* "$tags_path/"
+    gcloud storage cp -r output/* "$tags_dir/"
 
     echo "==================== END SLIDE-TAGS ===================="
 

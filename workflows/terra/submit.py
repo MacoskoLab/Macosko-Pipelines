@@ -34,24 +34,8 @@ assert not any(c.isspace() for c in index), f"remove whitespace from index ({ind
 # Load bucket
 BUCKET = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
 bucket = storage.Client().bucket(BUCKET)
-bucket.reload() 
+bucket.reload()
 
-'''
-workflow="cellranger-count"
-bcl="250527_SL-EXB_0558_B22Y57YLT4"
-index="all"
-dryrun=False
-
-workflow="recon"
-bcl="250328_SL-EXE_0517_B22N2LCLT4_set1"
-index="all"
-dryrun=False
-
-workflow="slide-tags"
-bcl="250527_SL-EXB_0558_B22Y57YLT4"
-index="all"
-dryrun=False
-'''
 
 # Load the worksheet, select the columns
 sh = gspread.authorize(default()[0]).open_by_key("1NOaWXARQiSA6fquOtcouQPREPN4buYIf13tq_F6D9As")
@@ -256,10 +240,12 @@ def run_slidetags(bcl, rna_index, sb_index, puck_paths, mem_GB, disk_GB, params=
     return True
 
 if workflow == "cellranger-count":
-    assert False
+    for r, m, j in zip(df.itertuples(index=False), mem_GBs, job_names):
+        run_cellranger_count(r.BCL, r.RNAIndex, r.Reference, 100, m, None, j)
+        
 elif workflow == "slide-tags":
     for r, p, m, j in zip(df.itertuples(index=False), pucks, mem_GBs, job_names):
-        run_slidetags(r.BCL, r.RNAIndex, r.SBIndex, p, m, m, "|| true", j)
+        run_slidetags(r.BCL, r.RNAIndex, r.SBIndex, p, m, m, None, j)
 elif workflow in ["recon", "reconstruction"]:
     for r, m, j in zip(df.itertuples(index=False), mem_GBs, job_names):
         assert r.Index.count("-") <= 1
