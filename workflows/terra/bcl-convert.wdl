@@ -98,7 +98,7 @@ task getdisksize {
         disks: "local-disk 8 HDD"
         docker: docker
         preemptible: 0
-  }
+    }
 }
 
 

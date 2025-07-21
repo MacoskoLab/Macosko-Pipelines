@@ -16,6 +16,7 @@ task tags {
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/run-positioning.R
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/positioning.R
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/helpers.R
+    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/plots.R
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
@@ -37,7 +38,16 @@ task tags {
         ls -1 fastqs
 
         mkdir pucks
-        gcloud storage cp ~{sep=' ' pucks} pucks
+        # gcloud storage cp ~{sep=' ' pucks} pucks
+        puck_paths=(~{sep=' ' puck_paths})
+        for path in "${puck_paths[@]}"; do
+            puck=$path
+            puck=${puck#gs://}
+            puck=${puck#$BUCKET/}
+            puck=${puck#recon/}
+            puck=${puck////_}
+            gcloud storage cp "$path" "pucks/$puck"
+        done
         ls -1 pucks
 
         mkdir cache
@@ -49,11 +59,12 @@ task tags {
     fi
 
     echo "----- Downloading gene expression -----"
-    mkdir RNA
-    ls -1 RNA
+    mkdir rna
+    
+    ls -1 rna
 
     echo "----- Running slide-tags -----"
-    Rscript run-positioning.R RNA cache output ~{params}
+    Rscript run-positioning.R rna cache output ~{params}
 
     echo "----- Uploading results -----"
     gcloud storage cp -r output/* "$tags_path/"
@@ -73,7 +84,9 @@ task tags {
 workflow slide_tags {
     input {
         String bcl
-        String index
+        String rna_index
+        String sb_index
+        Array[String] puck_paths
         Int mem_GB
         Int disk_GB
         String params = ""
