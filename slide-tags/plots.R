@@ -35,106 +35,51 @@ plot_metrics_csv <- function(df) {
 }
 
 # Page 2: Cell calling
-plot_cellcalling <- function(intronic_path, cb_list, ct = 200) {
-  # Check if the supplementary .h5 exists
-  if (!file.exists(intronic_path) || nchar(intronic_path) == 0) {
-    plot <- gdraw("No supplementary .h5 found")
-    return(plot)
-  }
-  
-  # Load the supplementary .h5
-  fields <- rhdf5::h5ls(intronic_path)$name
-  fetch <- function(x){return(rhdf5::h5read(intronic_path, x))}
-  if (all(c("barcodes", "barcode_idx", "umi_type") %in% fields)) { # 10X
-    dt <- data.table(barcode_idx=fetch("barcode_idx")+1,
-                     umi_type=fetch("umi_type")
-    )[,.(umi=.N, pct.intronic=sum(umi_type==0)/.N*100), barcode_idx]
-    dt[, called := barcode_idx %in% match(cb_list, fetch("barcodes"))]
-    dt[, barcode_idx := NULL]
-    dt2 <- data.table(x=fetch("count"))[, .(N=.N), x]
-  } else if (all(c("reads_mapped_intronic", "reads_mapped_exonic") %in% fields)) { # Optimus
-    dt <- data.table(barcode = fetch("/obs/CellID"),
-                     umi = data.table(data=fetch("X/data"),indices=fetch("X/indices"))[,.(umi=sum(data)),indices][order(indices), umi],
-                     pct.intronic = fetch("/obs/reads_mapped_intronic") %>% {./(.+fetch("/obs/reads_mapped_exonic"))*100}
-    )
-    dt[, called := barcode %in% cb_list]
-    dt[, barcode := NULL]
-    dt2 <- data.table(x=c(), N=c())
-  } else {
-    plot <- gdraw("Unrecognized supplementary .h5 file")
-    return(plot)
-  }
-  # dt: umi pct.intronic called
-  # dt2: x N
+plot_cellcalling <- function(dt, ct=200) {
+  stopifnot(names(dt) == c("umi","pct_intronic","called"))
   
   # Panel 1: cell barcode rank plot
   plotdf <- dt[order(-umi), .(umi,called)]
   plotdf[, index := .I]
   plotdf <- plotdf[plotdf$umi != lag(plotdf$umi,1,0) | plotdf$umi != lead(plotdf$umi,1,0)]
-  p1 <- ggplot(plotdf, aes(x=index,y=umi,col=called)) + geom_line() + 
+  p1 <- ggplot(plotdf, aes(x=index, y=umi, col=called)) + geom_line() + 
     theme_bw() + scale_x_log10() + scale_y_log10() +
-    ggtitle("Cell barcode rank plot") + xlab("Barcode rank") + ylab("UMI count") +
-    theme(legend.position = "inside",
-          legend.position.inside = c(0.05, 0.05),
-          legend.justification.inside = c("left", "bottom"),
-          legend.background = element_blank(),
-          legend.spacing.y = unit(0.1, "lines"))
+    scale_color_manual(values = c("Cells"="#00BFC4", "Background"="#F8766D")) +
+    labs(title="Cell barcode rank plot", x="Barcode rank", y="UMI counts")
   
   # Panel 2: cell calling cloud
-  if (is.null(dt$pct.intronic) || all(dt$pct.intronic==0)) {
+  if (is.null(dt$pct_intronic) || all(dt$pct_intronic==0) || all(is.na(dt$pct_intronic))) {
     p2 <- gdraw(g("No intronic information"))
   } else if (all(dt$umi < ct)) {
     p2 <- gdraw(g("No cells with {ct}+ UMI"))
   } else {
-    p2 <- dt[umi >= ct] %>% ggplot(aes(x=log10(umi+1), y=pct.intronic, color=called)) + 
-      ggrastr::rasterize(geom_point(alpha = 0.1, size = 0.5), dpi = 300) +
-      theme_minimal() +
-      labs(title = g("Cell calling"), x = "log10(UMI)", y = "%Intronic") +
-      theme(legend.position = "inside",
-            legend.position.inside = c(0.95, 0.05),
-            legend.justification.inside = c("right", "bottom"),
-            legend.background = element_blank(),
-            legend.spacing.y = unit(0.1,"lines"))
+    p2 <- dt[umi >= ct] %>% ggplot(aes(x=log10(umi), y=pct_intronic, color=called)) + 
+      ggrastr::rasterize(geom_point(alpha=0.1, size=0.5), dpi=300) +
+      scale_color_manual(values = c("Cells"="#00BFC4", "Background"="#F8766D")) +
+      labs(title="Cell calling", x="log10(UMI)", y="%Intronic")
   }
   
-  # Panel 3: Read per UMI histogram
-  if (nrow(dt2) > 0) {
-    dt2[, x := pmin(x, 10)]
-    dt2 <- dt2[, .(N=sum(N)), x][order(x)]
-    p3 <- ggplot(dt2, aes(x=as.factor(x),y=N)) + geom_col() +
-      scale_x_discrete(breaks=min(dt2$x):max(dt2$x), labels=(min(dt2$x):max(dt2$x)) %>% {ifelse(.==10, "10+", .)}) +
-      xlab("Reads per UMI") + ylab("UMI Count") + ggtitle("Reads per UMI distribution") +
-      theme_minimal()
-  } else {
-    p3 <- gdraw("No Read per UMI data")
-  }
-  
-  # Panel 4: Intronic density
-  max_density_x = dt[called==T, pct.intronic] %>% density %>% {.$x[which.max(.$y)]}
-  p4 <- dt[umi>=ct] %>% ggplot(aes(x=pct.intronic, color=called)) + geom_density() + 
-    labs(title = g("Intronic density (UMI>={ct})"), x = "%Intronic", y = "Density") + 
-    geom_vline(xintercept=max_density_x, color="red", linetype="dashed") +
-    annotate(geom='text', label=round(max_density_x, 2), x=max_density_x-1, y=Inf, hjust=1, vjust=1, col="red") +
-    theme_minimal() +
-    theme(legend.position = "inside",
-          legend.position.inside = c(0.05, 0.95),
-          legend.justification.inside = c("left", "top"),
-          legend.background = element_blank(),
-          legend.spacing.y = unit(0.1,"lines"))
-  
-  plot <- plot_grid(p1, p2, p3, p4, ncol=2)
+  plot <- plot_grid(p1, p2, ncol=1)
   return(plot)
 }
-
 
 # Page 3: UMAP + QC
 plot_umaps <- function(obj) {
   mytheme <- function(){theme(plot.title=element_text(hjust=0.5), axis.title.x=element_blank(), axis.title.y=element_blank(), legend.position="top", legend.justification="center", legend.key.width=unit(2, "lines"))}
-  p1 <- DimPlot(obj, label=T) + ggtitle(g("UMAP")) + mytheme() + NoLegend()  + coord_fixed(ratio=1)
-  p2 <- VlnPlot(obj,"logumi", alpha=0) + mytheme() + NoLegend() 
-  p3 <- FeaturePlot(obj,"percent.mt") + ggtitle("%MT") + mytheme() + coord_fixed(ratio=1) + 
-    annotate("text", x = Inf, y = Inf, label = g("Median: {round(median(obj$percent.mt), 2)}%\nMean: {round(mean(obj$percent.mt), 2)}%"), hjust=1, vjust=1, size=2.5, color="black")
-  if ("pct.intronic" %in% names(obj@meta.data)) {
+  p1 <- DimPlot(obj, label=TRUE) + ggtitle(g("UMAP")) + mytheme() + NoLegend()  + coord_fixed(ratio=1)
+  
+  # Violin plots
+  obj$log10UMI <- log10(obj$nCount_RNA)
+  p2 <- VlnPlot(obj, "log10UMI", alpha=0) + mytheme() + NoLegend() 
+  
+  # MT% UMAP
+  obj$pct.mt <- obj$pct_mt * 100
+  p3 <- FeaturePlot(obj, "pct.mt") + ggtitle("%Mito") + mytheme() + coord_fixed(ratio=1) + 
+    annotate("text", x = Inf, y = Inf, label = g("Median: {round(median(obj$pct.mt), 2)}%\nMean: {round(mean(obj$pct.mt), 2)}%"), hjust=1, vjust=1, size=2.5, color="black")
+  
+  # Intronic% UMAP
+  if ("pct_intronic" %in% names(obj@meta.data)) {
+    obj$pct.intronic <- obj$pct_intronic * 100
     p4 <- FeaturePlot(obj, "pct.intronic") + ggtitle("%Intronic") + mytheme() + coord_fixed(ratio=1) +
       annotate("text", x = Inf, y = Inf, label = g("Median: {round(median(obj$pct.intronic), 2)}%\nMean: {round(mean(obj$pct.intronic), 2)}%"), hjust=1, vjust=1, size=2.5, color="black")
   } else {
@@ -591,19 +536,19 @@ plot_gdbscan_cellplots <- function(data.list) {
   
   if(len(list0) > 0) {
     p0s <- sample(list0, min(12,len(list0)), replace=FALSE) %>% map(global_cellplot)
-    p0 <- plot_grid(ggdraw()+draw_label("DBSCAN=0"),
+    p0 <- plot_grid(gdraw("DBSCAN=0"),
                     plot_grid(plotlist=p0s, ncol=3),
                     ncol=1, rel_heights=c(0.1,2))
   } else {p0 <- gdraw("No DBSCAN=0")}
   if(len(list1) > 0) {
     p1s <- sample(list1, min(12,len(list1)), replace=FALSE) %>% map(global_cellplot)
-    p1 <- plot_grid(ggdraw()+draw_label("DBSCAN=1"),
+    p1 <- plot_grid(gdraw("DBSCAN=1"),
                     plot_grid(plotlist=p1s, ncol=3),
                     ncol=1, rel_heights=c(0.1,2))
   } else {p1 <- gdraw("No DBSCAN=1")}
   if(len(list2) > 0) {
     p2s <- sample(list2, min(12,len(list2)), replace=FALSE) %>% map(global_cellplot)
-    p2 <- plot_grid(ggdraw()+draw_label("DBSCAN=2"),
+    p2 <- plot_grid(gdraw("DBSCAN=2"),
                     plot_grid(plotlist=p2s, ncol=3),
                     ncol=1, rel_heights=c(0.1,2))
   } else {p2 <- gdraw("No DBSCAN=2")}

@@ -1,6 +1,15 @@
-# Helper files required for loading spatial data and positioning cells
-stopifnot(file.exists("positioning.R", "helpers.R"))
+### Wrapper script #############################################################
+### Input: RNA directory
+###        - GEX matrix (e.g. filtered_feature_bc_matrix.h5 or .h5ad)
+###        - (optional) molecule_info.h5
+###        - (optional) metrics_summary.csv or library_metrics.csv
+### Input: path to SBcounts.h5 (output of spatial-count.jl)
+### Output: obj.qs, summary.pdf (in addition to positioning.R outputs)
+################################################################################
+
+stopifnot(file.exists("positioning.R", "helpers.R", "plots.R"))
 suppressMessages(source("helpers.R"))
+suppressMessages(source("plots.R"))
 suppressMessages(library(Seurat))
 suppressMessages(library(qs))
 Sys.setenv(PATH = paste(Sys.getenv("PATH"), "/usr/local/bin", sep = ":"))
@@ -8,24 +17,15 @@ if (Sys.which("Rscript") == "") {
   stop("Rscript not found")
 }
 
-# setwd("/broad/macosko/mshabet/testing/positioning")
-# rna_path = "RNA"
-# sb_path = "RNA"
-# out_path = "output"
-# positioning_args = ""
-
-# rna_path="GG/slidetag_gg/outs"
-# sb_path="GG" 
-# out_path="GGo"
-
 # Load arguments
 library(optparse)
 arguments <- OptionParser(
-  usage = "Usage: Rscript run-positioning.R rna_path sb_path output_path [options]",
+  usage = "Usage: Rscript run-positioning.R rna_path sb_path out_path [options]",
   option_list = list(
-    make_option("--knn", type="integer", help = "Passed to positioning.R"),
-    make_option("--cmes", type="double", help = "Passed to positioning.R"),
-    make_option("--prob", type="double", help = "Passed to positioning.R")
+    make_option("--cells", type="character", help = "'dropsift' or path to barcodes file"),
+    make_option("--knn",   type="integer",   help = "Passed to positioning.R"),
+    make_option("--cmes",  type="double",    help = "Passed to positioning.R"),
+    make_option("--prob",  type="double",    help = "Passed to positioning.R")
   )
 ) %>% parse_args(positional_arguments=3)
 
@@ -33,9 +33,9 @@ rna_path <- arguments$args[[1]]
 sb_path <- arguments$args[[2]]
 out_path <- arguments$args[[3]]
 positioning_args <- paste0(arguments$options$knn %>% {ifelse(is.null(.), "", g(" --knn={.}"))},
-                           arguments$options$mask %>% {ifelse(is.null(.), "", g(" --cmes={.}"))},
+                           arguments$options$cmes %>% {ifelse(is.null(.), "", g(" --cmes={.}"))},
                            arguments$options$prob %>% {ifelse(is.null(.), "", g(" --prob={.}"))}) %>% trimws
-rm(arguments)
+
 
 # Check arguments
 print(g("RNA dir: {normalizePath(rna_path)}"))
@@ -57,73 +57,162 @@ if (nchar(positioning_args) > 0) {
 
 cat("\n")
 
-# Determine the RNA method
-if (dir.exists(file.path(rna_path, "filtered_feature_bc_matrix"))) {
-  rna_source = "10X"
-  matrix_path = file.path(rna_path, "filtered_feature_bc_matrix")
-  intronic_path = file.path(rna_path, "molecule_info.h5")
-  metrics_path = file.path(rna_path, "metrics_summary.csv")
-} else if (file.exists(file.path(rna_path, "filtered_feature_bc_matrix.h5"))) {
-  rna_source = "10X_h5"
-  matrix_path = file.path(rna_path, "filtered_feature_bc_matrix.h5")
-  intronic_path = file.path(rna_path, "molecule_info.h5")
-  metrics_path = file.path(rna_path, "metrics_summary.csv")
-} else if (any(str_ends(list.files(rna_path), ".h5ad"))) {
-  rna_source = "Optimus"
-  matrix_path <-  list.files(rna_path, full.names=T) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)==1)}
-  intronic_path <- list.files(rna_path, full.names=T) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)<=1)}
-  metrics_path <- list.files(rna_path, full.names=T) %>% keep(~str_sub(.,-20) == "_library_metrics.csv") %T>% {stopifnot(len(.)<=1)}
-} else {
-  stop("Unknown RNA technique", call. = FALSE)
-}
-print(g("RNA source: {rna_source}\n"))
-
 ### Load the RNA ###############################################################
 
-# Load the matrix
-if (rna_source == "10X") {
-  mat <- Read10X(matrix_path)
-} else if (rna_source == "10X_h5") {
-  mat <- Read10X_h5(matrix_path)
-} else if (rna_source == "Optimus") {
-  mat <- ReadOptimus(matrix_path)
+cells <- arguments$options$cells
+if (!is.null(cells)) {
+  stopifnot(file.exists(cells) || tolower(cells) == "dropsift")
+  
+  # Load the raw matrix
+  if (file.exists(file.path(rna_path, "raw_feature_bc_matrix.h5"))) {
+    print("Loading raw_feature_bc_matrix.h5")
+    mat <- Read10X_h5(file.path(rna_path, "raw_feature_bc_matrix.h5"))
+  } else if (dir.exists(file.path(rna_path, "raw_feature_bc_matrix"))) {
+    print("Loading raw_feature_bc_matrix")
+    mat <- Read10X(file.path(rna_path, "raw_feature_bc_matrix"))
+  } else if (any(str_ends(list.files(rna_path), ".h5ad"))) {
+    print("Loading .h5ad")
+    matrix_path <- list.files(rna_path, full.names=T) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)==1)}
+    mat <- ReadAnnDataX(matrix_path, calledonly=FALSE)
+  } else {
+    rna_files <- list.files(rna_path) %>% paste0(collapse="\n")
+    stop(g("Unable to find raw data:\n{rna_files}"), call. = FALSE)
+  }
+  
+  # Filter out noise
+  mat <- mat[, colSums(mat) >= 10]
+  
+  # Load the %intronic
+  if (file.exists(file.path(rna_path, "molecule_info.h5"))) {
+    print("Loading molecule_info.h5")
+    pct_intronic <- ReadIntronic(file.path(rna_path, "molecule_info.h5"),
+                                 trim_10X_CB(colnames(mat)))
+  } else if (str_ends(matrix_path, ".h5ad")) {
+    print("Loading .h5ad")
+    pct_intronic <- ReadIntronic(matrix_path,
+                                 trim_10X_CB(colnames(mat)))
+  } else {
+    pct_intronic <- rep(NA, len(cb_list))
+  }
+  
+  # Load the %mt
+  pct_mt <- colSums(mat[grepl("^MT-", rownames(mat), ignore.case=TRUE),]) / colSums(mat)
+  pct_mt %<>% unname
+  
+  # Load cell calling
+  if (tolower(cells) == "dropsift") {
+    if (file.exists(file.path(rna_path, "dropsift.csv"))) {
+      print("Loading dropsift.csv")
+      dropsift <- read.csv(file.path(rna_path, "dropsift.csv"), header=FALSE)
+      dropsift %<>% setNames(c("cell_barcode", "is_cell_prob"))
+      cb_whitelist <- dropsift$cell_barcode
+    } else {
+      print("Running DropSift")
+      library(DropSift)
+      cellFeatures <- data.frame(cell_barcode = colnames(mat),
+                                 pct_intronic = pct_intronic,
+                                 pct_mt = pct_mt)
+      svmNucleusCaller <- SvmNucleusCaller(cellFeatures=cellFeatures,
+                                           dgeMatrix=mat,
+                                           useCBRBFeatures = FALSE)
+      is_cell <- svmNucleusCaller$cell_features$is_cell %>% as.logical
+      is_cell_prob <- svmNucleusCaller$cell_features$is_cell_prob
+      dropsift <- data.frame(cell_barcode = colnames(mat)[is_cell==TRUE],
+                             is_cell_prob = is_cell_prob[is_cell==TRUE])
+      write.table(dropsift, file.path(rna_path, "dropsift.csv"),
+                  sep=",", row.names=FALSE, col.names=FALSE, quote=FALSE)
+      cb_whitelist <- dropsift$cell_barcode
+    }
+  } else {
+    cb_whitelist <- readLines(cells)
+  }
+  
+  # Plot cell calling
+  data.table(umi=colSums(mat),
+             pct_intronic=pct_intronic,
+             called=factor(colnames(mat) %in% cb_whitelist,
+                           levels = c(FALSE, TRUE),
+                           labels = c("Background","Cells"))) %>% 
+    plot_cellcalling() %>% 
+    make.pdf(file.path(out_path, "RNAlibrary.pdf"), 7, 8)
+
+  # Subset to called cells
+  stopifnot(cb_whitelist %in% colnames(mat))
+  mask <- match(cb_whitelist, colnames(mat))
+  mat <- mat[,mask]
+  
+  # Create Seurat object
+  obj <- CreateSeuratObject(mat, project = "Slide-tags")
+  rm(mat) ; invisible(gc())
+  
+  # Add metadata
+  if (tolower(cells) == "dropsift") {obj$is_cell_prob <- dropsift$is_cell_prob}
+  obj$pct_intronic <- pct_intronic[mask]
+  obj$pct_mt <- pct_mt[mask]
+  
+} else {
+  
+  # Load the filtered matrix
+  if (file.exists(file.path(rna_path, "filtered_feature_bc_matrix.h5"))) {
+    print("Loading filtered_feature_bc_matrix.h5")
+    mat <- Read10X_h5(file.path(rna_path, "filtered_feature_bc_matrix.h5"))
+    
+  } else if (dir.exists(file.path(rna_path, "filtered_feature_bc_matrix"))) {
+    print("Loading filtered_feature_bc_matrix")
+    mat <- Read10X(file.path(rna_path, "filtered_feature_bc_matrix"))
+    
+  } else if (any(str_ends(list.files(rna_path), ".h5ad"))) {
+    print("Loading .h5ad")
+    matrix_path <-  list.files(rna_path, full.names=T) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)==1)}
+    mat <- ReadOptimus(matrix_path, calledonly=TRUE)
+    pct_intronic <- ReadIntronicOptimus(matrix_path)
+  } else {
+    rna_files <- list.files(rna_path) %>% paste0(collapse="\n")
+    stop(g("Unable to find filtered data:\n{rna_files}"), call. = FALSE)
+  }
+  
+  # Load the %intronic
+  # Load the %mito
+  # Create Seurat object
+  # Add metadata
+  
+  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^(MT-|mt-)")
+  
+  stopifnot(FALSE)
+  
 }
-obj <- CreateSeuratObject(mat, project = "Slide-tags")
-rm(mat) ; invisible(gc())
 
-# Add metadata
-obj[["logumi"]] <- log10(obj$nCount_RNA+1)
-obj[["cb"]] <- map_chr(colnames(obj), ~sub("-[0-9]*$", "", .)) %T>% {stopifnot(!duplicated(.))}
-obj[["cb_index"]] <- 1:ncol(obj)
-obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^(MT-|mt-)")
+# TODO: cb + add /obs and /var etc
+obj[["cb"]] <- trim_10X_CB(colnames(obj)) %T>% {stopifnot(!duplicated(.))}
 
-# Compute %intronic
-obj$pct.intronic <- ReadIntronic(intronic_path, unname(obj$cb))
+# Plot library metrics + add to object
+if (file.exists(file.path(rna_path, "metrics_summary.csv"))) { # 10X
+  print("Loading metrics_summary.csv")
+  df <- ReadLibraryMetrics(file.path(rna_path, "metrics_summary.csv"))
+} else if (any(str_ends(list.files(rna_path), "_library_metrics.csv"))) { # Optimus
+  print("Loading library_metrics.csv")
+  df <- list.files(rna_path, full.names=TRUE) %>% 
+    keep(~str_sub(., -20) == "_library_metrics.csv") %T>% 
+    {stopifnot(len(.) <= 1)} %>% 
+    ReadLibraryMetrics()
+}
+Misc(obj, "metrics") <- setNames(df[,2], df[,1])
+plot_metrics_csv(df) %>% make.pdf(file.path(out_path, "RNAmetrics.pdf"), 7, 8)
 
 # Normalize, HVG, Scale, PCA, Neighbors, Clusters, UMAP
 obj %<>%
-  Seurat::NormalizeData(verbose=F) %>%
-  Seurat::FindVariableFeatures(verbose=F) %>%
-  Seurat::ScaleData(verbose=F) %>%
-  Seurat::RunPCA(npcs=50, verbose=F) %>%
-  Seurat::FindNeighbors(dims=1:30, verbose=F) %>%
-  Seurat::FindClusters(resolution=0.8, verbose=F) %>%
-  Seurat::RunUMAP(dims=1:30, umap.method="uwot", metric="cosine", verbose=F)
+  Seurat::NormalizeData(verbose=FALSE) %>%
+  Seurat::FindVariableFeatures(verbose=FALSE) %>%
+  Seurat::ScaleData(verbose=FALSE) %>%
+  Seurat::RunPCA(npcs=50, verbose=FALSE) %>%
+  Seurat::FindNeighbors(dims=1:30, verbose=FALSE) %>%
+  Seurat::FindClusters(resolution=0.8, verbose=FALSE) %>%
+  Seurat::RunUMAP(dims=1:30, umap.method="uwot", metric="cosine", verbose=FALSE)
 
-# Load the RNA metadata
-metrics_df <- ReadLibraryMetrics(metrics_path)
-Misc(obj, "RNA_metadata") <- setNames(metrics_df[,2], metrics_df[,1])
+# Plot UMAPs
+plot_umaps(obj) %>% make.pdf(file.path(out_path, "RNAplot.pdf"), 7, 8)
 
 print(g("Loaded {ncol(obj)} cells"))
-
-# Page 1
-plot_metrics_csv(metrics_df) %>% make.pdf(file.path(out_path, "RNAmetrics.pdf"), 7, 8)
-
-# Page 2
-plot_cellcalling(intronic_path, obj$cb) %>% make.pdf(file.path(out_path,"RNAlibrary.pdf"), 7, 8)
-
-# Page 3
-plot_umaps(obj) %>% make.pdf(file.path(out_path,"RNAplot.pdf"), 7, 8)
 
 ### DBSCAN #####################################################################
 
@@ -132,7 +221,7 @@ writeLines(cb_whitelist, file.path(out_path, "cb_whitelist.txt"))
 
 # Assign a position to each whitelist cell
 print(g("\nRunning positioning.R"))
-system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path}"))
+system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} {positioning_args}"))
 
 stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
                       file.path(out_path, "spatial_metadata.json"),
@@ -163,8 +252,7 @@ plot_RNAvsSB(obj) %>% make.pdf(file.path(out_path, "RNAvsSB.pdf"), 7, 8)
 
 # Merge the PDF files
 plotlist <- c("RNAmetrics.pdf","RNAlibrary.pdf","RNAplot.pdf",
-              "SBlibrary.pdf","SBplot.pdf","SBmetrics.pdf",
-              "GDBSCANopt.pdf", "GDBSCAN1.pdf", "GDBSCAN2.pdf",
+              "SBsummary.pdf",
               "DimPlot.pdf", "RNAvsSB.pdf", "GDBSCANs.pdf")
 pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)

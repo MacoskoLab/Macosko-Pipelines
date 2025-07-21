@@ -120,7 +120,7 @@ ReadIntronic <- function(intronic_path, cb_list) {
     stopifnot(!any(duplicated(barcodes)), cb_list %in% barcodes)
     dt <- data.table(barcode_idx=fetch("barcode_idx")+1,
                      umi_type=fetch("umi_type"))
-    pct_intronic <- dt[, .(pct_intronic=sum(umi_type==0)/.N), barcode_idx][cb_list %>% match(barcodes) %>% match(barcode_idx), pct_intronic]
+    pct_intronic <- dt[, .(intronic_umi=sum(umi_type==0), total_umi=.N), barcode_idx][cb_list %>% match(barcodes) %>% match(barcode_idx), intronic_umi/total_umi]
   } else if (all(c("reads_mapped_intronic", "reads_mapped_exonic") %in% fields)) { # Optimus
     dt <- data.table(barcode = fetch("/obs/CellID"),
                      intronic = fetch("/obs/reads_mapped_intronic"),

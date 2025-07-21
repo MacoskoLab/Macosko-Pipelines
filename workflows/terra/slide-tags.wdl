@@ -3,7 +3,9 @@ version 1.0
 task tags {
     input {
         String bcl
-        String index
+        String rna_index
+        String sb_index
+        Array[String] puck_paths
         Int mem_GB
         Int disk_GB
         String params
@@ -20,8 +22,8 @@ task tags {
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
-    gex_dir="gs://$BUCKET/gene-expression/~{bcl}/~{index}"
-    tags_dir="gs://$BUCKET/slide-tags/~{bcl}/~{index}"
+    gex_dir="gs://$BUCKET/gene-expression/~{bcl}/~{rna_index}/outs"
+    tags_dir="gs://$BUCKET/slide-tags/~{bcl}/~{rna_index}"
 
     echo "==================== START SLIDE-TAGS ===================="
 
@@ -34,11 +36,10 @@ task tags {
         echo "----- Running spatial-count.jl -----"
         
         mkdir fastqs
-        gcloud storage cp "$fastq_dir/~{index}_*" fastqs
+        gcloud storage cp "$fastq_dir/~{sb_index}_*" fastqs
         ls -1 fastqs
 
         mkdir pucks
-        # gcloud storage cp ~{sep=' ' pucks} pucks
         puck_paths=(~{sep=' ' puck_paths})
         for path in "${puck_paths[@]}"; do
             puck=$path
@@ -54,13 +55,15 @@ task tags {
         julia --threads 1 spatial-count.jl fastqs pucks cache
         ls -1 cache
 
-        gcloud storage cp cache/* "$tags_dir"
+        gcloud storage cp cache/* "$tags_dir/"
         rm -rf fastqs pucks
     fi
 
     echo "----- Downloading gene expression -----"
     mkdir rna
-    
+    gcloud storage cp "$gex_dir/*.h5" rna || true
+    gcloud storage cp "$gex_dir/*.h5ad" rna || true
+    gcloud storage cp "$gex_dir/*.csv" rna || true
     ls -1 rna
 
     echo "----- Running slide-tags -----"
@@ -89,13 +92,15 @@ workflow slide_tags {
         Array[String] puck_paths
         Int mem_GB
         Int disk_GB
-        String params = ""
+        String params = "--cells=dropsift"
         String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image:latest"
     }
     call tags {
         input:
             bcl = bcl,
-            index = index,
+            rna_index = rna_index,
+            sb_index = sb_index,
+            puck_paths = puck_paths,
             mem_GB = mem_GB,
             disk_GB = disk_GB,
             params = params,

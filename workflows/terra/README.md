@@ -8,7 +8,6 @@ gcloud commands
 ```
 gcloud auth application-default login --scopes 'openid,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/sqlservice.login,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/spreadsheets'
 gcloud auth application-default set-quota-project velina-208320
-
 ```
 ```
 gcloud auth login

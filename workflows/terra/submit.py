@@ -1,4 +1,5 @@
 import sys
+import math
 import gspread
 import argparse
 import pandas as pd
@@ -21,7 +22,7 @@ def get_args():
     return args
 
 args = get_args()
-workflow = args.workflow             ; print(f"workflow: {workflow}")
+workflow = args.workflow.lower()     ; print(f"workflow: {workflow}")
 bcl = args.bcl.strip("/ \t\n\r")     ; print(f"     bcl: {bcl}")
 index = args.index.strip("/ \t\n\r") ; print(f"   index: {index}")
 dryrun = args.dryrun                 ; print(f"  dryrun: {dryrun}")
@@ -34,6 +35,23 @@ assert not any(c.isspace() for c in index), f"remove whitespace from index ({ind
 BUCKET = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
 bucket = storage.Client().bucket(BUCKET)
 bucket.reload() 
+
+'''
+workflow="cellranger-count"
+bcl="250527_SL-EXB_0558_B22Y57YLT4"
+index="all"
+dryrun=False
+
+workflow="recon"
+bcl="250328_SL-EXE_0517_B22N2LCLT4_set1"
+index="all"
+dryrun=False
+
+workflow="slide-tags"
+bcl="250527_SL-EXB_0558_B22Y57YLT4"
+index="all"
+dryrun=False
+'''
 
 # Load the worksheet, select the columns
 sh = gspread.authorize(default()[0]).open_by_key("1NOaWXARQiSA6fquOtcouQPREPN4buYIf13tq_F6D9As")
@@ -102,7 +120,7 @@ elif workflow == "slide-tags":
     recon_pucks = [blob.name for blob in bucket.list_blobs(prefix=f"recon") if blob.name.endswith("/Puck.csv")]
     insitu_pucks = [blob.name for blob in bucket.list_blobs(prefix=f"pucks") if blob.name.endswith(".csv")]
     all_pucks = recon_pucks + insitu_pucks
-
+    
     def pucks_to_URIs(pucks):
         URIs = []
         for puck in [s.strip() for s in pucks.split(',')]:
@@ -111,47 +129,49 @@ elif workflow == "slide-tags":
             URIs.append("gs://"+BUCKET+"/"+matches[0])
         return URIs
 
-    pucks = apply.pucks_to_URIs(df["Puck"])
-    assert False
+    pucks = df["Puck"].apply(pucks_to_URIs)
 
 
 # Compute memory requirements
 fastq_blobs = bucket.list_blobs(prefix=f"fastqs/{bcl}")
 fastqs = [(blob.name, blob.size) for blob in fastq_blobs if blob.name.endswith(".fastq.gz")]
-getfastqsizes = lambda inds: [int(sum(s for n,s in fastqs if "/"+i+"_S" in n) / 1e9) for i in inds]
+getfastqsizes = lambda inds: [math.ceil(sum(s for n,s in fastqs if "/"+i+"_S" in n) / 1e9) for i in inds]
 
 if workflow == "cellranger-count":
     # Compute the FASTQ sizes
     mem_GBs = getfastqsizes(df["RNAIndex"])
-    mem_GBs = [int(5*mem+20) for mem in mem_GBs]
+    mem_GBs = [math.ceil(5*mem+20) for mem in mem_GBs]
 
 elif workflow == "slide-tags":
     # Compute the FASTQ sizes
     mem_GBs_fastq = getfastqsizes(df["SBIndex"])
-    mem_GBs_fastq = [int(2*mem) for mem in mem_GBs_fastq]
+    mem_GBs_fastq = [math.ceil(2*mem) for mem in mem_GBs_fastq]
 
     # Compute the SBcounts.h5 size
     tags_blobs = bucket.list_blobs(prefix=f"slide-tags/{bcl}")
     tags = [(blob.name, blob.size) for blob in tags_blobs if blob.name.endswith("/SBcounts.h5")]
-
-    assert False
+    mem_GBs_mat = [max((s for n,s in tags if "/"+i+"/" in n), default=0) / 1e9 for i in df["RNAIndex"]]
+    mem_GBs_mat = [math.ceil(20*mem) for mem in mem_GBs_mat]
+    
+    # Take the max (TODO)
+    mem_GBs = [max(x,y) for x,y in zip(mem_GBs_fastq, mem_GBs_mat)]
     
 elif workflow in ["recon", "reconstruction"]:
     # Compte the FASTQ sizes
     mem_GBs_fastq = getfastqsizes(df["Index"])
-    mem_GBs_fastq = [int(2*mem) for mem in mem_GBs_fastq]
+    mem_GBs_fastq = [math.ceil(2*mem) for mem in mem_GBs_fastq]
     
     # Compute the intermediate matrix sizes
     recon_blobs = bucket.list_blobs(prefix=f"recon/{bcl}")
     recons = [(blob.name, blob.size) for blob in recon_blobs if blob.name.endswith("/knn2.npz")]
     mem_GBs_mat = [max((s for n,s in recons if "/"+i+"/" in n), default=0) / 1e9 for i in df["Index"]]
-    mem_GBs_mat = [int(25*mem) for mem in mem_GBs_mat]
+    mem_GBs_mat = [math.ceil(25*mem) for mem in mem_GBs_mat]
 
     # Take the max (TODO)
     mem_GBs = [max(x,y) for x,y in zip(mem_GBs_fastq, mem_GBs_mat)]
 
 assert all(m > 0 for m in mem_GBs), f"Incomplete memory estimation: {mem_GBs} (missing input files)"
-mem_GBs = [int(max(mem, 64)) for mem in mem_GBs]
+mem_GBs = [math.ceil(max(mem, 64)) for mem in mem_GBs]
 print(f"Memory (GB): {mem_GBs}")
 
 
@@ -218,12 +238,28 @@ def run_reconstruction(bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, lanes=No
     
     submit("reconstruction", user_comment)
     return True
-    
+
+def run_slidetags(bcl, rna_index, sb_index, puck_paths, mem_GB, disk_GB, params=None, user_comment=""):
+    body = fapi.get_workspace_config(wnamespace, workspace, cnamespace, "slide-tags").json()
+    body["inputs"]["slide_tags.bcl"] = f'"{bcl}"'
+    body["inputs"]["slide_tags.rna_index"] = f'"{rna_index}"'
+    body["inputs"]["slide_tags.sb_index"] = f'"{sb_index}"'
+    body["inputs"]["slide_tags.puck_paths"] = "[" + ", ".join(f'"{gs}"' for gs in puck_paths) + "]"
+    body["inputs"]["slide_tags.mem_GB"] = f'{mem_GB}'
+    body["inputs"]["slide_tags.disk_GB"] = f'{disk_GB}'
+    body["inputs"]["slide_tags.params"] = f'"{params}"' if pd.notna(params) else f''
+    body["inputs"]["slide_tags.docker"] = f''
+    res = fapi.update_workspace_config(wnamespace, workspace, cnamespace, "slide-tags", body)
+    assert res.status_code == 200, res.json()['message']
+
+    submit("slide-tags", user_comment)
+    return True
 
 if workflow == "cellranger-count":
     assert False
 elif workflow == "slide-tags":
-    assert False
+    for r, p, m, j in zip(df.itertuples(index=False), pucks, mem_GBs, job_names):
+        run_slidetags(r.BCL, r.RNAIndex, r.SBIndex, p, m, m, "|| true", j)
 elif workflow in ["recon", "reconstruction"]:
     for r, m, j in zip(df.itertuples(index=False), mem_GBs, job_names):
         assert r.Index.count("-") <= 1

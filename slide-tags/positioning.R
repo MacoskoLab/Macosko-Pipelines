@@ -5,6 +5,7 @@
 ################################################################################
 
 suppressMessages(source("helpers.R"))
+suppressMessages(source("plots.R"))
 setDTthreads(parallelly::availableCores())
 
 # Load arguments
@@ -13,7 +14,7 @@ arguments <- OptionParser(
   usage = "Usage: Rscript positioning.R SBcounts_path CBwhitelist_path output_path [options]",
   option_list = list(
     make_option("--knn", type="integer", default=51L, help = "Number of bead neighbors used to compute eps [default: %default]", metavar="K"),
-    make_option("--cmes", type="double", default=1.0, help = "???"),
+    make_option("--cmes", type="double", default=10.0, help = "???"),
     make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]", metavar="prob")
   )
 ) %>% parse_args(positional_arguments=3)
@@ -38,13 +39,8 @@ print(g("prob: {prob}"))
 # cb_path <- "output/cb_whitelist.txt"
 # out_path <- "output"
 # knn <- 51L
-# cmes <- 2.0
+# cmes <- 10.0
 # prob <- 1.0
-
-# sb_path <- "GG/SBcounts.h5"
-# cb_path <- "GG/cb_whitelist.txt"
-# out_path <- "GGo"
-# k <- 51L
 
 # Check input arguments
 if (!dir.exists(out_path)) {dir.create(out_path, recursive=TRUE)}
@@ -397,5 +393,12 @@ fwrite(coords_global, file.path(out_path, "coords.csv"))
 # fwrite(coords_dynamic, file.path(out_path, "coords2.csv"))
 
 ### Final check ###
+plotlist <- c("SBlibrary.pdf","SBplot.pdf","SBmetrics.pdf",
+              "GDBSCANopt.pdf", "GDBSCAN1.pdf", "GDBSCAN2.pdf")
+pdfs <- file.path(out_path, plotlist)
+pdfs %<>% keep(file.exists)
+qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "SBsummary.pdf"))
+file.remove(pdfs)
+
 #stopifnot(coords_global$cb_index == coords_dynamic$cb_index)
 #stopifnot(file.exists(file.path(out_path, c("coords.csv", "coords2.csv"))))
