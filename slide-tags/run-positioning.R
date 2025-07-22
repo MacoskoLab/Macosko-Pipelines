@@ -6,7 +6,6 @@
 ### Input: path to SBcounts.h5 (output of spatial-count.jl)
 ### Output: obj.qs, summary.pdf (in addition to positioning.R outputs)
 ################################################################################
-setwd("/broad/macosko/mshabet/testing/positioning/")
 
 stopifnot(file.exists("positioning.R", "helpers.R", "plots.R"))
 suppressMessages(source("helpers.R"))
