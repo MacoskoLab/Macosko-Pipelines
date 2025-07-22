@@ -6,6 +6,7 @@
 ### Input: path to SBcounts.h5 (output of spatial-count.jl)
 ### Output: obj.qs, summary.pdf (in addition to positioning.R outputs)
 ################################################################################
+setwd("/broad/macosko/mshabet/testing/positioning/")
 
 stopifnot(file.exists("positioning.R", "helpers.R", "plots.R"))
 suppressMessages(source("helpers.R"))
@@ -36,13 +37,12 @@ positioning_args <- paste0(arguments$options$knn %>% {ifelse(is.null(.), "", g("
                            arguments$options$cmes %>% {ifelse(is.null(.), "", g(" --cmes={.}"))},
                            arguments$options$prob %>% {ifelse(is.null(.), "", g(" --prob={.}"))}) %>% trimws
 
-
 # Check arguments
 print(g("RNA dir: {normalizePath(rna_path)}"))
 stopifnot("RNA dir not found" = dir.exists(rna_path))
 stopifnot("RNA dir empty" = len(list.files(rna_path)) > 0)
 
-print(g("SB file: {normalizePath(sb_path)}"))
+print(g("SB path: {normalizePath(sb_path)}"))
 if (dir.exists(sb_path)) { sb_path = file.path(sb_path, "SBcounts.h5") }
 stopifnot("SB path is not SBcounts.h5" = str_sub(sb_path, -11, -1) == "SBcounts.h5")
 stopifnot("SBcounts.h5 not found" = file.exists(sb_path))
@@ -92,6 +92,7 @@ if (!is.null(cells)) {
     pct_intronic <- ReadIntronic(matrix_path,
                                  trim_10X_CB(colnames(mat)))
   } else {
+    print("No Intronic file found")
     pct_intronic <- rep(NA, len(cb_list))
   }
   
@@ -176,14 +177,13 @@ if (!is.null(cells)) {
   # Create Seurat object
   # Add metadata
   
-  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^(MT-|mt-)")
+  obj$pct_mt <- PercentageFeatureSet(obj, pattern = "^(MT-|Mt-|mt-)") / 100
   
   stopifnot(FALSE)
   
 }
 
-# TODO: cb + add /obs and /var etc
-obj[["cb"]] <- trim_10X_CB(colnames(obj)) %T>% {stopifnot(!duplicated(.))}
+# TODO: add /obs and /var etc
 
 # Plot library metrics + add to object
 if (file.exists(file.path(rna_path, "metrics_summary.csv"))) { # 10X
@@ -193,10 +193,10 @@ if (file.exists(file.path(rna_path, "metrics_summary.csv"))) { # 10X
   print("Loading library_metrics.csv")
   df <- list.files(rna_path, full.names=TRUE) %>% 
     keep(~str_sub(., -20) == "_library_metrics.csv") %T>% 
-    {stopifnot(len(.) <= 1)} %>% 
+    {stopifnot(len(.) == 1)} %>% 
     ReadLibraryMetrics()
 }
-Misc(obj, "metrics") <- setNames(df[,2], df[,1])
+Misc(obj, "gex_metrics") <- setNames(df[,2], df[,1])
 plot_metrics_csv(df) %>% make.pdf(file.path(out_path, "RNAmetrics.pdf"), 7, 8)
 
 # Normalize, HVG, Scale, PCA, Neighbors, Clusters, UMAP
@@ -216,38 +216,39 @@ print(g("Loaded {ncol(obj)} cells"))
 
 ### DBSCAN #####################################################################
 
-cb_whitelist = unname(obj$cb)
-writeLines(cb_whitelist, file.path(out_path, "cb_whitelist.txt"))
+# Write cell barcode sequences
+colnames(obj) %>% trim_10X_CB %>% writeLines(file.path(out_path, "cb_whitelist.txt"))
 
 # Assign a position to each whitelist cell
 print(g("\nRunning positioning.R"))
 system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} {positioning_args}"))
 
-stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
-                      file.path(out_path, "spatial_metadata.json"),
-                      file.path(out_path, "coords.csv"),
-                      file.path(out_path, "coords2.csv")))
+# stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
+#                       file.path(out_path, "spatial_metadata.json"),
+#                       file.path(out_path, "SBsummary.pdf"),
+#                       file.path(out_path, "coords.csv"),
+#                       file.path(out_path, "coords2.csv")))
 
 ### Add to Seurat object #######################################################
 
-Misc(obj, "SB_metadata") <- jsonlite::fromJSON(file.path(out_path, "spatial_metadata.json"))
+Misc(obj, "sb_metrics") <- jsonlite::fromJSON(file.path(out_path, "spatial_metadata.json"))
 
-coords_global <- fread(file.path(out_path, "coords.csv"), header=TRUE, sep=",")
-#coords_dynamic <- fread(file.path(out_path, "coords2.csv"), header=TRUE, sep=",")
-Misc(obj, "coords_global") <- coords_global
-#Misc(obj, "coords_dynamic") <- coords_dynamic
+coords <- fread(file.path(out_path, "coords.csv"), header=TRUE, sep=",")
+#coords2 <- fread(file.path(out_path, "coords2.csv"), header=TRUE, sep=",")
+Misc(obj, "coords") <- coords
+#Misc(obj, "coords2") <- coords_dynamic
 
 # Create spatial reduction
-coords <- obj@meta.data %>% select(cb) %>% left_join(coords_global, by="cb") %>% select(x,y,clusters)
-obj %<>% AddMetaData(coords)
+stopifnot(nrow(coords) == ncol(obj), coords$cb == trim_10X_CB(colnames(obj)))
+obj %<>% AddMetaData(coords[,.(x,y,clusters)])
 
-emb <- coords %>% select(x,y)
+emb <- coords %>% as.data.frame %>% select(x,y)
 colnames(emb) <- c("d_1","d_2") ; rownames(emb) = rownames(obj@meta.data)
-obj[["dbscan"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "d_", assay = "RNA")
+obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "d_", assay = "RNA")
 #colnames(emb) <- c("s_1","s_2") ; rownames(emb) = rownames(obj@meta.data)
 #obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_", assay = "RNA")
 
-plot_clusters(obj, reduction="dbscan") %>% make.pdf(file.path(out_path,"DimPlot.pdf"), 7, 8)
+plot_clusters(obj, reduction="spatial") %>% make.pdf(file.path(out_path,"DimPlot.pdf"), 7, 8)
 plot_RNAvsSB(obj) %>% make.pdf(file.path(out_path, "RNAvsSB.pdf"), 7, 8)
 
 # Merge the PDF files

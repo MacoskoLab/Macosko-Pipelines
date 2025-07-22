@@ -22,13 +22,6 @@ h_index <- function(vec) {
   return(data.table(x=vec)[,.(n=.N),x][order(-x), max(pmin(x, cumsum(n)), default=0)])
 }
 
-make.pdf <- function(plots, name, w, h) {
-  if (any(c("gg", "ggplot", "Heatmap") %in% class(plots))) {plots = list(plots)}
-  pdf(file=name, width=w, height=h)
-  lapply(plots, print)
-  invisible(dev.off())
-}
-
 remap_10X_CB <- function(vec) {
   basemap <- setNames(c("AG","TC","CA","GT"), c("TC","AG","GT","CA"))
   return(paste0(substr(vec,1,7), basemap[substr(vec,8,9)], substr(vec,10,16)))
@@ -65,6 +58,16 @@ trim_10X_CB <- function(vec) {
 ################################################################################
 ### Loading methods ############################################################
 ################################################################################
+
+# Supports 10X and Optimus formats
+ReadLibraryMetrics <- function(metrics_path) {
+  df <- read.table(metrics_path, header=FALSE, sep=",", comment.char="")
+  if (ncol(df) > nrow(df)) { df %<>% t } # 10X
+  df %<>% as.data.frame
+  rownames(df) <- NULL
+  colnames(df) <- NULL
+  return(df)
+}
 
 # Supports Optimus and BICAN .h5ad formats
 ReadAnnDataX <- function(matrix_path, calledonly=TRUE) {
@@ -140,22 +143,8 @@ ReadIntronic <- function(intronic_path, cb_list) {
   return(pct_intronic)
 }
 
-# Supports 10X and Optimus formats
-ReadLibraryMetrics <- function(metrics_path) {
-  if (!file.exists(metrics_path)) {
-    print("")
-    return(data.frame())
-  }
-  
-  # Read the csv
-  df <- read.table(metrics_path, header=FALSE, sep=",", comment.char="")
-  if (ncol(df) > nrow(df)) { df %<>% t } # 10X
-  df %<>% as.data.frame
-  rownames(df) <- NULL
-  colnames(df) <- NULL
-  
-  return(df)
-}
+
+
 
 
 ReadSpatialMatrix <- function(f) {

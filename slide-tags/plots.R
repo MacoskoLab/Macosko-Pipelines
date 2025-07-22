@@ -3,6 +3,12 @@ library(ggrastr)
 
 gdraw <- function(text, s=14) {cowplot::ggdraw()+cowplot::draw_label(text, size=s)}
 plot.tab <- function(df) {return(cowplot::plot_grid(gridExtra::tableGrob(df, rows=NULL)))}
+make.pdf <- function(plots, name, w, h) {
+  if (any(c("gg", "ggplot", "Heatmap") %in% class(plots))) {plots = list(plots)}
+  pdf(file=name, width=w, height=h)
+  lapply(plots, print)
+  invisible(dev.off())
+}
 
 ################################################################################
 ### RNA plots ##################################################################
@@ -27,7 +33,7 @@ plot_metrics_csv <- function(df) {
   nslots <- (33/689*768 - 20/531*768)/(33 - 20) * (nrow(df) - 20) + 20/531*768
   hide_cols <- c("NHashID","keeper_cells","percent_keeper","percent_target","percent_usable","keeper_mean_reads_per_cell","keeper_median_genes")
   plot <- plot_grid(gdraw(""),
-                    gdraw("Metrics Summary"),
+                    gdraw("GEX Metrics Summary"),
                     plot.tab(df[!df[,1] %in% hide_cols,]),
                     gdraw(""),
                     ncol=1, rel_heights=c((nslots-nrow(df)-1)/2-1, 1+1, nrow(df), (nslots-nrow(df)-1)/2)) #c(0.1,0.1,nrow(df)/11L,0.1))
@@ -44,8 +50,9 @@ plot_cellcalling <- function(dt, ct=200) {
   plotdf <- plotdf[plotdf$umi != lag(plotdf$umi,1,0) | plotdf$umi != lead(plotdf$umi,1,0)]
   p1 <- ggplot(plotdf, aes(x=index, y=umi, col=called)) + geom_line() + 
     theme_bw() + scale_x_log10() + scale_y_log10() +
-    scale_color_manual(values = c("Cells"="#00BFC4", "Background"="#F8766D")) +
-    labs(title="Cell barcode rank plot", x="Barcode rank", y="UMI counts")
+    scale_color_manual(values=c("Cells"="#00BFC4", "Background"="#F8766D"),
+                       breaks=c("Cells","Background")) +
+    labs(title="Cell barcode rank plot", x="Barcode rank", y="UMI counts", color=NULL)
   
   # Panel 2: cell calling cloud
   if (is.null(dt$pct_intronic) || all(dt$pct_intronic==0) || all(is.na(dt$pct_intronic))) {
@@ -54,19 +61,30 @@ plot_cellcalling <- function(dt, ct=200) {
     p2 <- gdraw(g("No cells with {ct}+ UMI"))
   } else {
     p2 <- dt[umi >= ct] %>% ggplot(aes(x=log10(umi), y=pct_intronic, color=called)) + 
-      ggrastr::rasterize(geom_point(alpha=0.1, size=0.5), dpi=300) +
-      scale_color_manual(values = c("Cells"="#00BFC4", "Background"="#F8766D")) +
-      labs(title="Cell calling", x="log10(UMI)", y="%Intronic")
+      ggrastr::rasterize(geom_point(alpha=0.2, size=0.5), dpi=300) +
+      theme_bw() +
+      scale_color_manual(values=c("Cells"="#00BFC4", "Background"="#F8766D"),
+                         breaks=c("Cells","Background")) +
+      labs(title="Cell calling", x="log10(UMI)", y="%Intronic", color=NULL)
   }
   
-  plot <- plot_grid(p1, p2, ncol=1)
+  plot <- plot_grid(gdraw(g("Called cells: {sum(dt$called=='Cells')}")), p1, p2,
+                    ncol=1, rel_heights=c(0.1,1,1))
   return(plot)
 }
 
 # Page 3: UMAP + QC
 plot_umaps <- function(obj) {
-  mytheme <- function(){theme(plot.title=element_text(hjust=0.5), axis.title.x=element_blank(), axis.title.y=element_blank(), legend.position="top", legend.justification="center", legend.key.width=unit(2, "lines"))}
-  p1 <- DimPlot(obj, label=TRUE) + ggtitle(g("UMAP")) + mytheme() + NoLegend()  + coord_fixed(ratio=1)
+  mytheme <- function(){theme(plot.title=element_text(hjust=0.5, size=12),
+                              axis.title.x=element_blank(),
+                              axis.title.y=element_blank(),
+                              axis.text.x=element_text(size=10),
+                              axis.text.y=element_text(size=10),
+                              legend.position="top",
+                              legend.justification="center",
+                              legend.key.width=unit(2, "lines"),
+                              legend.key.height=unit(0.5, "lines"))}
+  p1 <- DimPlot(obj, label=TRUE) + ggtitle(g("UMAP")) + mytheme() + NoLegend() + coord_fixed(ratio=1)
   
   # Violin plots
   obj$log10UMI <- log10(obj$nCount_RNA)
@@ -255,15 +273,15 @@ plot_SBmetrics <- function(metadata) {
   }
   
   # Panel D
-  plot.df <- data.frame(R1s=metadata$SB_info$R1s %>% basename,
-                        R2s=metadata$SB_info$R1s %>% basename)
+  plot.df <- data.frame(R1s=metadata$SB_info$R1s %>% basename %>% str_remove("_R1_001.fastq.gz$"),
+                        R2s=metadata$SB_info$R2s %>% basename %>% str_remove("_R2_001.fastq.gz$"))
   if (nrow(plot.df) > 4) {
     plot.df <- rbind(plot.df[1:3,], data.frame(R1s=g("({nrow(plot.df)-3} more)"), R2s=g("({nrow(plot.df)-3} more)")))
   }
   D1 <- plot_grid(gdraw("Spatial library FASTQs", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1, 0.5))
   
   plot <- plot_grid(
-    gdraw("Spatial library metadata", 15),
+    gdraw("Spatial Metrics Summary", 15),
     plot_grid(A1, A2, ncol=2, rel_widths = c(0.38, 0.62)),
     plot_grid(B1, B2, B3, ncol=3),
     plot_grid(C1, C2, ncol=2, rel_widths = c(0.35, 0.65)),
@@ -623,15 +641,15 @@ plot_clusters <- function(obj, reduction) {
 
 # RNA vs SB metrics
 plot_RNAvsSB <- function(obj) {
-  if (!is.null(Misc(obj,"coords_global")$umi)) {
-    obj$sb_umi <- Misc(obj,"coords_global")$umi %>% tidyr::replace_na(0)
-  } else if (!is.null(Misc(obj,"coords_global")$umi_dbscan)) {
-    obj$sb_umi <- Misc(obj,"coords_global")$umi_dbscan %>% tidyr::replace_na(0)
+  if (!is.null(Misc(obj,"coords")$umi)) {
+    obj$sb_umi <- Misc(obj,"coords")$umi %>% tidyr::replace_na(0)
+  } else if (!is.null(Misc(obj,"coords")$umi_dbscan)) {
+    obj$sb_umi <- Misc(obj,"coords")$umi_dbscan %>% tidyr::replace_na(0)
   } else {
     obj$sb_umi = 0
   }
   
-  obj$clusters <- Misc(obj,"coords_global")$clusters %>% tidyr::replace_na(0)
+  obj$clusters <- Misc(obj,"coords")$clusters %>% tidyr::replace_na(0)
   obj$placed <- !is.na(obj$x) & !is.na(obj$y)
   
   p1 <- ggplot(obj@meta.data, aes(x=log10(nCount_RNA), y=log10(sb_umi), col=placed)) + 

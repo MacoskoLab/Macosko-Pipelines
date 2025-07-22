@@ -11,7 +11,7 @@ setDTthreads(parallelly::availableCores())
 # Load arguments
 library(optparse)
 arguments <- OptionParser(
-  usage = "Usage: Rscript positioning.R SBcounts_path CBwhitelist_path output_path [options]",
+  usage = "Usage: Rscript positioning.R SBcounts_path CBwhitelist_path out_path [options]",
   option_list = list(
     make_option("--knn", type="integer", default=51L, help = "Number of bead neighbors used to compute eps [default: %default]", metavar="K"),
     make_option("--cmes", type="double", default=10.0, help = "???"),
@@ -34,13 +34,6 @@ print(g("out_path: {out_path}"))
 print(g("knn: {knn}"))
 print(g("cmes: {cmes}"))
 print(g("prob: {prob}"))
-
-# sb_path <- "RNA/SBcounts.h5"
-# cb_path <- "output/cb_whitelist.txt"
-# out_path <- "output"
-# knn <- 51L
-# cmes <- 10.0
-# prob <- 1.0
 
 # Check input arguments
 if (!dir.exists(out_path)) {dir.create(out_path, recursive=TRUE)}
@@ -392,8 +385,9 @@ fwrite(coords_global, file.path(out_path, "coords.csv"))
 # # Save coords
 # fwrite(coords_dynamic, file.path(out_path, "coords2.csv"))
 
-### Final check ###
-plotlist <- c("SBlibrary.pdf","SBplot.pdf","SBmetrics.pdf",
+### Final check ################################################################
+
+plotlist <- c("SBmetrics.pdf","SBlibrary.pdf","SBplot.pdf",
               "GDBSCANopt.pdf", "GDBSCAN1.pdf", "GDBSCAN2.pdf")
 pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)
