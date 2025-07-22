@@ -60,17 +60,18 @@ task tags {
     fi
 
     echo "----- Downloading gene expression -----"
-    mkdir rna
-    gcloud storage cp "$gex_dir/*.h5" rna || true
-    gcloud storage cp "$gex_dir/*.h5ad" rna || true
-    gcloud storage cp "$gex_dir/*.csv" rna || true
-    ls -1 rna
+    mkdir gex
+    gcloud storage cp "$gex_dir/*.h5" gex || true
+    gcloud storage cp "$gex_dir/*.h5ad" gex || true
+    gcloud storage cp "$gex_dir/*.csv" gex || true
+    ls -1 gex
 
     echo "----- Running slide-tags -----"
-    Rscript run-positioning.R rna cache output ~{params}
+    Rscript run-positioning.R gex cache output ~{params}
 
     echo "----- Uploading results -----"
     gcloud storage cp -r output/* "$tags_dir/"
+    gcloud storage cp gex/dropsift.csv "$gex_dir/" || true
 
     echo "==================== END SLIDE-TAGS ===================="
 
