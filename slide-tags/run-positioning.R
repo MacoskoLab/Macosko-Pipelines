@@ -84,12 +84,10 @@ if (!is.null(cells)) {
   # Load the %intronic
   if (file.exists(file.path(rna_path, "molecule_info.h5"))) {
     print("Loading molecule_info.h5")
-    pct_intronic <- ReadIntronic(file.path(rna_path, "molecule_info.h5"),
-                                 trim_10X_CB(colnames(mat)))
+    pct_intronic <- ReadIntronic(file.path(rna_path, "molecule_info.h5"), colnames(mat))
   } else if (str_ends(matrix_path, ".h5ad")) {
     print("Loading .h5ad")
-    pct_intronic <- ReadIntronic(matrix_path,
-                                 trim_10X_CB(colnames(mat)))
+    pct_intronic <- ReadIntronic(matrix_path, colnames(mat))
   } else {
     print("No Intronic file found")
     pct_intronic <- rep(NA, len(cb_list))
@@ -151,52 +149,65 @@ if (!is.null(cells)) {
   obj$pct_mt <- pct_mt[mask]
   
 } else {
-  
   # Load the filtered matrix
   if (file.exists(file.path(rna_path, "filtered_feature_bc_matrix.h5"))) {
     print("Loading filtered_feature_bc_matrix.h5")
     mat <- Read10X_h5(file.path(rna_path, "filtered_feature_bc_matrix.h5"))
-    
   } else if (dir.exists(file.path(rna_path, "filtered_feature_bc_matrix"))) {
     print("Loading filtered_feature_bc_matrix")
     mat <- Read10X(file.path(rna_path, "filtered_feature_bc_matrix"))
-    
   } else if (any(str_ends(list.files(rna_path), ".h5ad"))) {
     print("Loading .h5ad")
-    matrix_path <-  list.files(rna_path, full.names=T) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)==1)}
-    mat <- ReadOptimus(matrix_path, calledonly=TRUE)
-    pct_intronic <- ReadIntronicOptimus(matrix_path)
+    matrix_path <-  list.files(rna_path, full.names=TRUE) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)==1)}
+    mat <- ReadAnnDataX(matrix_path, calledonly=TRUE)
   } else {
     rna_files <- list.files(rna_path) %>% paste0(collapse="\n")
     stop(g("Unable to find filtered data:\n{rna_files}"), call. = FALSE)
   }
   
   # Load the %intronic
-  # Load the %mito
+  if (file.exists(file.path(rna_path, "molecule_info.h5"))) {
+    print("Loading molecule_info.h5")
+    pct_intronic <- ReadIntronic(file.path(rna_path, "molecule_info.h5"), colnames(mat))
+  } else if (str_ends(matrix_path, ".h5ad")) {
+    print("Loading .h5ad")
+    pct_intronic <- ReadIntronic(matrix_path, colnames(mat))
+  } else {
+    print("No Intronic file found")
+    pct_intronic <- rep(NA, len(cb_list))
+  }
+  
+  # Load the %mt
+  pct_mt <- colSums(mat[grepl("^MT-", rownames(mat), ignore.case=TRUE),]) / colSums(mat)
+  pct_mt %<>% unname
+  
   # Create Seurat object
+  obj <- CreateSeuratObject(mat, project = "Slide-tags")
+  rm(mat) ; invisible(gc())
+  
   # Add metadata
-  
-  obj$pct_mt <- PercentageFeatureSet(obj, pattern = "^(MT-|Mt-|mt-)") / 100
-  
-  stopifnot(FALSE)
-  
+  obj$pct_intronic <- pct_intronic
+  obj$pct_mt <- pct_mt
 }
-
-# TODO: add /obs and /var etc
 
 # Plot library metrics + add to object
 if (file.exists(file.path(rna_path, "metrics_summary.csv"))) { # 10X
   print("Loading metrics_summary.csv")
-  df <- ReadLibraryMetrics(file.path(rna_path, "metrics_summary.csv"))
+  df <- file.path(rna_path, "metrics_summary.csv") %>% 
+    read.table(header=FALSE, sep=",", comment.char="") %>% t %>% as.data.frame
 } else if (any(str_ends(list.files(rna_path), "_library_metrics.csv"))) { # Optimus
   print("Loading library_metrics.csv")
   df <- list.files(rna_path, full.names=TRUE) %>% 
     keep(~str_sub(., -20) == "_library_metrics.csv") %T>% 
     {stopifnot(len(.) == 1)} %>% 
-    ReadLibraryMetrics()
+    read.table(header=FALSE, sep=",", comment.char="")
+} else {
+  df <- data.frame()
 }
-Misc(obj, "gex_metrics") <- setNames(df[,2], df[,1])
-plot_metrics_csv(df) %>% make.pdf(file.path(out_path, "RNAmetrics.pdf"), 7, 8)
+if (ncol(df) > 0) {
+  Misc(obj, "gex_metrics") <- setNames(df[,2], df[,1])
+  plot_metrics_csv(df) %>% make.pdf(file.path(out_path, "RNAmetrics.pdf"), 7, 8)
+}
 
 # Normalize, HVG, Scale, PCA, Neighbors, Clusters, UMAP
 obj %<>%
@@ -257,7 +268,7 @@ plotlist <- c("RNAmetrics.pdf","RNAlibrary.pdf","RNAplot.pdf",
 pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)
 qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "summary.pdf"))
-#file.remove(pdfs)
+file.remove(pdfs)
 
 # Save the seurat object
 qsave(obj, file.path(out_path, "seurat.qs"))

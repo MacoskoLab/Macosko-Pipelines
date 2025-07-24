@@ -5,7 +5,7 @@ gdraw <- function(text, s=14) {cowplot::ggdraw()+cowplot::draw_label(text, size=
 plot.tab <- function(df) {return(cowplot::plot_grid(gridExtra::tableGrob(df, rows=NULL)))}
 make.pdf <- function(plots, name, w, h) {
   if (any(c("gg", "ggplot", "Heatmap") %in% class(plots))) {plots = list(plots)}
-  pdf(file=name, width=w, height=h)
+  grDevices::pdf(file=name, width=w, height=h)
   lapply(plots, print)
   invisible(dev.off())
 }
@@ -17,8 +17,11 @@ make.pdf <- function(plots, name, w, h) {
 # Page 1: 10X/Optimus RNA metrics
 plot_metrics_csv <- function(df) {
   if (nrow(df) == 0) {
-    return(gdraw("No metrics_summary.csv found"))
+    return(gdraw("No GEX CSV metrics found"))
   }
+  
+  rownames(df) <- NULL
+  colnames(df) <- NULL
   
   # Format decimals as percents, add commas to large numbers
   if (is.numeric(df[,2])) {

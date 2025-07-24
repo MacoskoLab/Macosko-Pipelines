@@ -59,16 +59,6 @@ trim_10X_CB <- function(vec) {
 ### Loading methods ############################################################
 ################################################################################
 
-# Supports 10X and Optimus formats
-ReadLibraryMetrics <- function(metrics_path) {
-  df <- read.table(metrics_path, header=FALSE, sep=",", comment.char="")
-  if (ncol(df) > nrow(df)) { df %<>% t } # 10X
-  df %<>% as.data.frame
-  rownames(df) <- NULL
-  colnames(df) <- NULL
-  return(df)
-}
-
 # Supports Optimus and BICAN .h5ad formats
 ReadAnnDataX <- function(matrix_path, calledonly=TRUE) {
   fetch <- function(x){return(rhdf5::h5read(matrix_path, x))}
@@ -117,6 +107,7 @@ ReadAnnDataX <- function(matrix_path, calledonly=TRUE) {
 ReadIntronic <- function(intronic_path, cb_list) {
   fetch <- function(x){return(rhdf5::h5read(intronic_path, x))}
   fields <- rhdf5::h5ls(intronic_path)$name
+  cb_list %<>% trim_10X_CB
   
   if (all(c("barcodes", "barcode_idx", "umi_type") %in% fields)) { # 10X
     barcodes <- fetch("barcodes")
@@ -142,9 +133,6 @@ ReadIntronic <- function(intronic_path, cb_list) {
   
   return(pct_intronic)
 }
-
-
-
 
 
 ReadSpatialMatrix <- function(f) {
