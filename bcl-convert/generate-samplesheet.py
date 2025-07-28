@@ -1,12 +1,11 @@
-# generate a bclvonert-compliant sampleshet
+# generate a bclconvert-compliant sampleshet
 
 # script takes in a comma-delimited list of lanes (ints [1,8]),
 # and a comma-delimited list of indexes (strings),
-# and a flowcell name
+# and a flowcell name (string)
 
 # saves a Macosko-Pipelines/bcl-convert/samplesheets/<name>-samplesheet.csv
-# containin lane info and the appropiate sequence indexes for each library
-
+# containing lane info and the appropiate sequence indexes for each library
 
 # todo: optionally take in index names that are user-defined 
 # i.e. human-readable lib names as oppsosed to SI-.*
