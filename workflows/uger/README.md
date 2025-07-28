@@ -70,6 +70,7 @@ Command line flags override job script settings
 `-l resource=value`: Launch the job in a UGER queue meeting the given resource request list
 * `-l h_rt=<hh:mm:ss>`: Hard run time limit
 * `-l h_vmem=<size>`: Hard virtual memory limit (per processor slot)
+* `-l h=<hostname>`: UGER host
 
 
 ## UGER host resources:

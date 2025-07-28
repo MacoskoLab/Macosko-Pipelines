@@ -35,6 +35,7 @@ def blob2link(blob):
 df = get_as_dataframe(sh.worksheet("Recon"))
 ranges = {col: get_column_letter(df.columns.get_loc(col)+1)+"2" for col in ["QC", "summary", "FASTQs"]}
 df = df.drop(columns=["QC", "summary", "FASTQs"])
+df = df.dropna(subset=['BCL', 'Index'])
 dups = df.duplicated(subset=["BCL", "Index"])
 assert not dups.any(), f"Recon sheet has duplicated BCL/Index pair:\n{df[dups]}"
 
@@ -69,6 +70,7 @@ df = get_as_dataframe(sh.worksheet("Slide-tags"))
 ranges = {col: get_column_letter(df.columns.get_loc(col)+1)+"2" for col in ["web_summary", "summary", "FASTQs"]}
 df = df.drop(columns=["web_summary", "summary", "FASTQs"])
 df.rename(columns={'RNAIndex': 'Index'}, inplace=True)
+df = df.dropna(subset=['BCL', 'Index'])
 dups = df.duplicated(subset=["BCL", "Index"])
 assert not dups.any(), f"Slide-tags sheet has duplicated BCL/RNAIndex pair:\n{df[dups]}"
 

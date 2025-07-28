@@ -4,7 +4,7 @@ ENV LANGUAGE C.UTF-8
 ENV LC_ALL C.UTF-8
 RUN echo "\numask 002" >> /etc/profile
 
-# Install system libraries
+# Install system packages
 RUN apt-get update && apt-get install -y  \
     sudo zip unzip less tree expect       \
     wget curl rsync socat                 \
@@ -67,7 +67,7 @@ RUN wget -P /opt https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.1
     rm /opt/julia-1.10.5-linux-x86_64.tar.gz && \
     ln -s /opt/julia-1.10.5/bin/julia /usr/local/bin/julia
 
-# Install Julia libraries
+# Install Julia packages
 RUN julia -e 'using Pkg;                \
               Pkg.add(["CSV",           \
                        "XAM",           \
@@ -104,7 +104,7 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
     rm rstudio-server-2024.09.0-375-amd64.deb && \
     rstudio-server stop && sleep 1
 
-# Install R libraries
+# Install R packages
 RUN R -e "install.packages(c('tidyverse', \
                              'dplyr', 'tidyr', 'purrr', 'magrittr', \
                              'future', 'furrr', 'parallelly', \
