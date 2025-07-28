@@ -1,25 +1,18 @@
 #!/bin/bash
 
-# A failsafe script to move a LOCAL folder to a GCS bucket using `gcloud storage mv` or `gcloud storage cp`,
+# A failsafe script to move a LOCAL folder to a GCS bucket using `gcloud storage mv`
 # retrying until all files are moved. Uses `tree` to ensure that no files remain.
 
 set -euo pipefail
 
 # Check arguments
-if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <source-dir> <gcs-destination> <command>"
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <source-dir> <gcs-destination>"
     exit 1
 fi
 
 SOURCE_DIR="$1"
 DEST="$2"
-COMMAND="${3:-mv}" # command is default mv, but it can be overridden with cp
-
-# Command must be mv or cp!
-if [[ "$COMMAND" != "mv" && "$COMMAND" != "cp" ]]; then
-    echo "Error: Command must be 'mv' or 'cp'."
-    exit 1
-fi
 
 # Check that source is a local directory
 if [ ! -d "$SOURCE_DIR" ]; then
@@ -30,6 +23,12 @@ fi
 # Check if `tree` is installed
 if ! command -v tree &>/dev/null; then
     echo "Error: 'tree' command not found. Please install it (e.g., 'sudo apt install tree')."
+    exit 1
+fi
+
+# Check that `tree` does not result in a permission error
+if ! tree "$SOURCE_DIR" &>/dev/null; then
+    echo "Error: Unable to read source directory '$SOURCE_DIR'. Check permissions."
     exit 1
 fi
 
@@ -46,8 +45,8 @@ echo "Starting move from local '$SOURCE_DIR_ABS' to GCS '$DEST'"
 file_count=$(tree "$SOURCE_DIR_ABS" | tail -n 1 | awk '{print $3}')
 
 while [[ "$file_count" != "0" && "$attempt" -le "$MAX_RETRIES" ]]; do
-    echo "Attempt $attempt: $file_count files remain. Running gcloud storage $COMMAND..."
-    gcloud storage "$COMMAND" -r "$SOURCE_DIR_ABS" "$DEST" || true # Ignore errors to allow retries
+    echo "Attempt $attempt: $file_count files remain. Running gcloud storage mv..."
+    gcloud storage mv "$SOURCE_DIR_ABS" "$DEST" || true # Ignore errors to allow retries
 
     sleep "$RETRY_DELAY"
 
@@ -57,7 +56,7 @@ while [[ "$file_count" != "0" && "$attempt" -le "$MAX_RETRIES" ]]; do
 done
 
 if [[ "$file_count" == "0" ]]; then
-    echo "SUCCES! All files successfully moved."
+    echo "SUCCESS! All files successfully moved."
 else
     echo "ERROR! Maximum retries exceeded. $file_count files still remain in '$SOURCE_DIR_ABS'."
     exit 2
