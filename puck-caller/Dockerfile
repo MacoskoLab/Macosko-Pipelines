@@ -25,7 +25,7 @@ RUN /root/.local/bin/micromamba install -y -n base -c conda-forge  \
                                   opencv open3d && \
     /root/.local/bin/micromamba install -y -n base -c pytorch -c nvidia \
                     pytorch torchvision torchaudio pytorch-cuda=12.1 && \
-    /root/.local/bin/micromamba run pip install cellpose && \
+    /root/.local/bin/micromamba run pip install cellpose==3.1.1.2 && \
     /root/.local/bin/micromamba clean --all --yes
 # pip uninstall torch
 
