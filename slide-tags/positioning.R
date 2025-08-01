@@ -271,7 +271,7 @@ for (i in seq_along(data.list)) {
 # Merge clusters within [eps * cmes] of DBSCAN=1
 if (cmes > 0) {
   for (i in seq_along(data.list)) {
-    if (nrow(dl) == 0) { next }
+    if (nrow(data.list[[i]]) == 0) { next }
     near_centroids <- which(centroid_dists(data.list[[i]]) < eps * cmes)
     data.list[[i]][cluster %in% near_centroids, cluster := pmin(cluster, 1)]
     data.list[[i]][cluster>0, cluster := match(cluster, sort(unique(cluster)))]
