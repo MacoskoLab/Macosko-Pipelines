@@ -14,7 +14,7 @@ arguments <- OptionParser(
   usage = "Usage: Rscript positioning.R SBcounts_path CBwhitelist_path out_path [options]",
   option_list = list(
     make_option("--knn", type="integer", default=51L, help = "Number of bead neighbors used to compute eps [default: %default]", metavar="K"),
-    make_option("--cmes", type="double", default=10.0, help = "???"),
+    make_option("--cmes", type="double", default=10.0, help = ""),
     make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]", metavar="prob")
   )
 ) %>% parse_args(positional_arguments=3)
@@ -36,8 +36,10 @@ print(g("cmes: {cmes}"))
 print(g("prob: {prob}"))
 
 # Check input arguments
-if (!dir.exists(out_path)) {dir.create(out_path, recursive=TRUE)}
 stopifnot(filter(rhdf5::h5ls(sb_path), group=="/matrix")$name == c("cb_index", "reads", "sb_index", "umi"))
+stopifnot(file.exists(cb_path))
+if (!dir.exists(out_path)) {dir.create(out_path, recursive=TRUE)}
+stopifnot(dir.exists(out_path))
 
 # Load the spatial barcode count matrix
 f <- function(p){return(rhdf5::h5read(sb_path, p))}
@@ -67,12 +69,15 @@ setnames(dt, "cb", "cb_fuzzy")
 df <- data.table(cb=cb_whitelist)[, .(cb_fuzzy=listHD1neighbors(cb), match="fuzzy"), cb
                                   ][!cb_fuzzy %in% cb_whitelist
                                     ][cb_fuzzy %in% dt$cb_fuzzy]
+# Label ambiguous matches
 df[, `:=`(cb = ifelse(.N > 1, NA, cb),
        match = ifelse(.N > 1, "ambig", match)), cb_fuzzy]
 df %<>% unique
+# Add/label exact matches
 df <- rbindlist(list(df, data.table(cb=cb_whitelist,
                               cb_fuzzy=cb_whitelist,
                                  match="exact")[cb_fuzzy %in% dt$cb_fuzzy]))
+# Check + factorize
 stopifnot(df$cb_fuzzy %in% dt$cb_fuzzy)
 df[, cb_fuzzy := factor(cb_fuzzy, levels = levels(dt$cb_fuzzy))]
 stopifnot(na.omit(unique(df$cb)) %in% cb_whitelist)
@@ -178,16 +183,16 @@ metadata %>% map(as.list) %>% jsonlite::toJSON(pretty=TRUE) %>% writeLines(file.
 dt[, sb := NULL]
 
 stopifnot(dt$cb %in% cb_whitelist)
+stopifnot(levels(dt$cb) == cb_whitelist)
 stopifnot(dt$umi > 0)
 stopifnot(!any(is.na(dt)))
 stopifnot(sort(names(dt)) == c("cb", "umi", "x", "y"))
 
 ### DBSCAN #####################################################################
 
-data.list <- split(dt, by="cb", drop=TRUE, keep.by=FALSE)
-for (dl in data.list) {stopifnot(nrow(dl) > 0, dl$umi > 0)}
+data.list <- split(dt, by="cb", drop=FALSE, keep.by=FALSE)
+stopifnot(sort(names(data.list)) == sort(cb_whitelist))
 rm(dt) ; invisible(gc())
-if(len(cb_whitelist) != len(data.list)) {print(g("Removed {len(cb_whitelist)-len(data.list)} cell(s) without spatial barcodes"))}
 print(g("Running positioning on {len(data.list)} cells"))
 
 # Prepare for positioning
@@ -196,19 +201,23 @@ library(furrr)
 options(future.globals.maxSize = 1024 * 1024 * 1024)
 myoptions <- furrr::furrr_options(packages=c("data.table"), seed=TRUE, scheduling=1)
 future::plan(future::multisession, workers=parallelly::availableCores())
-mydbscan <- function(dl, eps, minPts) {dbscan::dbscan(x = dl[,.(x,y)],
-                                                      eps = eps,
-                                                      minPts = minPts,
-                                                      weights = dl$umi,
-                                                      borderPoints = TRUE)$cluster}
+mydbscan <- function(dl, eps, minPts) {
+  if (nrow(dl) == 0) {return(numeric(0))}
+  dbscan::dbscan(x = dl[,.(x,y)],
+                 eps = eps,
+                 minPts = minPts,
+                 weights = dl$umi,
+                 borderPoints = TRUE)$cluster
+}
 
 ### Run DBSCAN optimization ###
 ms <- 1L # minPts step size
 mranges <- furrr::future_map(data.list, function(dl) {
   # base case
+  if (nrow(dl) == 0) {return(data.table(i2=0L, i1=0L))}
   v2 <- mydbscan(dl, eps, 1L * ms)
   if (max(v2) == 0) {return(data.table(i2=0L, i1=0L))}
-  if (max(v2) == 1) {i2=0L}
+  if (max(v2) == 1) {i2=0L} # DBSCAN=2 is impossible
   
   # loop
   i <- 1L
@@ -232,14 +241,17 @@ centroid_dists <- function(dl) {
                                y=weighted.mean(y,umi)), cluster][order(cluster)]
   cdist(centroids[,.(x,y)], centroids[cluster==1,.(x,y)]) %>% as.numeric
 }
-mranges$i2 <- furrr::future_map2_int(data.list, mranges$i2, function(dl, i2) {
-  dl[, cluster := mydbscan(dl, eps, i2 * ms)]
-  while (i2 > 1 && max(centroid_dists(dl)) < eps * cmes) {
-    i2 <- i2 - 1
+if (cmes > 0) {
+  mranges$i2 <- furrr::future_map2_int(data.list, mranges$i2, function(dl, i2) {
+    if (nrow(dl) == 0) {return(i2)}
     dl[, cluster := mydbscan(dl, eps, i2 * ms)]
-  }
-  return(i2)
-}, .options = myoptions)
+    while (i2 > 1 && max(centroid_dists(dl)) < eps * cmes) {
+      i2 <- i2 - 1
+      dl[, cluster := mydbscan(dl, eps, i2 * ms)]
+    }
+    return(i2)
+  }, .options = myoptions)
+}
 stopifnot(mranges$i2 <= mranges$i1)
 
 ### Global DBSCAN ###
@@ -257,19 +269,22 @@ for (i in seq_along(data.list)) {
 }
 
 # Merge clusters within [eps * cmes] of DBSCAN=1
-for (i in seq_along(data.list)) {
-  near_centroids <- which(centroid_dists(data.list[[i]]) < eps * cmes)
-  data.list[[i]][cluster %in% near_centroids, cluster := pmin(cluster, 1)]
-  data.list[[i]][cluster>0, cluster := match(cluster, sort(unique(cluster)))]
+if (cmes > 0) {
+  for (i in seq_along(data.list)) {
+    if (nrow(dl) == 0) { next }
+    near_centroids <- which(centroid_dists(data.list[[i]]) < eps * cmes)
+    data.list[[i]][cluster %in% near_centroids, cluster := pmin(cluster, 1)]
+    data.list[[i]][cluster>0, cluster := match(cluster, sort(unique(cluster)))]
+  }
 }
-
+  
 # Assign the centroid via a weighted mean
 coords_global <- imap(data.list, function(dl, cb){
   ret <- dl[,.(cb=cb,
                umi=sum(umi),
                beads=.N,
-               max=max(umi),
-               clusters=max(cluster))]
+               max=ifelse(.N>0, max(umi), 0),
+               clusters=ifelse(.N>0, max(cluster), 0))]
   
   # Add DBSCAN=0 data
   ret0 <- dl[cluster==0, .(umi0=sum(umi),
@@ -299,7 +314,7 @@ coords_global <- imap(data.list, function(dl, cb){
   
   return(ret)
   
-}) %>% rbindlist(use.names=TRUE, fill=TRUE) # ignore.attr=TRUE
+}) %>% rbindlist(use.names=TRUE, fill=TRUE)
 coords_global[, `:=`(eps=eps, minPts=minPts)]
 coords_global[clusters==1, `:=`(x=x1, y=y1)]
 print(g("Placed: {round(coords_global[,sum(clusters==1)/.N]*100, 2)}%"))

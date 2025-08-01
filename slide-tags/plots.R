@@ -223,7 +223,7 @@ plot_SBmetrics <- function(metadata) {
   A1 <- plot_grid(gdraw("Library information", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1, 0.6))
   
   # Panel A2
-  header = c("Metric", metadata$puck_info$puck_name %>% str_remove("^Puck_") %>% str_remove("\\.csv$"))
+  header = c("Metric", metadata$puck_info$puck_name %>% trim_puck_name)
   plot.df = list(c("Beads total", metadata$puck_info$num_beads %>% add.commas),
                  c("Beads removed", Reduce(`+`,metadata$puck_info[c("num_dup","num_N","num_degen","num_lowQ")]) %>% add.commas),
                  # c("Size", metadata$puck_info$puck_sizes),
@@ -231,7 +231,7 @@ plot_SBmetrics <- function(metadata) {
                  #c("Scaling factor", metadata$puck_info$scaling_factors %>% round(2)),
                  c("Final UMIs", metadata$puck_info$umi_final %>% add.commas)
   ) %>% {do.call(rbind,.)} %>% as.data.frame %>% setNames(header)
-  A2 <- plot_grid(gdraw("Puck information", 13), plot.tab(plot.df), gdraw(""), ncol=1, rel_heights=c(0.1 ,0.5, 0.1))
+  A2 <- plot_grid(gdraw("Puck information", 13), plot.tab(plot.df), ncol=1, rel_heights=c(0.1 ,0.6))
   
   # Panel B1
   plot.df = data.frame(a=c("exact", "fuzzy", "GG", "none"),
@@ -551,9 +551,9 @@ global_cellplot <- function(CB) {
 }
 
 plot_gdbscan_cellplots <- function(data.list) {
-  list0 <- map_lgl(data.list, ~max(.$cluster)==0 & nrow(.)>0) %>% {names(.)[.]}
-  list1 <- map_lgl(data.list, ~max(.$cluster)==1 & nrow(.)>0) %>% {names(.)[.]}
-  list2 <- map_lgl(data.list, ~max(.$cluster)==2 & nrow(.)>0) %>% {names(.)[.]}
+  list0 <- map_lgl(data.list, ~nrow(.)>0 && max(.$cluster)==0) %>% {names(.)[.]}
+  list1 <- map_lgl(data.list, ~nrow(.)>0 && max(.$cluster)==1) %>% {names(.)[.]}
+  list2 <- map_lgl(data.list, ~nrow(.)>0 && max(.$cluster)==2) %>% {names(.)[.]}
   
   if(len(list0) > 0) {
     p0s <- sample(list0, min(12,len(list0)), replace=FALSE) %>% map(global_cellplot)

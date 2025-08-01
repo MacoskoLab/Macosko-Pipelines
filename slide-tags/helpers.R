@@ -55,6 +55,21 @@ trim_10X_CB <- function(vec) {
   map_chr(vec, ~sub("-[0-9]*$", "", .))
 }
 
+trim_puck_name <- function(name) {
+  name %<>% str_remove(regex("^recon_", ignore_case=TRUE)) %>% 
+            str_remove(regex("^reconstruction_", ignore_case=TRUE)) %>% 
+            str_remove(regex("^pucks_", ignore_case=TRUE)) %>% 
+            str_remove(regex("^puck_", ignore_case=TRUE)) %>% 
+            str_remove(regex(".csv$", ignore_case=TRUE)) %>% 
+            str_remove(regex("_Puck$", ignore_case=TRUE)) %>% 
+            str_remove(regex("_UMAP[0-9]_.*", ignore_case=TRUE))
+  name %<>% map_chr(~paste0(str_split_i(.,"_",-2) %>% str_sub(-floor(30/len(name))),
+                            "\n",
+                            str_split_i(.,"_",-1) %>% str_sub(-floor(30/len(name)))))
+  
+  return(name)
+}
+
 ################################################################################
 ### Loading methods ############################################################
 ################################################################################
