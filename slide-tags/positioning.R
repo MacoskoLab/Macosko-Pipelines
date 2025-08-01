@@ -279,7 +279,7 @@ if (cmes > 0) {
 }
   
 # Assign the centroid via a weighted mean
-coords_global <- imap(data.list, function(dl, cb){
+coords <- imap(data.list, function(dl, cb){
   ret <- dl[,.(cb=cb,
                umi=sum(umi),
                beads=.N,
@@ -315,24 +315,27 @@ coords_global <- imap(data.list, function(dl, cb){
   return(ret)
   
 }) %>% rbindlist(use.names=TRUE, fill=TRUE)
-coords_global[, `:=`(eps=eps, minPts=minPts)]
-coords_global[clusters==1, `:=`(x=x1, y=y1)]
-print(g("Placed: {round(coords_global[,sum(clusters==1)/.N]*100, 2)}%"))
+coords[, `:=`(eps=eps, minPts=minPts)]
+coords[clusters==1, `:=`(x=x1, y=y1)]
+print(g("Placed: {round(coords[,sum(clusters==1)/.N]*100, 2)}%"))
 
+# Final check
+stopifnot(len(cb_whitelist) == len(data.list))
 stopifnot(len(data.list) == nrow(mranges))
-stopifnot(nrow(mranges) == nrow(coords_global))
+stopifnot(nrow(mranges) == nrow(coords))
+stopifnot(sort(coords$cb) == sort(trim_10X_CB(cb_whitelist)))
+coords <- coords[match(trim_10X_CB(cb_whitelist), cb)]
+stopifnot(coords$cb == trim_10X_CB(cb_whitelist))
 
 # Plots
-plot_gdbscan_opt(coords_global, mranges, knn, eps) %>% make.pdf(file.path(out_path, "GDBSCANopt.pdf"), 7, 8)
-plot_gdbscan_1(coords_global) %>% make.pdf(file.path(out_path, "GDBSCAN1.pdf"), 7, 8)
-plot_gdbscan_2(coords_global, cmes) %>% make.pdf(file.path(out_path, "GDBSCAN2.pdf"), 7, 8)
+plot_gdbscan_opt(coords, mranges, knn, eps) %>% make.pdf(file.path(out_path, "GDBSCANopt.pdf"), 7, 8)
+plot_gdbscan_1(coords) %>% make.pdf(file.path(out_path, "GDBSCAN1.pdf"), 7, 8)
+plot_gdbscan_2(coords, cmes) %>% make.pdf(file.path(out_path, "GDBSCAN2.pdf"), 7, 8)
 plot_gdbscan_cellplots(data.list) %>% make.pdf(file.path(out_path, "GDBSCANs.pdf"), 7, 8)
 
 # Save coords
-setcolorder(coords_global, c("cb","x","y"))
-fwrite(coords_global, file.path(out_path, "coords.csv"))
-
-# rm(minPts)
+setcolorder(coords, c("cb","x","y"))
+fwrite(coords, file.path(out_path, "coords.csv"))
 
 ### Dynamic DBSCAN ###
 # 
@@ -409,5 +412,5 @@ pdfs %<>% keep(file.exists)
 qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "SBsummary.pdf"))
 file.remove(pdfs)
 
-#stopifnot(coords_global$cb_index == coords_dynamic$cb_index)
+#stopifnot(coords$cb_index == coords_dynamic$cb_index)
 #stopifnot(file.exists(file.path(out_path, c("coords.csv", "coords2.csv"))))
