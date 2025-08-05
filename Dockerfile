@@ -91,6 +91,7 @@ RUN julia -e 'using Pkg;                \
                        "LinearAlgebra"])'
 
 # Install R
+# https://docs.posit.co/resources/install-r.html
 RUN export R_VERSION=4.3.3 && \
     curl -O https://cdn.rstudio.com/r/debian-12/pkgs/r-${R_VERSION}_1_amd64.deb && \
     echo y | gdebi r-${R_VERSION}_1_amd64.deb && \
@@ -99,6 +100,7 @@ RUN export R_VERSION=4.3.3 && \
     sudo ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
 
 # Install RStudio
+# https://posit.co/download/rstudio-server/
 RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09.0-375-amd64.deb && \
     echo y | gdebi rstudio-server-2024.09.0-375-amd64.deb && \
     rm rstudio-server-2024.09.0-375-amd64.deb && \
