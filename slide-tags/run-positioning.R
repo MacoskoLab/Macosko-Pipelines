@@ -101,7 +101,8 @@ if (!is.null(cells)) {
   }
   
   # Load the %mt
-  pct_mt <- colSums(mat[grepl("^MT-", rownames(mat), ignore.case=TRUE),]) / colSums(mat)
+  pct_mt <- colSums(mat[grepl("^MT-", rownames(mat), ignore.case=TRUE) |
+                        grepl("_MT-", rownames(mat), ignore.case=TRUE),]) / colSums(mat)
   pct_mt %<>% unname
   
   # Load cell barcode whitelist
@@ -111,6 +112,9 @@ if (!is.null(cells)) {
   # DropSift
   if (dropsift) {
     if (!file.exists(file.path(rna_path, "dropsift.csv"))) {
+      stopifnot(!is.na(pct_intronic), !is.na(pct_mt))
+      stopifnot(any(pct_intronic > 0), any(pct_mt > 0))
+      
       print("Running DropSift")
       library(DropSift)
       cellFeatures <- data.frame(cell_barcode = colnames(mat),
