@@ -64,6 +64,7 @@ task tags {
     gcloud storage cp "$gex_dir/*.h5" gex || true
     gcloud storage cp "$gex_dir/*.h5ad" gex || true
     gcloud storage cp "$gex_dir/*.csv" gex || true
+    gcloud storage cp "$gex_dir/filtered_feature_bc_matrix/barcodes.tsv.gz" "gex/cellranger.tsv.gz" || true
     ls -1 gex
 
     echo "----- Running slide-tags -----"
@@ -93,7 +94,7 @@ workflow slide_tags {
         Array[String] puck_paths
         Int mem_GB
         Int disk_GB
-        String params = "--cells=dropsift"
+        String params = "--dropsift --cells=cellranger.tsv.gz"
         String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image:latest"
     }
     call tags {

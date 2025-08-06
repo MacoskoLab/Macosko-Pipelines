@@ -22,21 +22,19 @@ library(optparse)
 arguments <- OptionParser(
   usage = "Usage: Rscript run-positioning.R rna_path sb_path out_path [options]",
   option_list = list(
-    make_option("--cells", type="character", help = "'dropsift' or path to barcodes file"),
+    make_option("--cells", type="character", help = "Path to barcodes file"),
+    make_option("--dropsift", action="store_true", help = "Add is_cell to obj"),
     make_option("--knn",   type="integer",   help = "Passed to positioning.R"),
     make_option("--cmes",  type="double",    help = "Passed to positioning.R"),
     make_option("--prob",  type="double",    help = "Passed to positioning.R")
   )
 ) %>% parse_args(positional_arguments=3)
 
+# Load required arguments
 rna_path <- arguments$args[[1]]
 sb_path <- arguments$args[[2]]
 out_path <- arguments$args[[3]]
-positioning_args <- paste0(arguments$options$knn %>% {ifelse(is.null(.), "", g(" --knn={.}"))},
-                           arguments$options$cmes %>% {ifelse(is.null(.), "", g(" --cmes={.}"))},
-                           arguments$options$prob %>% {ifelse(is.null(.), "", g(" --prob={.}"))}) %>% trimws
 
-# Check arguments
 print(g("RNA dir: {normalizePath(rna_path)}"))
 stopifnot("RNA dir not found" = dir.exists(rna_path))
 stopifnot("RNA dir empty" = len(list.files(rna_path)) > 0)
@@ -50,6 +48,15 @@ if (!dir.exists(out_path)) { dir.create(out_path, recursive = TRUE) }
 print(g("Output dir: {normalizePath(out_path)}"))
 stopifnot("Could not create output path" = dir.exists(out_path))
 
+# Load optional arguments
+cells <- arguments$options$cells
+dropsift <- arguments$options$dropsift %>% {ifelse(is.null(.), FALSE, .)}
+positioning_args <- paste0(arguments$options$knn %>% {ifelse(is.null(.), "", g(" --knn={.}"))},
+                           arguments$options$cmes %>% {ifelse(is.null(.), "", g(" --cmes={.}"))},
+                           arguments$options$prob %>% {ifelse(is.null(.), "", g(" --prob={.}"))}) %>% trimws
+
+print(g("Cell barcode whitelist: {cells}"))
+print(g("DropSift: {dropsift}"))
 if (nchar(positioning_args) > 0) {
   print(g("Positioning arguments override: {positioning_args}"))
 }
@@ -58,9 +65,8 @@ cat("\n")
 
 ### Load the RNA ###############################################################
 
-cells <- arguments$options$cells
 if (!is.null(cells)) {
-  stopifnot(file.exists(cells) || tolower(cells) == "dropsift")
+  stopifnot(file.exists(cells))
   
   # Load the raw matrix
   if (file.exists(file.path(rna_path, "raw_feature_bc_matrix.h5"))) {
@@ -97,14 +103,13 @@ if (!is.null(cells)) {
   pct_mt <- colSums(mat[grepl("^MT-", rownames(mat), ignore.case=TRUE),]) / colSums(mat)
   pct_mt %<>% unname
   
-  # Load cell calling
-  if (tolower(cells) == "dropsift") {
-    if (file.exists(file.path(rna_path, "dropsift.csv"))) {
-      print("Loading dropsift.csv")
-      dropsift <- read.csv(file.path(rna_path, "dropsift.csv"), header=FALSE)
-      dropsift %<>% setNames(c("cell_barcode", "is_cell_prob"))
-      cb_whitelist <- dropsift$cell_barcode
-    } else {
+  # Load cell barcode whitelist
+  cb_whitelist <- readLines(cells)
+  stopifnot(cb_whitelist %in% colnames(mat))
+  
+  # DropSift
+  if (dropsift) {
+    if (!file.exists(file.path(rna_path, "dropsift.csv"))) {
       print("Running DropSift")
       library(DropSift)
       cellFeatures <- data.frame(cell_barcode = colnames(mat),
@@ -119,32 +124,38 @@ if (!is.null(cells)) {
                              is_cell_prob = is_cell_prob[is_cell==TRUE])
       write.table(dropsift, file.path(rna_path, "dropsift.csv"),
                   sep=",", row.names=FALSE, col.names=FALSE, quote=FALSE)
-      cb_whitelist <- dropsift$cell_barcode
     }
-  } else {
-    cb_whitelist <- readLines(cells)
-  }
+    
+    print("Loading dropsift.csv")
+    dropsift <- read.csv(file.path(rna_path, "dropsift.csv"), header=FALSE)
+    dropsift %<>% setNames(c("cell_barcode", "is_cell_prob"))
+    stopifnot(dropsift$cell_barcode %in% colnames(mat))
+  } else {dropsift <- NULL}
   
   # Plot cell calling
-  data.table(umi=colSums(mat),
-             pct_intronic=pct_intronic,
-             called=factor(colnames(mat) %in% cb_whitelist,
-                           levels = c(FALSE, TRUE),
-                           labels = c("Background","Cells"))) %>% 
-    plot_cellcalling() %>% 
-    make.pdf(file.path(out_path, "RNAlibrary.pdf"), 7, 8)
-
+  list(cb_whitelist, dropsift$cell_barcode) %>% discard(is.null) %>% map(function(wl) {
+    data.table(umi=colSums(mat),
+               pct_intronic=pct_intronic,
+               called=factor(colnames(mat) %in% wl,
+                             levels = c(FALSE, TRUE),
+                             labels = c("Background","Cells"))) %>% 
+      plot_cellcalling()
+  }) %>% make.pdf(file.path(out_path, "RNAlibrary.pdf"), 7, 8)
+  
   # Subset to called cells
+  cb_whitelist %<>% union(dropsift$cell_barcode) %>% sort
   stopifnot(cb_whitelist %in% colnames(mat))
   mask <- match(cb_whitelist, colnames(mat))
-  mat <- mat[,mask]
   
   # Create Seurat object
-  obj <- CreateSeuratObject(mat, project = "Slide-tags")
+  obj <- CreateSeuratObject(mat[,mask], project = "Slide-tags")
   rm(mat) ; invisible(gc())
   
   # Add metadata
-  if (tolower(cells) == "dropsift") {obj$is_cell_prob <- dropsift$is_cell_prob}
+  if(!is.null(dropsift)) {
+    obj$is_cell <- colnames(obj) %in% dropsift$cell_barcode
+    #obj$is_cell_prob <- dropsift$is_cell_prob[match(colnames(obj), dropsift$cell_barcode)]
+  }
   obj$pct_intronic <- pct_intronic[mask]
   obj$pct_mt <- pct_mt[mask]
   

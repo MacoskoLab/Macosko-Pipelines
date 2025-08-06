@@ -192,6 +192,8 @@ stopifnot(sort(names(dt)) == c("cb", "umi", "x", "y"))
 
 data.list <- split(dt, by="cb", drop=FALSE, keep.by=FALSE)
 stopifnot(sort(names(data.list)) == sort(cb_whitelist))
+
+
 rm(dt) ; invisible(gc())
 print(g("Running positioning on {len(data.list)} cells"))
 

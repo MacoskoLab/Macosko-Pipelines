@@ -55,7 +55,10 @@ plot_cellcalling <- function(dt, ct=200) {
     theme_bw() + scale_x_log10() + scale_y_log10() +
     scale_color_manual(values=c("Cells"="#00BFC4", "Background"="#F8766D"),
                        breaks=c("Cells","Background")) +
-    labs(title="Cell barcode rank plot", x="Barcode rank", y="UMI counts", color=NULL)
+    labs(title="Cell barcode rank plot", x="Barcode rank", y="UMI counts", color=NULL) + 
+    annotate("text", x=1, y=10,
+             label=g("Median UMI Counts per Cell: {dt[called=='Cells', median(umi)] %>% add.commas}"), 
+             hjust=0, vjust=0, size=3)
   
   # Panel 2: cell calling cloud
   if (is.null(dt$pct_intronic) || all(dt$pct_intronic==0) || all(is.na(dt$pct_intronic))) {
@@ -71,7 +74,7 @@ plot_cellcalling <- function(dt, ct=200) {
       labs(title="Cell calling", x="log10(UMI)", y="%Intronic", color=NULL)
   }
   
-  plot <- plot_grid(gdraw(g("Called cells: {sum(dt$called=='Cells')}")), p1, p2,
+  plot <- plot_grid(gdraw(g("Estimated Number of Cells: {sum(dt$called=='Cells')}")), p1, p2,
                     ncol=1, rel_heights=c(0.1,1,1))
   return(plot)
 }
