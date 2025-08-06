@@ -66,6 +66,7 @@ cat("\n")
 ### Load the RNA ###############################################################
 
 if (!is.null(cells)) {
+  cells <- file.path(rna_path, cells)
   stopifnot(file.exists(cells))
   
   # Load the raw matrix
