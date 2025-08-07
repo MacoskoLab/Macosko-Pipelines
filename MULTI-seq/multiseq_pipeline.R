@@ -5,7 +5,7 @@ library(optparse)
 parser <- OptionParser()
 
 parser <- add_option(parser, c("-i", "--multi_seq_output"), help="Directory with outputs of the mutli-seq count output")
-parser <- add_option(parser, c("-b", "--bc_file"), default = "NL9_1_1009_combo.csv", help = "Path to the csv file with triplet groupings of barcodes a cell can have.")
+parser <- add_option(parser, c("-b", "--bc_file"), default = "./NL9_1_1009_combo.csv", help = "Path to the csv file with triplet groupings of barcodes a cell can have.")
 parser <- add_option(parser, c("-s", "--samplesheet"), default=NULL)
 
 args = parse_args(parser)
@@ -15,9 +15,10 @@ bc_combo_file = args$bc_file
 samplesheet_path = args$samplesheet
 
 
-multi_seq_path = "/broad/macosko/jsilverm/12_multi_seq/00_margaret_multi/L12/Results"
-bc_combo_file = "/broad/macosko/jsilverm/12_multi_seq/NL9_1_1009_combo.csv"
-samplesheet_path = "/broad/macosko/jsilverm/12_multi_seq/well_mapping_samplesheet.csv"
+# multi_seq_path = "/broad/macosko/jsilverm/12_multi_seq/00_margaret_multi/L12/Results"
+# bc_combo_file = "/broad/macosko/jsilverm/12_multi_seq/NL9_1_1009_combo.csv"
+# samplesheet_path = "/broad/macosko/jsilverm/12_multi_seq/well_mapping_samplesheet.csv"
+
 
 setwd(multi_seq_path)
 
@@ -109,7 +110,7 @@ for(i in 1:96){
 #group_[[4]]=25:48
 #group_[[4]]=73:96
 
-group_=list()
+# group_=list()
 
 #for(li in 1:length(group_)){
 
@@ -685,5 +686,8 @@ if (!is.null(samplesheet_path)) {
 }
 
 bc.fname = "bc_to_group.csv"
-write.csv(bc.to.group.df, file = bc.fname)
+full_fpath = paste0(getwd(), "/" ,bc.fname)
+print(paste0("Writing barcode mapping to ", full_fpath))
+
+write.csv(bc.to.group.df, file = full_fpath)
 
