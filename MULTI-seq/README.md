@@ -13,7 +13,20 @@ CITE-seq-Count -R1 SAMPLE_R1_001.fastq.gz \
                -T $(nproc)
 ```
 
-### Step 2: Run multiseq_v2.r
+### Step 2: Run multiseq_pipeline.R
+```
+Arguments:
+-i: Path to CITE-seq-Count outputs
+-b: Path to Barcode Triplet File. Default: ./NL9_1_1009_combo.csv
+-s: Samplesheet encoding mapping of MULTI-seq group id to condition. [Not required] See example: example_mulitseq_mapping.csv
+
+
+Outputs:
+bc_to_group.csv: Cell barcode to MULTI-seq group and cell condition mapping.
+
+
+```
+
 
 ### Helpful links
 [MULTI-seq Sample Multiplexing for Single Cell Analysis and Sequencing](https://www.sigmaaldrich.com/US/en/technical-documents/technical-article/genomics/sequencing/multi-seq-sample-multiplexing-single-cell-analysis-sequencing)
