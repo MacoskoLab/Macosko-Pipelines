@@ -22,9 +22,11 @@ Arguments:
 
 
 Outputs:
+bc_to_group.csv: Cell barcode to MULTI-seq group and cell condition mapping.
 
 
 ```
+
 
 ### Helpful links
 [MULTI-seq Sample Multiplexing for Single Cell Analysis and Sequencing](https://www.sigmaaldrich.com/US/en/technical-documents/technical-article/genomics/sequencing/multi-seq-sample-multiplexing-single-cell-analysis-sequencing)
