@@ -159,7 +159,7 @@ mem_GBs = [math.ceil(max(mem, 64)) for mem in mem_GBs]
 print(f"Memory (GB): {mem_GBs}")
 
 
-# Compute the names, remove jobs that are already running
+# Compute the names, assert the jobs are not already running
 job_names = ["_".join([workflow, idx, bcl]) for idx in df[idx_col]]
 subs = fapi.list_submissions(wnamespace, workspace).json()
 subs = [sub for sub in subs if sub["status"] not in ["Done","Aborted"]]
@@ -260,5 +260,5 @@ subs = [sub for sub in subs if sub["status"] not in ["Done","Aborted","Aborting"
 print(f"Currently running submissions: {len(subs)}")
 
 # Abort all submissions
-# ids = [sub["submissionId"] for sub in subs if sub["methodConfigurationName"][:10] == 'slide-tags']
+# ids = [sub["submissionId"] for sub in subs]
 # [fapi.abort_submission(wnamespace, workspace, submission_id) for submission_id in ids]
