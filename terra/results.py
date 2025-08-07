@@ -58,6 +58,7 @@ assert not summary.duplicated(subset=["BCL", "Index"]).any()
 QC =           pd.merge(df, QC,      on=["BCL", "Index"], how="left").fillna('')["QC"]
 summary =      pd.merge(df, summary, on=["BCL", "Index"], how="left").fillna('')["summary"]
 recon_fastqs = pd.merge(df, fastqs,  on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
+assert len(QC) == len(summary) == len(recon_fastqs)
 
 sh.worksheet("Recon").update(values=[[v] for v in QC],           range_name=ranges["QC"],      raw=False)
 sh.worksheet("Recon").update(values=[[v] for v in summary],      range_name=ranges["summary"], raw=False)
@@ -90,6 +91,7 @@ assert not tags.duplicated(subset=["BCL", "Index"]).any()
 count =        pd.merge(df, count,  on=["BCL", "Index"], how="left").fillna('')["web_summary"]
 tags =         pd.merge(df, tags,   on=["BCL", "Index"], how="left").fillna('')["summary"]
 count_fastqs = pd.merge(df, fastqs, on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
+assert len(count) == len(tags) == len(count_fastqs)
 
 sh.worksheet("Slide-tags").update(values=[[v] for v in count],        range_name=ranges["web_summary"], raw=False)
 sh.worksheet("Slide-tags").update(values=[[v] for v in tags],         range_name=ranges["summary"],     raw=False)

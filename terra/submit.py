@@ -41,7 +41,7 @@ bucket.reload()
 sh = gspread.authorize(default()[0]).open_by_key("1NOaWXARQiSA6fquOtcouQPREPN4buYIf13tq_F6D9As")
 if workflow in ["cellranger-count", "slide-tags"]:
     df = get_as_dataframe(sh.worksheet("Slide-tags"))
-    cols = ["BCL", "Reference", "RNAIndex", "SBIndex", "Puck"]
+    cols = ["BCL", "Reference", "RNAIndex", "SBIndex", "Puck", "params"]
 elif workflow in ["recon", "reconstruction"]:
     df = get_as_dataframe(sh.worksheet("Recon"))
     cols = ["BCL", "Index", "bc1", "bc2", "params"]
@@ -159,7 +159,7 @@ mem_GBs = [math.ceil(max(mem, 64)) for mem in mem_GBs]
 print(f"Memory (GB): {mem_GBs}")
 
 
-# Compute the names, assert the jobs are not already running
+# Compute the names, remove jobs that are already running
 job_names = ["_".join([workflow, idx, bcl]) for idx in df[idx_col]]
 subs = fapi.list_submissions(wnamespace, workspace).json()
 subs = [sub for sub in subs if sub["status"] not in ["Done","Aborted"]]
@@ -245,7 +245,7 @@ if workflow == "cellranger-count":
         
 elif workflow == "slide-tags":
     for r, p, m, j in zip(df.itertuples(index=False), pucks, mem_GBs, job_names):
-        run_slidetags(r.BCL, r.RNAIndex, r.SBIndex, p, m, m, None, j)
+        run_slidetags(r.BCL, r.RNAIndex, r.SBIndex, p, m, m, r.params, j)
 elif workflow in ["recon", "reconstruction"]:
     for r, m, j in zip(df.itertuples(index=False), mem_GBs, job_names):
         assert r.Index.count("-") <= 1
@@ -256,9 +256,9 @@ elif workflow in ["recon", "reconstruction"]:
 
 # List all submissions
 subs = fapi.list_submissions(wnamespace, workspace).json()
-subs = [sub for sub in subs if sub["status"] not in ["Done","Aborted"]]
+subs = [sub for sub in subs if sub["status"] not in ["Done","Aborted","Aborting"]]
 print(f"Currently running submissions: {len(subs)}")
 
 # Abort all submissions
-# ids = [sub["submissionId"] for sub in subs]
+# ids = [sub["submissionId"] for sub in subs if sub["methodConfigurationName"][:10] == 'slide-tags']
 # [fapi.abort_submission(wnamespace, workspace, submission_id) for submission_id in ids]
