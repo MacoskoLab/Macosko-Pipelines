@@ -21,6 +21,7 @@ samplesheet_path = "/broad/macosko/jsilverm/12_multi_seq/well_mapping_sampleshee
 
 setwd(multi_seq_path)
 
+
 matrix_dir = "./umi_count/"
 barcode.path <- paste0(matrix_dir, "barcodes.tsv.gz")
 features.path <- paste0(matrix_dir, "features.tsv.gz")
@@ -655,7 +656,34 @@ bc.to.group.df$group_id = bc.to.group.df$name
 bc.to.group.df$non.na.col = NULL
 bc.to.group.df$name = NULL
 
+if (!is.null(samplesheet_path)) {
+  multi.id.to.condition = read.csv(samplesheet_path, sep = ",", header = T)
+  present.cols = colnames(multi.id.to.condition)
+  required.cols = c("multi_seq_group", "condition")
+  if (!all(required.cols %in% present.cols)) {
+    print("ERROR. required cols not present: ")
+    print(required.cols)
+  }
+  
+  groups.present.ss = multi.id.to.condition$multi_seq_group %>% unique()
+  groups.present.in.data = bc.to.group.df$group_id %>% unique()
+  
+  group.in.data.bool = groups.present.in.data %in% groups.present.ss
+  if (sum(!group.in.data.bool) > 0) {
+    print("Missing vals")
+    print(groups.present.in.data[!group.in.data.bool])
+  }
+  
+  bc.to.group.df = merge(bc.to.group.df, multi.id.to.condition, by.x = "group_id", by.y = "multi_seq_group", all.x = T)
+  is.na.bool = bc.to.group.df$condition %>% is.na()
+  
+  if (sum(is.na.bool) > 0) {
+    missing.group.vals =  bc.to.group.df$group_id[is.na.bool] %>% table()
+    print("Missing vals")
+    print(missing.group.vals)
+  }
+}
 
-
-
+bc.fname = "bc_to_group.csv"
+write.csv(bc.to.group.df, file = bc.fname)
 
