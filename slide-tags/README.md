@@ -1,3 +1,10 @@
+Quick-start commands
+--------------------
+```
+julia spatial-count.jl fastq_dir puck_dir .
+Rscript run-positioning.R gex_dir SBcounts.h5 output
+```
+
 Seurat Metadata
 ---------------
 * orig.ident: `Slide-tags`
