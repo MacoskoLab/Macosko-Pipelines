@@ -1,9 +1,39 @@
 Quick-start commands
 --------------------
 ```
-julia spatial-count.jl fastq_dir puck_dir .
-Rscript run-positioning.R gex_dir SBcounts.h5 output
+julia spatial-count.jl fastq_dir puck_dir output
+Rscript run-positioning.R gex_dir output/SBcounts.h5 output
 ```
+
+Example input directory structure:
+<pre>
+slide-tags/
+├── spatial-count.jl
+├── run-positioning.R
+├── positioning.R
+├── helpers.R
+├── plots.R
+├── fastq_dir/
+│   ├── SI-TT-A1_S1_L001_R1_001.fastq.gz
+│   ├── SI-TT-A1_S1_L001_R2_001.fastq.gz
+|   └── ...
+├── puck_dir/
+|   └── Puck.csv
+└── gex_dir/
+    ├── filtered_feature_bc_matrix.h5
+    ├── molecule_info.h5
+    └── metrics_summary.csv
+</pre>
+Output folder:
+<pre>
+output/
+├── SBcounts.h5
+├── matrix.csv.gz
+├── spatial_metadata.json
+├── coords.csv
+├── seurat.qs
+└── summary.pdf
+</pre>
 
 Seurat Metadata
 ---------------
