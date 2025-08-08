@@ -1,10 +1,5 @@
-Quick-start commands
+Quick-start guide
 --------------------
-```
-julia spatial-count.jl fastq_dir puck_dir output
-Rscript run-positioning.R gex_dir output/SBcounts.h5 output
-```
-
 Example input directory structure:
 <pre>
 slide-tags/
@@ -24,6 +19,13 @@ slide-tags/
     ├── molecule_info.h5
     └── metrics_summary.csv
 </pre>
+
+Commands:
+```
+julia spatial-count.jl fastq_dir puck_dir output
+Rscript run-positioning.R gex_dir output/SBcounts.h5 output
+```
+
 Output folder:
 <pre>
 output/
