@@ -115,7 +115,9 @@ task Run_cellsnp {
 
     cat > /tmp/RUNNER << 'EOF'
 set -euo pipefail
-. /root/.bashrc; eval "$(/bin/micromamba shell hook -s posix)"; micromamba activate base;
+# Initialize micromamba without sourcing ~/.bashrc (avoids PS1 unbound var under set -u)
+eval "$(/bin/micromamba shell hook -s posix)"
+micromamba activate base
 
 mkdir -p torun
 cd torun
@@ -135,7 +137,7 @@ cellsnp-lite \
   -O cellsnp_out \
   -p ~{CPU}
 
-# ensure gz VCF exists; compress if needed and index
+# ensure gz VCF exists; compress if needed and (optionally) index
 if [ ! -s cellsnp_out/cellSNP.base.vcf.gz ]; then
   if [ -s cellsnp_out/cellSNP.base.vcf ]; then
     echo "Compressing cellSNP.base.vcf"
@@ -146,12 +148,13 @@ if [ ! -s cellsnp_out/cellSNP.base.vcf.gz ]; then
   fi
 fi
 
-if command -v tabix >/dev/null 2>&1; then
-  tabix -f -p vcf cellsnp_out/cellSNP.base.vcf.gz || true
+if command -v bcftools >/dev/null 2>&1; then
+  bcftools index -t cellsnp_out/cellSNP.base.vcf.gz || true
 fi
 
 # success marker one dir up (task working dir)
 echo ok > ../goodTask
+ls -l ..
 
 export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/01_cellSNP"
 date > .folder
@@ -216,7 +219,8 @@ task Run_subsetvcf_pileup {
 
     cat > /tmp/RUNNER << 'EOF'
 set -euo pipefail
-. /root/.bashrc; eval "$(/bin/micromamba shell hook -s posix)"; micromamba activate base;
+eval "$(/bin/micromamba shell hook -s posix)"
+micromamba activate base
 
 mkdir -p torun
 cd torun
@@ -227,7 +231,7 @@ gcloud storage cp "~{gsbucket_GVCF_index}" filtered.vcf.gz.tbi
 
 # Compressed output + index
 bcftools view filtered.vcf.gz -R cellSNP.base.vcf.gz -Oz -o pileup_filtered.vcf.gz
-tabix -p vcf pileup_filtered.vcf.gz
+bcftools index -t pileup_filtered.vcf.gz
 
 if [ ! -s pileup_filtered.vcf.gz ]; then
   echo "Failed. VCF empty."
@@ -235,6 +239,7 @@ if [ ! -s pileup_filtered.vcf.gz ]; then
 else
   echo ok > ../goodTask
 fi
+ls -l ..
 
 export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/02_VCFSUBSET1"
 date > .folder
@@ -292,7 +297,8 @@ task Run_vireo_nodoublet {
 
     cat > /tmp/RUNNER << 'EOF'
 set -euo pipefail
-. /root/.bashrc; eval "$(/bin/micromamba shell hook -s posix)"; micromamba activate base;
+eval "$(/bin/micromamba shell hook -s posix)"
+micromamba activate base
 
 mkdir -p torun
 cd torun
@@ -312,6 +318,7 @@ else
 fi
 
 awk 'NR>1 && $2>50 && $1!="unassigned" {print $1}' vireo_all_out/summary.tsv > samples.txt
+ls -l ..
 
 export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/03_VIREO1"
 date > .folder
@@ -371,7 +378,8 @@ task Run_subsetvcf_samples {
 
     cat > /tmp/RUNNER << 'EOF'
 set -euo pipefail
-. /root/.bashrc; eval "$(/bin/micromamba shell hook -s posix)"; micromamba activate base;
+eval "$(/bin/micromamba shell hook -s posix)"
+micromamba activate base
 
 mkdir -p torun
 cd torun
@@ -390,6 +398,7 @@ if [ ! -s "subsetted_filtered.vcf.gz" ]; then
 else
   echo ok > ../goodTask
 fi
+ls -l ..
 
 export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/04_VCFSUBSET2"
 date > .folder
@@ -446,7 +455,8 @@ task Run_vireo_withdoublet {
 
     cat > /tmp/RUNNER << 'EOF'
 set -euo pipefail
-. /root/.bashrc; eval "$(/bin/micromamba shell hook -s posix)"; micromamba activate base;
+eval "$(/bin/micromamba shell hook -s posix)"
+micromamba activate base
 
 mkdir -p torun
 cd torun
@@ -464,6 +474,7 @@ if [ ! -s "vireo_final_out/summary.tsv" ]; then
 else
   echo ok > ../goodTask
 fi
+ls -l ..
 
 export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/05_VIREO"
 date > .folder
