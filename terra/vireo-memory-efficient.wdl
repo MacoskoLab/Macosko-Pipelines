@@ -16,12 +16,12 @@ version 1.0
 workflow DemultiplexSamples_removemis {
   input {
     Array[String] LIBNAMES
-    String gsbucket_cellbender = "gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d/libraries"
+    String gsbucket_cellbender = "gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d/bcl2cellcounts/cellranger"
     String gsbucket_GVCF="gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d/Stevens_Macosko_iNPH_WGS_filtered.vcf.gz"
     String gsbucket_GVCF_index="gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d/Stevens_Macosko_iNPH_WGS_filtered.vcf.gz.tbi"
     String demx_docker = "us-central1-docker.pkg.dev/velina-208320/macosko-vireo/img"
     String thisBucket="gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d"
-    String thisBucket_libfolder= "~{thisBucket}/RESULTS"
+    String thisBucket_libfolder= "~{thisBucket}/BATCH2RESULTS"
     # Needed for if statements below, just ignore
     Boolean do_cellsnp = true
     Boolean do_subsetvcf_pileup  = true
