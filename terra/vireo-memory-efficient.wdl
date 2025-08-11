@@ -109,7 +109,7 @@ task Run_cellsnp {
     String thisBucket
     String docker
     Int Memory = 16
-    Int Disk = 120
+    Int Disk = 200
     Int CPU = 4
     File? forceOrder
     Int? Preemtible = 1
