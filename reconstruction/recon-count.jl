@@ -330,7 +330,7 @@ end
     
     const UP1_whitelist = reduce(union, [listHDneighbors(up1, i) for i in 0:2 for up1 in [UP1, UP1[1:10]]])
     const UP2_whitelist = reduce(union, [listHDneighbors(UP2, i) for i in 0:1])
-    const UP1_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP1), i) for i in 0:3])
+    const UP1_GG_whitelist = reduce(union, [listHDneighbors("G"^l, i) for i in 0:3 for l in [10,18]])
     const UP2_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP2), i) for i in 0:2])
     const umi_homopolymer_whitelist = reduce(union, [listHDneighbors(c^9, i, bases) for c in bases for i in 0:2])
     const sbi_homopolymer_whitelist = Set(encode_str(str) for str in reduce(union, [listHDneighbors(c^15, i) for c in bases for i in 0:3]))
