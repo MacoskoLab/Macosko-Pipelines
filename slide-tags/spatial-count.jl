@@ -13,6 +13,7 @@ using Combinatorics: combinations
 # Recognized bead types:
 # JJJJJJJJ  TCTTCAGCGTTCCCGAGA JJJJJJJ  NNNNNNNVV (V10)
 # JJJJJJJJJ TCTTCAGCGTTCCCGAGA JJJJJJJJ NNNNNNNNN (V17)
+# JJJJJJJJJ TCTTCAGCGT         JJJJJJJJ NNNNNNNNN (V19)
 # JJJJJJJJJJJJJJJ   CTGTTTCCTG NNNNNNNNN          (V15)
 # JJJJJJJJJJJJJJJJJ CTGTTTCCTG NNNNNNNNN          (V16)
 
@@ -184,6 +185,13 @@ end
     @inbounds sb_2 = seq[28:35]
     return sb_1, sb_2, up
 end
+@inline function get_V19(seq::SeqView)
+    @inbounds sb_1 = seq[1:9]
+    @inbounds up = seq[10:19]
+    @inbounds sb_2 = seq[20:27]
+    @inbounds umi = seq[28:36]
+    return sb_1, sb_2, up, umi
+end
 @inline function get_V15(seq::SeqView)
     @inbounds sb_1 = seq[1:8]
     @inbounds sb_2 = seq[9:15]
@@ -213,7 +221,7 @@ end
 # Learn the read structure
 function learn_bead(R)
     iter = R |> open |> GzipDecompressorStream |> FASTQ.Reader
-    counts = Dict("V10"=>0, "V17"=>0, "V15"=>0, "V16"=>0)
+    counts = Dict("V10"=>0, "V17"=>0, "V19"=>0, "V15"=>0, "V16"=>0)
     for (i, record) in enumerate(iter)
         i > 100000 ? break : nothing
         seq = FASTQ.sequence(record)
@@ -221,6 +229,7 @@ function learn_bead(R)
         counts["V15"] += get_V15(seq)[3] == UP2
         length(seq) < 27 ? continue : nothing
         counts["V16"] += get_V16(seq)[3] == UP2
+        counts["V19"] += (get_V19(seq)[3] == UP1[1:10]) && (get_V17(seq)[3] != UP1)
         length(seq) < 33 ? continue : nothing
         counts["V10"] += get_V10(seq)[3] == UP1
         length(seq) < 35 ? continue : nothing
@@ -266,6 +275,13 @@ elseif bead == "V17"
     const UP = UP1
     const R2_len = 35
     @assert sb_len == 17 "ERROR: Puck has $sb_len-bp barcodes, but V17 beads have 17-bp barcodes"
+    const sb1_len = 9
+    const sb2_len = 8
+elseif bead == "V19"
+    const get_SB = get_V19
+    const UP = UP1[1:10]
+    const R2_len = 27
+    @assert sb_len == 17 "ERROR: Puck has $sb_len-bp barcodes, but V19 beads have 17-bp barcodes"
     const sb1_len = 9
     const sb2_len = 8
 elseif bead == "V15"

@@ -13,6 +13,7 @@ using Distributions: pdf, Exponential
 # R1 recognized bead types:
 # JJJJJJJJ  TCTTCAGCGTTCCCGAGA JJJJJJJ  NNNNNNNVV (V10)
 # JJJJJJJJJ TCTTCAGCGTTCCCGAGA JJJJJJJJ NNNNNNNNN (V17)
+# JJJJJJJJJ TCTTCAGCGT         JJJJJJJJ NNNNNNNNN (V19)
 # R2 recognized bead types:
 # JJJJJJJJJJJJJJJ   CTGTTTCCTG NNNNNNNNN          (V15)
 # JJJJJJJJJJJJJJJJJ CTGTTTCCTG NNNNNNNNN          (V16)
@@ -166,6 +167,13 @@ addprocs(length(R1s))
         @inbounds umi = seq[36:44]
         return sb_1, sb_2, up, umi
     end
+    @inline function get_V19(seq::SeqView)
+        @inbounds sb_1 = seq[1:9]
+        @inbounds up = seq[10:19]
+        @inbounds sb_2 = seq[20:27]
+        @inbounds umi = seq[28:36]
+        return sb_1, sb_2, up, umi
+    end
     @inline function get_V15(seq::SeqView)
         @inbounds sb_1 = seq[1:8]
         @inbounds sb_2 = seq[9:15]
@@ -225,18 +233,20 @@ addprocs(length(R1s))
     # Determine the R1 bead type
     function learn_R1type(R1)
         iter = R1 |> open |> GzipDecompressorStream |> FASTQ.Reader
-        s10 = 0 ; s17 = 0
+        counts = Dict("V10"=>0, "V17"=>0, "V19"=>0)
         for (i, record) in enumerate(iter)
             i > 100000 ? break : nothing
             seq = FASTQ.sequence(record)
+            length(seq) < 36 ? continue : nothing
+            counts["V19"] += (get_V19(seq)[3] == UP1[1:10]) && (get_V17(seq)[3] != UP1)
             length(seq) < 42 ? continue : nothing
-            s10 += get_V10(seq)[3] == UP1
+            counts["V10"] += get_V10(seq)[3] == UP1
             length(seq) < 44 ? continue : nothing
-            s17 += get_V17(seq)[3] == UP1
+            counts["V17"] += get_V17(seq)[3] == UP1
         end
-        myid() == 1 && println("V10: ", s10, " V17: ", s17)
-        (max(s10, s17) < 100000 * 0.1) && error("Unrecognized R1 bead structure for $R1")
-        return(s10 >= s17 ? "V10" : "V17")
+        myid() == 1 && println(counts)
+        (findmax(counts)[1] < 100000 * 0.1) && error("Unrecognized R1 bead structure for $R1")
+        return(findmax(counts)[2])
     end
     
     R1_types = [learn_R1type(R1) for R1 in R1s]
@@ -252,6 +262,12 @@ addprocs(length(R1s))
         const get_R1 = get_V17
         const encode_sb1 = encode_17
         const decode_sb1 = decode_17
+    elseif all(x -> x == "V19", R1_types)
+        const bead1_type = "V19"
+        const R1_len = 36
+        const get_R1 = get_V19
+        const encode_sb1 = encode_17
+        const decode_sb1 = decode_17
     else
         error("The R1 bead type is not consistent ($R1_types)")
     end
@@ -260,18 +276,18 @@ addprocs(length(R1s))
     # Determine the R2 bead type
     function learn_R2type(R2)
         iter = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
-        s15 = 0 ; s16 = 0
+        counts = Dict("V15"=>0, "V16"=>0)
         for (i, record) in enumerate(iter)
             i > 100000 ? break : nothing
             seq = FASTQ.sequence(record)
             length(seq) < 34 ? continue : nothing
-            s15 += get_V15(seq)[3] == UP2
+            counts["V15"] += get_V15(seq)[3] == UP2
             length(seq) < 36 ? continue : nothing
-            s16 += get_V16(seq)[3] == UP2
+            counts["V16"] += get_V16(seq)[3] == UP2
         end
-        myid() == 1 &&  println("V15: ", s15, " V16: ", s16)
-        (max(s15, s16) < 100000 * 0.1) && error("Unrecognized R2 bead structure for $R2")
-        return(s15 >= s16 ? "V15" : "V16")
+        myid() == 1 && println(counts)
+        (findmax(counts)[1] < 100000 * 0.1) && error("Unrecognized R2 bead structure for $R2")
+        return(findmax(counts)[2])
     end
     
     R2_types = [learn_R2type(R2) for R2 in R2s]
@@ -312,7 +328,7 @@ end
         return(res)
     end
     
-    const UP1_whitelist = reduce(union, [listHDneighbors(UP1, i) for i in 0:2])
+    const UP1_whitelist = reduce(union, [listHDneighbors(up1, i) for i in 0:2 for up1 in [UP1, UP1[1:10]]])
     const UP2_whitelist = reduce(union, [listHDneighbors(UP2, i) for i in 0:1])
     const UP1_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP1), i) for i in 0:3])
     const UP2_GG_whitelist = reduce(union, [listHDneighbors("G"^length(UP2), i) for i in 0:2])
