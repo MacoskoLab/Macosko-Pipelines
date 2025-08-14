@@ -65,9 +65,9 @@ task run_dropsift {
     if [[ "${use_cellbender}" == "true" ]]; then
       echo "Checking for CellBender output at ${cellbender_h5_path}"
       if gcloud storage ls "${cellbender_h5_path}" >/dev/null 2>&1; then
-        echo "Downloading CellBender output"
+        echo "----- Downloading CellBender output -----"
         gcloud storage cp "${cellbender_h5_path}" gex/cb_out.h5
-        cellbender_arg="--cb-h5-path=gex/cb_out.h5"
+        cellbender_arg="--cb_h5_path=gex/cb_out.h5"
       else
         echo "Error: CellBender output not found at ${cellbender_h5_path}"
         exit 1
