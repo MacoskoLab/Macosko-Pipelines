@@ -49,11 +49,6 @@ OUTPUT_DIR    = opt$output_dir
 USE_CB_INPUTS = !is.null(opt$cb_h5_path)
 CB_H5_PATH    = if (USE_CB_INPUTS) opt$cb_h5_path else NULL
 
-dropsift_input_cols = c("cell_barcode", "num_transcripts", "pct_intronic", "pct_mt")
-if (USE_CB_INPUTS){
-    dropsift_input_cols = c(dropsift_input_cols, "frac_contamination")
-}
-
 # Optional: ensure output dir exists
 if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
@@ -62,6 +57,10 @@ if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE, showWarnin
 # Minimum counts threshold for a cell to be considered a cell
 COUNTS_MIN = 10
 
+dropsift_input_cols = c("cell_barcode", "num_transcripts", "pct_intronic", "pct_mt")
+if (USE_CB_INPUTS){
+    dropsift_input_cols = c(dropsift_input_cols, "frac_contamination")
+}
 
 ################################### MAIN ###################################
 
