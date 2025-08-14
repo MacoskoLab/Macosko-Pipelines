@@ -1,5 +1,19 @@
 version 1.0
 
+# Run Dropsift on 10x Genomics single-cell RNA-seq data, 
+# optionally using CellBender output to improve ambient RNA correction.
+
+# Assumes existence of input files:
+# - gs://{bucket}/gene-expression/{bcl}/{rna_index}/outs/raw_feature_bc_matrix.h5 (from CellRanger)
+# - gs://{bucket}/gene-expression/{bcl}/{rna_index}/outs/molecule_info.h5 (from CellRanger)
+# - gs://{bucket}/gene-expression/{bcl}/{rna_index}/cellbender/${rna_index}_out.h5 (if use_cellbender is true)
+
+# Generates the following outputs, saved to gs://{bucket}/gene-expression/{bcl}/{rna_index}/dropsift_outputs/ :
+# - dropsift_output.csv, a CSV file with DropSift results containing columns
+#   cell_barcode, num_transcripts, pct_intronic, pct_mt (calculated from inputs), and 
+#   training_label_is_cell, empty_gene_module_score, is_cell, and is_cell_prob
+# - svmNucleusCallerReport.pdf, a pdf of diagnostic plots from DropSift
+
 task run_dropsift {
   input {
     String bcl
