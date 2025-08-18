@@ -1,5 +1,6 @@
 import os
 import gc
+import sys
 import gzip
 import numpy as np
 import pandas as pd
@@ -140,7 +141,7 @@ def estimate_diameter(in_dir):
     elif n > 0.8*1e6:
         diameter_micron = 12_000
     else:
-        sys.exit("Unknown puck size")
+        sys.exit(f"Unknown puck size: sb1={num_sb1}, sb2={num_sb2}")
 
     return diameter_micron
 
