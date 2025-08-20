@@ -73,6 +73,11 @@ trim_puck_name <- function(name) {
 ################################################################################
 ### Loading methods ############################################################
 ################################################################################
+# DropSift::parseH5ad(matrix_path,
+#                     expression_matrix_path = "X",
+#                     gene_id_path = "/var/ensembl_ids",
+#                     cell_id_path = "/obs/CellID")
+# getOptimusGeneSymbols(h5ad_file)
 
 # Supports Optimus and BICAN .h5ad formats
 ReadAnnDataX <- function(matrix_path, calledonly=TRUE) {
@@ -100,16 +105,10 @@ ReadAnnDataX <- function(matrix_path, calledonly=TRUE) {
       mat <- mat[,star_IsCell==TRUE]
     }
   } else if ("CELL_BARCODE" %in% fields) { # BICAN
-    row_names <- fetch("var/gene_symbol") %>% as.character %>% make.unique
-    col_names <- fetch("obs/CELL_BARCODE") %>% as.character %>% make.unique
-    mat <- Matrix::sparseMatrix(
-      i = indices,
-      p = indptr,
-      x = data,
-      dimnames = list(row_names, col_names),
-      index1 = FALSE,
-      check = TRUE
-    )
+    mat <- DropSift::parseH5ad(matrix_path,
+                               expression_matrix_path = "X",
+                               gene_id_path = "/var/gene_symbol", # /var/gene_ids
+                               cell_id_path = "/obs/CELL_BARCODE")$dge
     stopifnot(calledonly == TRUE)
   } else {
     stop("Unknown .h5ad format")

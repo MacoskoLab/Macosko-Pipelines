@@ -194,7 +194,8 @@ if (!is.null(cells)) {
   }
   
   # Load the %mt
-  pct_mt <- colSums(mat[grepl("^MT-", rownames(mat), ignore.case=TRUE),]) / colSums(mat)
+  pct_mt <- colSums(mat[grepl("^MT-", rownames(mat), ignore.case=TRUE) |
+                        grepl("_MT-", rownames(mat), ignore.case=TRUE),]) / colSums(mat)
   pct_mt %<>% unname
   
   # Create Seurat object
@@ -204,6 +205,12 @@ if (!is.null(cells)) {
   # Add metadata
   obj$pct_intronic <- pct_intronic
   obj$pct_mt <- pct_mt
+}
+
+# Add .h5ad annotations
+if (exists("matrix_path") && str_ends(matrix_path, ".h5ad")) {
+  Misc(obj, "obs") <- rhdf5::h5read(matrix_path, "/obs")
+  Misc(obj, "var") <- rhdf5::h5read(matrix_path, "/var")
 }
 
 # Plot library metrics + add to object

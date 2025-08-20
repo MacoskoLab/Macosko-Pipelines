@@ -13,27 +13,25 @@ library(optparse)
 arguments <- OptionParser(
   usage = "Usage: Rscript positioning.R SBcounts_path CBwhitelist_path out_path [options]",
   option_list = list(
-    make_option("--knn", type="integer", default=51L, help = "Number of bead neighbors used to compute eps [default: %default]", metavar="K"),
+    make_option("--minPts", type="integer", help = "dbscan optimization override"),
+    make_option("--eps", type="integer", help = "dbscan optimization override"),
+    make_option("--knn", type="integer", default=51L, help = "Number of bead neighbors used to compute eps [default: %default]"),
     make_option("--cmes", type="double", default=10.0, help = ""),
-    make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]", metavar="prob")
+    make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]")
   )
 ) %>% parse_args(positional_arguments=3)
 
-sb_path <- arguments$args[[1]]
-cb_path <- arguments$args[[2]]
-out_path <- arguments$args[[3]]
-knn <- arguments$options$knn
-cmes <- arguments$options$cmes
-prob <- arguments$options$prob
-rm(arguments)
+sb_path <- arguments$args[[1]]  ; print(g("sb_path: {sb_path}"))
+cb_path <- arguments$args[[2]]  ; print(g("cb_path: {cb_path}"))
+out_path <- arguments$args[[3]] ; print(g("out_path: {out_path}"))
 
-# Print arguments
-print(g("sb_path: {sb_path}"))
-print(g("cb_path: {cb_path}"))
-print(g("out_path: {out_path}"))
-print(g("knn: {knn}"))
-print(g("cmes: {cmes}"))
-print(g("prob: {prob}"))
+minPts <- arguments$options$minPts ; print(g("minPts: {minPts}"))
+eps <- arguments$options$eps       ; print(g("eps: {eps}"))
+knn <- arguments$options$knn       ; print(g("knn: {knn}"))
+cmes <- arguments$options$cmes     ; print(g("cmes: {cmes}"))
+prob <- arguments$options$prob     ; print(g("prob: {prob}"))
+
+rm(arguments)
 
 # Check input arguments
 stopifnot(filter(rhdf5::h5ls(sb_path), group=="/matrix")$name == c("cb_index", "reads", "sb_index", "umi"))
@@ -46,6 +44,11 @@ f <- function(p){return(rhdf5::h5read(sb_path, p))}
 dt <- ReadSpatialMatrix(f)
 metadata <- ReadSpatialMetadata(f)
 print(g("{add.commas(sum(dt$reads))} spatial barcode reads loaded"))
+
+if (prob < 1) {
+  # TODO
+  print(g("{add.commas(sum(dt$reads))} downsampled spatial barcode reads"))
+}
 
 # load the CB whitelist
 cb_whitelist <- readLines(cb_path)
@@ -61,23 +64,27 @@ stopifnot(!duplicated(cb_whitelist))
 stopifnot(uniqueN(nchar(cb_whitelist)) == 1)
 stopifnot(map_lgl(strsplit(cb_whitelist, ""), ~all(. %in% c("A","C","G","T"))))
 print(g("{len(cb_whitelist)} cell barcodes loaded"))
+invisible(gc())
 
 ### Fuzzy matching #############################################################
 
 print("Performing fuzzy cell-barcode matching")
 setnames(dt, "cb", "cb_fuzzy")
-df <- data.table(cb=cb_whitelist)[, .(cb_fuzzy=listHD1neighbors(cb), match="fuzzy"), cb
-                                  ][!cb_fuzzy %in% cb_whitelist
-                                    ][cb_fuzzy %in% dt$cb_fuzzy]
+# Add HD1 matches
+df <- data.table(cb=cb_whitelist)
+df <- df[, .(cb_fuzzy=listHD1neighbors(cb), match="fuzzy"), cb
+         ][!cb_fuzzy %in% cb_whitelist
+           ][cb_fuzzy %in% dt$cb_fuzzy]
 # Label ambiguous matches
 df[, `:=`(cb = ifelse(.N > 1, NA, cb),
        match = ifelse(.N > 1, "ambig", match)), cb_fuzzy]
 df %<>% unique
-# Add/label exact matches
+# Add exact matches
 df <- rbindlist(list(df, data.table(cb=cb_whitelist,
-                              cb_fuzzy=cb_whitelist,
-                                 match="exact")[cb_fuzzy %in% dt$cb_fuzzy]))
+                                    cb_fuzzy=cb_whitelist,
+                                    match="exact")[cb_fuzzy %in% dt$cb_fuzzy]))
 # Check + factorize
+stopifnot(!any(duplicated(df[,.(cb_fuzzy, cb)])))
 stopifnot(df$cb_fuzzy %in% dt$cb_fuzzy)
 df[, cb_fuzzy := factor(cb_fuzzy, levels = levels(dt$cb_fuzzy))]
 stopifnot(na.omit(unique(df$cb)) %in% cb_whitelist)
@@ -90,7 +97,7 @@ stopifnot(!xor(df$match=="exact", df$cb_fuzzy %in% cb_whitelist))
 stopifnot(levels(df$cb_fuzzy) == levels(dt$cb_fuzzy))
 stopifnot(is.null(key(dt)), is.null(key(df)), is.null(indices(dt)), is.null(indices(df)))
 # Perform the match
-dt <- merge(dt, df, by = "cb_fuzzy", all.x = TRUE, sort = FALSE)
+dt <- merge(dt, df, by = "cb_fuzzy", all.x = TRUE, all.y = FALSE, sort = FALSE)
 stopifnot(is.null(key(dt)), is.null(indices(dt)))
 
 # Record metadata
@@ -100,14 +107,14 @@ stopifnot(sum(dt$reads) == sum(metadata$CB_matching))
 
 # Clean up
 dt[, match := NULL]
-setnames(dt, "cb_fuzzy", "cb_raw")
-setcolorder(dt, c("cb_raw", "cb", "umi", "sb", "reads"))
+setnames(dt, "cb_fuzzy", "cr")
+setcolorder(dt, c("cr", "cb", "umi", "sb", "reads"))
 rm(df) ; invisible(gc())
 
-# Collapse post-matched barcodes
-dt <- rbindlist(list(dt[is.na(cb)],
-                     dt[!is.na(cb), .(reads=sum(reads)), .(cb,umi,sb)]),
-                fill = TRUE)
+# Save matching result
+# fwrite(dt, file.path(out_path, "matrix0.csv.gz"), quote=FALSE, sep=",", row.names=FALSE, col.names=TRUE, compress="gzip")
+
+print(g("{dt[!is.na(cb), .N] %>% add.commas} matched UMIs"))
 invisible(gc())
 
 ### Load puck ##################################################################
@@ -120,10 +127,12 @@ metadata$puck_info %<>% c(res[[2]])
 rm(res) ; invisible(gc())
 
 # Compute eps scale using the kth neighbor
-eps <- RANN::nn2(data = puckdf[, .(x,y)],
-                 query = puckdf[sample(.N, 10000), .(x,y)],
-                 k = knn)$nn.dists[,knn] %>% median
-print(g("eps: {eps}"))
+if (!exists("eps") || !is.numeric(eps) || !(eps > 0)) {
+  eps <- RANN::nn2(data = puckdf[, .(x,y)],
+                   query = puckdf[sample(.N, 10000), .(x,y)],
+                   k = knn)$nn.dists[,knn] %>% median
+  print(g("eps: {eps}"))
+}
 
 # Filter reads with a low-quality spatial barcode
 print("Removing low-quality spatial barcodes")
@@ -131,6 +140,7 @@ dt[, m := sb %in% puckdf$sb]
 metadata$SB_filtering %<>% c(reads_lqsb=dt[m == FALSE, sum(reads)])
 dt <- dt[m == TRUE]
 dt[, m := NULL]
+invisible(gc())
 
 # Page 4
 plot_SBlibrary(dt, f) %>% make.pdf(file.path(out_path, "SBlibrary.pdf"), 7, 8)
@@ -141,10 +151,11 @@ plot_SBplot(dt, puckdf) %>% make.pdf(file.path(out_path, "SBplot.pdf"), 7, 8)
 # Delete cell barcodes for cells that were not called
 print("Removing non-whitelist cells")
 metadata$SB_filtering %<>% c(reads_nocb = dt[is.na(cb), sum(reads)])
-metadata$SB_info$UMI_pct_in_called_cells <- round(nrow(dt[!is.na(cb)])/nrow(dt)*100, digits=2) %>% paste0("%")
+metadata$SB_info$UMI_pct_in_called_cells <- round(dt[,sum(!is.na(cb))/.N]*100, digits=2) %>% paste0("%")
 metadata$SB_info$sequencing_saturation <- round((1 - nrow(dt) / sum(dt$reads)) * 100, 2) %>% paste0("%")
+dt[, cr := NULL]
 dt <- dt[!is.na(cb)]
-dt[, cb_raw := NULL]
+dt <- dt[, .(reads=sum(reads)), .(cb,umi,sb)] # collapse post-matched barcodes
 invisible(gc())
 stopifnot(nrow(dt) == nrow(unique(dt[,.(cb,umi,sb)])))
 
@@ -192,8 +203,8 @@ stopifnot(sort(names(dt)) == c("cb", "umi", "x", "y"))
 
 data.list <- split(dt, by="cb", drop=FALSE, keep.by=FALSE)
 stopifnot(sort(names(data.list)) == sort(cb_whitelist))
-
-
+data.list <- data.list[cb_whitelist]
+stopifnot(names(data.list) == cb_whitelist)
 rm(dt) ; invisible(gc())
 print(g("Running positioning on {len(data.list)} cells"))
 
@@ -211,32 +222,86 @@ mydbscan <- function(dl, eps, minPts) {
                  weights = dl$umi,
                  borderPoints = TRUE)$cluster
 }
+ipercluster <- function(dl, v) {
+  dls <- sort(unique(v[v>0])) %>% map(~dl[v==.])
+  map_int(dls, function(sdl){
+    dbscan::frNN(sdl[,.(x,y)], eps, sort=FALSE)$id %>% imap_dbl(~sdl[.x,sum(umi)]+sdl[.y,umi]) %>% max %>% divide_by_int(ms)
+  })
+}
+iestimate <- function(dl) {
+  dbscan::frNN(dl[,.(x,y)], eps, query=dl[umi==max(umi),.(x,y)], sort=FALSE)$id %>% 
+    map_dbl(~dl[.,sum(umi)]) %>% max %>% divide_by_int(ms)
+}
 
 ### Run DBSCAN optimization ###
 ms <- 1L # minPts step size
-mranges <- furrr::future_map(data.list, function(dl) {
-  # base case
-  if (nrow(dl) == 0) {return(data.table(i2=0L, i1=0L))}
-  v2 <- mydbscan(dl, eps, 1L * ms)
-  if (max(v2) == 0) {return(data.table(i2=0L, i1=0L))}
-  if (max(v2) == 1) {i2=0L} # DBSCAN=2 is impossible
+
+# Find DBSCAN 1->0 boundary
+i1 <- map_int(data.list, function(dl) {
+  if (nrow(dl) == 0) {return(0L)}
+  if (nrow(dl) == 1) {return(sum(dl[,umi]))}
   
-  # loop
-  i <- 1L
-  while (max(v2) > 0) {
+  # minPts estimation
+  i <- iestimate(dl)
+  v <- mydbscan(dl, eps, i * ms) %T>% {stopifnot(max(.)>=1)}
+  
+  # minPts estimation improvement
+  i <- ipercluster(dl, v) %>% max %T>% {stopifnot(.>=i)}
+  v <- mydbscan(dl, eps, i * ms) %T>% {stopifnot(max(.)>=1)}
+  
+  # Increase minPts until DBSCAN=0
+  while (max(v) > 0) {
     i <- i + 1L
-    v1 <- v2
-    v2 <- mydbscan(dl, eps, i * ms)
-    if (max(v1) > 1 & max(v2) <= 1) {i2=i-1L}
+    v <- mydbscan(dl, eps, i * ms)
+  }
+  return(i-1L)
+})
+
+# Find DBSCAN 2->1 boundary
+i2 <- map_int(data.list, function(dl) {
+  if (nrow(dl) == 0) {return(0L)}
+  if (nrow(dl) == 1) {return(0L)}
+  
+  # minPts estimation
+  i <- iestimate(dl)
+  v <- mydbscan(dl, eps, i * ms) %T>% {stopifnot(max(.)>=1)}
+  if (all(v==1)) {return(0L)} # TODO
+  
+  # minPts estimation improvement
+  ii <- -1
+  while (max(v) == 1 && i != ii) {
+    ii <- i
+    i <- min(iestimate(dl[v<1]), i)
+    v <- mydbscan(dl, eps, i * ms)
   }
   
-  # i2 is the index at the highest minPts that produces DBSCAN=2+
-  # i1 is the index at the highest minPts that produces DBSCAN=1
-  return(data.table(i2=i2, i1=i-1L))
-}, .options = myoptions) %>% rbindlist
-stopifnot(nrow(mranges) == len(data.list))
+  # Decrease minPts until DBSCAN=2
+  if (max(v) == 1) {
+    while (max(v) < 2 && i >= 1L) {
+      i <- i - 1L
+      v <- mydbscan(dl, eps, i * ms)
+    }
+    return(i)
+  }
+  
+  # minPts estimation improvement
+  i <- ipercluster(dl, v) %>% sort %>% pluck(-2) # %T>% {stopifnot(.>=i)} # %>% max(i)
+  v <- mydbscan(dl, eps, i * ms) # %T>% {stopifnot(max(.)>=2)}
+  
+  # Increase minPts until DBSCAN=1/0
+  while (max(v) > 1) {
+    i <- i + 1L
+    v <- mydbscan(dl, eps, i * ms)
+  }
+  return(i-1L)
+})
 
-# Decrease minPts lower-bound if all centroids are within [eps * cmes] of DBSCAN=1
+stopifnot(names(i1)==cb_whitelist)
+stopifnot(names(i2)==cb_whitelist)
+mranges <- data.table(i2=i2, i1=i1)
+stopifnot(mranges$i2 <= mranges$i1)
+
+# Decrease 2->1 boundary if all centroids are within [eps * cmes] of DBSCAN=1
 centroid_dists <- function(dl) {
   if (dl[,max(cluster)] < 2) {return(0)}
   centroids <- dl[cluster>0, .(x=weighted.mean(x,umi),
@@ -244,7 +309,7 @@ centroid_dists <- function(dl) {
   cdist(centroids[,.(x,y)], centroids[cluster==1,.(x,y)]) %>% as.numeric
 }
 if (cmes > 0) {
-  mranges$i2 <- furrr::future_map2_int(data.list, mranges$i2, function(dl, i2) {
+  mranges$i2 <- map2_int(data.list, mranges$i2, function(dl, i2) {
     if (nrow(dl) == 0) {return(i2)}
     dl[, cluster := mydbscan(dl, eps, i2 * ms)]
     while (i2 > 1 && max(centroid_dists(dl)) < eps * cmes) {
@@ -252,9 +317,8 @@ if (cmes > 0) {
       dl[, cluster := mydbscan(dl, eps, i2 * ms)]
     }
     return(i2)
-  }, .options = myoptions)
+  })#, .options = myoptions)
 }
-stopifnot(mranges$i2 <= mranges$i1)
 
 ### Global DBSCAN ###
 
@@ -325,9 +389,8 @@ print(g("Placed: {round(coords[,sum(clusters==1)/.N]*100, 2)}%"))
 stopifnot(len(cb_whitelist) == len(data.list))
 stopifnot(len(data.list) == nrow(mranges))
 stopifnot(nrow(mranges) == nrow(coords))
-stopifnot(sort(coords$cb) == sort(trim_10X_CB(cb_whitelist)))
-coords <- coords[match(trim_10X_CB(cb_whitelist), cb)]
-stopifnot(coords$cb == trim_10X_CB(cb_whitelist))
+stopifnot(sort(coords$cb) == sort(cb_whitelist))
+stopifnot(coords$cb == cb_whitelist)
 
 # Plots
 plot_gdbscan_opt(coords, mranges, knn, eps) %>% make.pdf(file.path(out_path, "GDBSCANopt.pdf"), 7, 8)
@@ -337,6 +400,7 @@ plot_gdbscan_cellplots(data.list) %>% make.pdf(file.path(out_path, "GDBSCANs.pdf
 
 # Save coords
 setcolorder(coords, c("cb","x","y"))
+if (remap) { coords$cb %<>% remap_10X_CB }
 fwrite(coords, file.path(out_path, "coords.csv"))
 
 ### Dynamic DBSCAN ###
