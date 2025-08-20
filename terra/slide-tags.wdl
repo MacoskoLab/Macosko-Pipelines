@@ -22,8 +22,13 @@ task tags {
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
-    gex_dir="gs://$BUCKET/gene-expression/~{bcl}/~{rna_index}/outs"
+    gex_dir="gs://$BUCKET/gene-expression/~{bcl}/~{rna_index}"
     tags_dir="gs://$BUCKET/slide-tags/~{bcl}/~{rna_index}"
+
+    # Cell Ranger writes to /outs subdirectory
+    if gcloud storage ls "${gex_dir%/}/outs" &> /dev/null; then
+        gex_dir="${gex_dir%/}/outs"
+    fi
 
     echo "==================== START SLIDE-TAGS ===================="
 
@@ -61,10 +66,10 @@ task tags {
 
     echo "----- Downloading gene expression -----"
     mkdir gex
-    gcloud storage cp "$gex_dir/*.h5" gex || true
-    gcloud storage cp "$gex_dir/*.h5ad" gex || true
-    gcloud storage cp "$gex_dir/*.csv" gex || true
     gcloud storage cp "$gex_dir/filtered_feature_bc_matrix/barcodes.tsv.gz" "gex/cellranger.tsv.gz" || true
+    gcloud storage cp "$gex_dir/*.h5" gex || true
+    gcloud storage cp "$gex_dir/*.csv" gex || true
+    gcloud storage cp "$gex_dir/*.h5ad" gex || true
     ls -1 gex
 
     echo "----- Running slide-tags -----"
