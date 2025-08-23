@@ -1,6 +1,6 @@
 ### Quick Start guide
 
-1\) Read the background on [slurm](slurm.md)
+1\) Log in and create user directory
 
 ```
 ssh login00.broadinstitute.org
