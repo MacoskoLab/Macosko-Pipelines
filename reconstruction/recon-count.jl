@@ -238,12 +238,13 @@ addprocs(length(R1s))
             i > 100000 ? break : nothing
             seq = FASTQ.sequence(record)
             length(seq) < 36 ? continue : nothing
-            counts["V19"] += (get_V19(seq)[3] == UP1[1:10]) && (get_V17(seq)[3] != UP1)
+            counts["V19"] += (get_V19(seq)[3] == UP1[1:10])
             length(seq) < 42 ? continue : nothing
             counts["V10"] += get_V10(seq)[3] == UP1
             length(seq) < 44 ? continue : nothing
             counts["V17"] += get_V17(seq)[3] == UP1
         end
+        counts["V19"] -= counts["V17"]
         myid() == 1 && println(counts)
         (findmax(counts)[1] < 100000 * 0.1) && error("Unrecognized R1 bead structure for $R1")
         return(findmax(counts)[2])
