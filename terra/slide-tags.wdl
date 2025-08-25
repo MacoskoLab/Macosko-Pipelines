@@ -73,7 +73,7 @@ task tags {
     ls -1 gex
 
     echo "----- Running slide-tags -----"
-    Rscript run-positioning.R gex cache output ~{params}
+    Rscript --vanilla run-positioning.R gex cache output ~{params}
 
     echo "----- Uploading results -----"
     gcloud storage cp -r output/* "$tags_dir/"

@@ -24,9 +24,7 @@ arguments <- OptionParser(
   option_list = list(
     make_option("--cells", type="character", help = "Path to barcodes file"),
     make_option("--dropsift", action="store_true", help = "Add is_cell to obj"),
-    make_option("--knn",   type="integer",   help = "Passed to positioning.R"),
-    make_option("--cmes",  type="double",    help = "Passed to positioning.R"),
-    make_option("--prob",  type="double",    help = "Passed to positioning.R")
+    make_option("--args",   type="character", default = "", help = "Passed to positioning.R")
   )
 ) %>% parse_args(positional_arguments=3)
 
@@ -51,9 +49,7 @@ stopifnot("Could not create output path" = dir.exists(out_path))
 # Load optional arguments
 cells <- arguments$options$cells
 dropsift <- arguments$options$dropsift %>% {ifelse(is.null(.), FALSE, .)}
-positioning_args <- paste0(arguments$options$knn %>% {ifelse(is.null(.), "", g(" --knn={.}"))},
-                           arguments$options$cmes %>% {ifelse(is.null(.), "", g(" --cmes={.}"))},
-                           arguments$options$prob %>% {ifelse(is.null(.), "", g(" --prob={.}"))}) %>% trimws
+positioning_args <- arguments$options$args %>% trimws
 
 print(g("Cell barcode whitelist: {cells}"))
 print(g("DropSift: {dropsift}"))
