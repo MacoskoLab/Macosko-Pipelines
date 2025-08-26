@@ -431,20 +431,29 @@ for (i in seq_along(data.list)) {
   data.list[[i]][, cluster1 := mydbscan(data.list[[i]], eps, mranges[i,i1]*ms)]
 }
 
-# CMES TODO
+# Merge clusters within [eps * cmes] of DBSCAN=1
+if (cmes > 0) {
+  for (i in seq_along(data.list)) {
+    if (nrow(data.list[[i]]) > 0) {
+      near_centroids <- which(centroid_dists(data.list[[i]], data.list[[i]][,cluster2]) < eps * cmes)
+      data.list[[i]][cluster2 %in% near_centroids, cluster2 := 1]
+      data.list[[i]][cluster2 > 0, cluster2 := match(cluster2, sort(unique(cluster2)))]
+    }
+  }
+}
 
 # Assign the centroid via a weighted mean
 coords2 <- imap(data.list, function(dl, cb) {
   ret <- dl[,.(cb=cb, umi=sum(umi))]
 
   # Position the cell, using the highest minPts that produces DBSCAN=1
-  if (dl[,max(cluster1)] == 1) {
+  if (nrow(dl) > 0 && dl[,max(cluster1)] == 1) {
     s <- dl[cluster1 == 1, .(x=weighted.mean(x, umi),
                              y=weighted.mean(y, umi))]
     ret[, names(s) := s]
   }
 
-  # Compute the score, using the highest minPts that produces DBSCAN=2
+  # Compute statistics, using the highest minPts that produces DBSCAN=2
   s <- dl[cluster2 > 0, .(x=weighted.mean(x, umi),
                           y=weighted.mean(y, umi),
                           umi=sum(umi),
@@ -454,6 +463,9 @@ coords2 <- imap(data.list, function(dl, cb) {
   setcolorder(s, c("x", "y", "umi", "beads", "h", "cluster2"))
   ret[, c("x1","y1","umi1","beads1","h1","cluster1") := s[1]] # Highest UMI DBSCAN cluster
   ret[, c("x2","y2","umi2","beads2","h2","cluster2") := s[2]] # Second-highest UMI DBSCAN cluster
+  
+  return(ret)
+  
 }) %>% rbindlist(use.names=TRUE, fill=TRUE)
 
 # Compute the score
@@ -465,8 +477,6 @@ coords2[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
                                                        minPts2=mranges$i2*ms,
                                                        minPts1=mranges$i1*ms)]
 
-ggplot(coords2[,.(r=sqrt((x2-x1)^2+(y2-y1)^2))], aes(x=r))+geom_histogram(bins=100)
-
 # Save results
 plot_dbscan_score(coords2) %>% make.pdf(file.path(out_path, "DBSCANscore.pdf"), 7, 8)
 fwrite(coords2, file.path(out_path, "coords2.csv"))
@@ -475,14 +485,17 @@ fwrite(coords2, file.path(out_path, "coords2.csv"))
 
 print("Writing output...")
 
-plot_dbscan_cellplots(data.list) %>% make.pdf(file.path(out_path, "DBSCANs.pdf"), 7, 8)
-
+# Combine into one PDF
 plotlist <- c("SBmetrics.pdf", "SBlibrary.pdf", "SBplot.pdf",
-              "DBSCANopt.pdf", "DBSCAN1.pdf", "DBSCAN2.pdf")
+              "DBSCANopt.pdf", "DBSCAN1.pdf", "DBSCAN2.pdf", "DBSCANscore.pdf")
 pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)
-qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "SBsummary.pdf"))
+qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "summary.pdf"))
 file.remove(pdfs)
 
-#stopifnot(coords$cb_index == coords_dynamic$cb_index)
-#stopifnot(file.exists(file.path(out_path, c("coords.csv", "coords2.csv"))))
+# Plot individual cell plots
+c(plot_dbscan_cellplots(data.list),
+  plot_debug_cellplots(data.list, coords2)) %>%
+  make.pdf(file.path(out_path, "DBSCANs.pdf"), 7, 8)
+
+stopifnot(coords$cb == coords2$cb)

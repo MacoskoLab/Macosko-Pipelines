@@ -254,7 +254,8 @@ system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whi
 
 # stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
 #                       file.path(out_path, "spatial_metadata.json"),
-#                       file.path(out_path, "SBsummary.pdf"),
+#                       file.path(out_path, "summary.pdf"),
+#                       file.path(out_path, "DBSCANs.pdf"),
 #                       file.path(out_path, "coords.csv"),
 #                       file.path(out_path, "coords2.csv")))
 
@@ -263,27 +264,29 @@ system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whi
 Misc(obj, "sb_metrics") <- jsonlite::fromJSON(file.path(out_path, "spatial_metadata.json"))
 
 coords <- fread(file.path(out_path, "coords.csv"), header=TRUE, sep=",")
-#coords2 <- fread(file.path(out_path, "coords2.csv"), header=TRUE, sep=",")
+coords2 <- fread(file.path(out_path, "coords2.csv"), header=TRUE, sep=",")
 Misc(obj, "coords") <- coords
-#Misc(obj, "coords2") <- coords_dynamic
+Misc(obj, "coords2") <- coords2
 
 # Create spatial reduction
 stopifnot(nrow(coords) == ncol(obj), coords$cb == trim_10X_CB(colnames(obj)))
 obj %<>% AddMetaData(coords[,.(x,y,clusters)])
+obj %<>% AddMetaData(coords2[,.(score)])
 
 emb <- coords %>% as.data.frame %>% select(x,y)
 colnames(emb) <- c("d_1","d_2") ; rownames(emb) = rownames(obj@meta.data)
 obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "d_", assay = "RNA")
-#colnames(emb) <- c("s_1","s_2") ; rownames(emb) = rownames(obj@meta.data)
-#obj[["spatial"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_", assay = "RNA")
+emb <- coords2 %>% as.data.frame %>% select(x,y)
+colnames(emb) <- c("s_1","s_2") ; rownames(emb) = rownames(obj@meta.data)
+obj[["spatial2"]] <- CreateDimReducObject(embeddings = as.matrix(emb), key = "s_", assay = "RNA")
 
 plot_clusters(obj, reduction="spatial") %>% make.pdf(file.path(out_path,"DimPlot.pdf"), 7, 8)
 plot_RNAvsSB(obj) %>% make.pdf(file.path(out_path, "RNAvsSB.pdf"), 7, 8)
 
 # Merge the PDF files
 plotlist <- c("RNAmetrics.pdf","RNAlibrary.pdf","RNAplot.pdf",
-              "SBsummary.pdf",
-              "DimPlot.pdf", "RNAvsSB.pdf", "GDBSCANs.pdf")
+              "summary.pdf",
+              "DimPlot.pdf", "RNAvsSB.pdf", "DBSCANs.pdf")
 pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)
 qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "summary.pdf"))
