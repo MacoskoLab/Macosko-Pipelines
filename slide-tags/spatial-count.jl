@@ -189,8 +189,7 @@ end
     @inbounds sb_1 = seq[1:9]
     @inbounds up = seq[10:19]
     @inbounds sb_2 = seq[20:27]
-    @inbounds umi = seq[28:36]
-    return sb_1, sb_2, up, umi
+    return sb_1, sb_2, up
 end
 @inline function get_V15(seq::SeqView)
     @inbounds sb_1 = seq[1:8]
