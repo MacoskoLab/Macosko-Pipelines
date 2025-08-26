@@ -39,7 +39,7 @@ task run_dropsift {
     gex_h5_path="${gex_dir}/raw_feature_bc_matrix.h5"
     molecule_info_path="${gex_dir}/molecule_info.h5"
 
-    cellbender_dir="gs://${BUCKET}/gene-expression/${bcl}/${rna_index}/cellbender"
+    cellbender_dir="gs://${BUCKET}/gene-expression/${bcl}/${rna_index}/cellbender/${rna_index}"
     cellbender_h5_path="${cellbender_dir}/${rna_index}_out.h5"
 
     output_dir_local="dropsift_outputs"
