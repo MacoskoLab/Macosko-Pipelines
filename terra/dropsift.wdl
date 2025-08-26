@@ -28,8 +28,7 @@ task run_dropsift {
   command <<<
     set -euo pipefail
 
-    # TODO: change to main branch after merge
-    wget -q https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/feature-dropsift/utils/run-dropsift.R
+    wget -q https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/main/utils/run-dropsift.R
 
     BUCKET="~{bucket}"
     bcl="~{bcl}"
