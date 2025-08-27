@@ -6,9 +6,9 @@ slide-tags/
 ├── fastq_dir/
 │   ├── SI-TT-A1_S1_L001_R1_001.fastq.gz
 │   ├── SI-TT-A1_S1_L001_R2_001.fastq.gz
-|   └── ...
+│   └── ...
 ├── puck_dir/
-|   └── Puck.csv
+│   └── Puck.csv
 └── gex_dir/
     ├── filtered_feature_bc_matrix.h5
     ├── molecule_info.h5
