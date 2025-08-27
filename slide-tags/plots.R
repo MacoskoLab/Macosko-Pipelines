@@ -630,14 +630,18 @@ plot_clusters <- function(obj, reduction) {
   ncols = round(sqrt(npucks*nclusters/2)/npucks*2) 
   
   m = obj@reductions[[reduction]]@cell.embeddings %>% {!is.na(.[,1]) & !is.na(.[,2])}
-  title = g("%placed: {round(sum(m)/len(m)*100,2)} ({sum(m)}/{len(m)}) [{reduction}]")
-  p1 = DimPlot(obj, reduction=reduction) + coord_fixed(ratio=1) +
-    ggtitle(title) + NoLegend() + xlab("x-position") + ylab("y-position") + 
-    theme(axis.title.x=element_text(size=12), axis.text.x=element_text(size=10)) +
-    theme(axis.title.y=element_text(size=12), axis.text.y=element_text(size=10))
-  p2 = DimPlot(obj, reduction=reduction, split.by="seurat_clusters", ncol=ncols) + theme_void() + coord_fixed(ratio=1) + NoLegend()
-  plot = plot_grid(p1, p2, ncol=1, rel_heights=c(0.4,0.6))
-  return(plot)
+  title = g("%placed: {round(sum(m)/len(m)*100,2)} ({sum(m)}/{len(m)})")
+  p1 <- DimPlot(obj, reduction=reduction) + coord_fixed(ratio=1) + NoLegend() +
+    labs(x="x-position", y="y-position", title=title) +
+    theme(axis.title.x=element_text(size=12),
+          axis.title.y=element_text(size=12),
+          axis.text.x=element_text(size=10),
+          axis.text.y=element_text(size=10))
+  
+  p2 <- DimPlot(obj, reduction=reduction, split.by="seurat_clusters", ncol=ncols) + 
+    theme_void() + coord_fixed(ratio=1) + NoLegend()
+  
+  plot_grid(p1, p2, ncol=1, rel_heights=c(0.4,0.6))
 }
 
 # RNA vs SB metrics
@@ -647,11 +651,11 @@ plot_RNAvsSB <- function(obj) {
   } else if (!is.null(Misc(obj,"coords")$umi_dbscan)) {
     obj$sb_umi <- Misc(obj,"coords")$umi_dbscan %>% tidyr::replace_na(0)
   } else {
-    obj$sb_umi = 0
+    obj$sb_umi <- 0
   }
   
   obj$clusters <- Misc(obj,"coords")$clusters %>% tidyr::replace_na(0)
-  obj$placed <- !is.na(obj$x) & !is.na(obj$y)
+  obj$placed <- obj$clusters == 1
   
   p1 <- ggplot(obj@meta.data, aes(x=log10(nCount_RNA), y=log10(sb_umi), col=placed)) + 
     geom_point(size=0.2) + theme_bw() + xlab("log10 RNA UMI") + ylab("log10 SB UMI") + ggtitle("SB UMI vs. RNA UMI") + 
@@ -666,14 +670,16 @@ plot_RNAvsSB <- function(obj) {
           legend.spacing.y = unit(0.1,"lines"),
           legend.key.size = unit(0.5, "lines"))
   
-  d = obj@meta.data %>% rowwise %>% mutate(x=min(clusters,5)) %>% ungroup
+  d <- obj@meta.data %>% mutate(x=pmin(clusters,5))
   p2 <- ggplot(d, aes(x=as.factor(x), y=log10(nCount_RNA))) + geom_violin(scale="count") + 
     scale_x_discrete(breaks=min(d$x):max(d$x), labels=(min(d$x):max(d$x)) %>% {ifelse(.==5, "5+", .)}) +
     xlab("DBSCAN clusters") + ylab("log10 RNA UMI") + ggtitle("RNA UMI vs. DBSCAN cluster") + theme_classic()
   
-  d = obj@meta.data %>% group_by(seurat_clusters) %>% summarize(pct.placed=paste0(round(sum(placed)/n()*100,2),"%")) %>% setNames(c("cluster","placed"))
-  m = ceiling(nrow(d)/2) ; d1 = d[1:m,] ; d2 = d[(m+1):nrow(d),]
-  p3 <- plot_grid(plot.tab(d1), plot.tab(d2), ncol=2)
+  d <- obj@meta.data %>% group_by(seurat_clusters) %>% summarize(pct.placed=paste0(round(sum(placed)/n()*100,2),"%")) %>% setNames(c("cluster","placed"))
+  m <- ceiling(nrow(d)/2)
+  p3 <- plot_grid(plot.tab(d[1:m,]),
+                  plot.tab(d[(m+1):nrow(d),]),
+                  ncol=2)
   
   plot = plot_grid(gdraw("RNA vs. SB metrics"),
                    plot_grid(plot_grid(p1,p2,ncol=1), p3, ncol=2, rel_widths=c(0.5,0.5)),

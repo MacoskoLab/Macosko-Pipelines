@@ -274,7 +274,7 @@ emb <- obj@meta.data %>% mutate(x = if_else(dbscan_clusters == 1, x, NA_real_),
 colnames(emb) <- c("spatial_1", "spatial_2") ; rownames(emb) = rownames(obj@meta.data)
 obj[["spatial"]] <- CreateDimReducObject(embeddings=as.matrix(emb), key="spatial_", assay="RNA")
 
-plot_clusters(obj, reduction="spatial") %>% make.pdf(file.path(out_path,"DimPlot.pdf"), 7, 8)
+plot_clusters(obj, reduction="spatial") %>% make.pdf(file.path(out_path, "DimPlot.pdf"), 7, 8)
 plot_RNAvsSB(obj) %>% make.pdf(file.path(out_path, "RNAvsSB.pdf"), 7, 8)
 
 # Merge the PDF files
