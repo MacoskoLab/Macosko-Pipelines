@@ -490,7 +490,7 @@ plotlist <- c("SBmetrics.pdf", "SBlibrary.pdf", "SBplot.pdf",
               "DBSCANopt.pdf", "DBSCAN1.pdf", "DBSCAN2.pdf", "DBSCANscore.pdf")
 pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)
-qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "summary.pdf"))
+qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "SBsummary.pdf"))
 file.remove(pdfs)
 
 # Plot individual cell plots

@@ -7,6 +7,8 @@
 ### Output: obj.qs, summary.pdf (in addition to positioning.R outputs)
 ################################################################################
 
+setwd("/broad/macosko/mshabet/testing/positioning")
+
 stopifnot(file.exists("positioning.R", "helpers.R", "plots.R"))
 suppressMessages(source("helpers.R"))
 suppressMessages(source("plots.R"))
@@ -247,7 +249,7 @@ system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whi
 
 stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
                       file.path(out_path, "spatial_metadata.json"),
-                      file.path(out_path, "summary.pdf"),
+                      file.path(out_path, "SBsummary.pdf"),
                       file.path(out_path, "DBSCANs.pdf"),
                       file.path(out_path, "coords.csv"),
                       file.path(out_path, "coords2.csv")))
@@ -279,7 +281,7 @@ plot_RNAvsSB(obj) %>% make.pdf(file.path(out_path, "RNAvsSB.pdf"), 7, 8)
 
 # Merge the PDF files
 plotlist <- c("RNAmetrics.pdf","RNAlibrary.pdf","RNAlibrary2.pdf","RNAplot.pdf",
-              "summary.pdf",
+              "SBsummary.pdf",
               "DimPlot.pdf", "RNAvsSB.pdf", "DBSCANs.pdf")
 pdfs <- file.path(out_path, plotlist)
 pdfs %<>% keep(file.exists)
