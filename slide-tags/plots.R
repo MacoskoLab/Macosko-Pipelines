@@ -44,8 +44,13 @@ plot_metrics_csv <- function(df) {
 }
 
 # Page 2: Cell calling
-plot_cellcalling <- function(dt, ct=200) {
+plot_cellcalling <- function(dt, name="", ct=200) {
   stopifnot(names(dt) == c("umi","pct_intronic","called"))
+  
+  if (class(dt$called) == "logical") {
+    dt$called %<>% factor(levels = c(FALSE, TRUE),
+                          labels = c("Background","Cells"))
+  }
   
   # Panel 1: cell barcode rank plot
   plotdf <- dt[order(-umi), .(umi,called)]
@@ -74,7 +79,12 @@ plot_cellcalling <- function(dt, ct=200) {
       labs(title="Cell calling", x="log10(UMI)", y="%Intronic", color=NULL)
   }
   
-  plot <- plot_grid(gdraw(g("Estimated Number of Cells: {sum(dt$called=='Cells')}")), p1, p2,
+  header <- plot_grid(gdraw(""),
+                      gdraw(g("Estimated Number of Cells: {sum(dt$called=='Cells')}")),
+                      gdraw(g("({name})")),
+                      nrow=1, rel_widths=c(1,2,1))
+  
+  plot <- plot_grid(header, p1, p2,
                     ncol=1, rel_heights=c(0.1,1,1))
   return(plot)
 }
