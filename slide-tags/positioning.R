@@ -6,7 +6,6 @@
 
 suppressMessages(source("helpers.R"))
 suppressMessages(source("plots.R"))
-setDTthreads(parallelly::availableCores())
 
 # Load arguments
 library(optparse)
@@ -32,6 +31,7 @@ knn <- arguments$options$knn       ; print(g("knn: {knn}"))
 cmes <- arguments$options$cmes     ; print(g("cmes: {cmes}"))
 prob <- arguments$options$prob     ; print(g("prob: {prob}"))
 cores <- arguments$options$cores %>% ifelse(.<1, parallelly::availableCores(), .) ; print(g("cores: {cores}"))
+setDTthreads(cores)
 
 rm(arguments)
 

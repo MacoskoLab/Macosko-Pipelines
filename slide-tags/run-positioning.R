@@ -7,8 +7,6 @@
 ### Output: obj.qs, summary.pdf (in addition to positioning.R outputs)
 ################################################################################
 
-setwd("/broad/macosko/mshabet/testing/positioning")
-
 stopifnot(file.exists("positioning.R", "helpers.R", "plots.R"))
 suppressMessages(source("helpers.R"))
 suppressMessages(source("plots.R"))
@@ -26,7 +24,8 @@ arguments <- OptionParser(
   option_list = list(
     make_option("--cells", type="character", help = "Path to barcodes file"),
     make_option("--dropsift", action="store_true", help = "Add is_cell to obj"),
-    make_option("--args",   type="character", default = "", help = "Passed to positioning.R")
+    make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]"),
+    make_option("--args",   type="character", default = "", help = "Passed to positioning.R"),
   )
 ) %>% parse_args(positional_arguments=3)
 
@@ -52,6 +51,8 @@ stopifnot("Could not create output path" = dir.exists(out_path))
 cells <- arguments$options$cells
 dropsift <- arguments$options$dropsift %>% {ifelse(is.null(.), FALSE, .)}
 positioning_args <- arguments$options$args %>% trimws
+cores <- arguments$options$cores %>% ifelse(.<1, parallelly::availableCores(), .) ; print(g("cores: {cores}"))
+setDTthreads(cores)
 
 print(g("Cell barcode whitelist: {cells}"))
 print(g("DropSift: {dropsift}"))
@@ -245,7 +246,7 @@ colnames(obj) %>% trim_10X_CB %>% writeLines(file.path(out_path, "cb_whitelist.t
 
 # Assign a position to each whitelist cell
 print(g("\nRunning positioning.R"))
-system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} {positioning_args}"))
+system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} --cores={cores} {positioning_args}"))
 
 stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
                       file.path(out_path, "spatial_metadata.json"),

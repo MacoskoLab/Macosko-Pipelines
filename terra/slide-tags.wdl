@@ -74,9 +74,9 @@ task tags {
 
     echo "----- Running slide-tags -----"
     if [ -f "gex/cellranger.tsv.gz" ]; then
-        Rscript --vanilla run-positioning.R gex cache output --cells=cellranger.tsv.gz ~{params}
+        Rscript --vanilla run-positioning.R gex cache output --cores=8 --cells=cellranger.tsv.gz ~{params}
     else
-        Rscript --vanilla run-positioning.R gex cache output ~{params}
+        Rscript --vanilla run-positioning.R gex cache output --cores=8 ~{params}
     fi
 
     echo "----- Uploading results -----"
@@ -103,7 +103,7 @@ workflow slide_tags {
         Array[String] puck_paths
         Int mem_GB
         Int disk_GB
-        String params = "--dropsift"
+        String params = "--dropsift --args='--cmes=10.0'"
         String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image:latest"
     }
     call tags {
