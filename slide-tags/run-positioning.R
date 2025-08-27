@@ -25,7 +25,7 @@ arguments <- OptionParser(
     make_option("--cells", type="character", help = "Path to barcodes file"),
     make_option("--dropsift", action="store_true", help = "Add is_cell to obj"),
     make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]"),
-    make_option("--args",   type="character", default = "", help = "Passed to positioning.R"),
+    make_option("--args",   type="character", default = "", help = "Passed to positioning.R")
   )
 ) %>% parse_args(positional_arguments=3)
 
