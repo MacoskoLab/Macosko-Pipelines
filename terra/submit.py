@@ -49,7 +49,8 @@ elif workflow in ["recon", "reconstruction"]:
 
 # Clean the worksheet
 assert all(col in df.columns for col in cols)
-df = df[cols].apply(lambda col: col.map(str.strip) if pd.api.types.is_string_dtype(col) else col)
+df = df[cols].apply(lambda col: col.map(lambda x: x.strip() if isinstance(x, str) else x))
+
 print(f"Total rows found: {len(df.index)}")
 
 
@@ -188,7 +189,7 @@ def submit(config, user_comment=""):
     
     # Submit the job
     res = fapi.create_submission(wnamespace, workspace, cnamespace, config, user_comment=user_comment, use_callcache=False)
-    assert res.status_code == 201, str(res.status_code) + ": " + res.json()['message']
+    assert res.status_code == 201, res.status_code + ": " + res.json()['message']
     print(f"Submitted {config} {user_comment}")
 
 def run_cellranger_count(bcl, index, reference, mem_GB, disk_GB, params=None, user_comment=""):
