@@ -32,9 +32,11 @@ def blob2link(blob):
 ################################################################################
 
 # Load <Recon> worksheet
-df = get_as_dataframe(sh.worksheet("Recon"))
-ranges = {col: get_column_letter(df.columns.get_loc(col)+1)+"2" for col in ["QC", "summary", "FASTQs"]}
-df = df.drop(columns=["QC", "summary", "FASTQs"])
+df0 = get_as_dataframe(sh.worksheet("Recon"))
+ranges = {col: get_column_letter(df0.columns.get_loc(col)+1)+"2" for col in ["QC", "summary", "FASTQs"]}
+df0 = df0.drop(columns=["QC", "summary", "FASTQs"])
+
+df = df0.copy()
 df = df.dropna(subset=['BCL', 'Index'])
 dups = df.duplicated(subset=["BCL", "Index"])
 assert not dups.any(), f"Recon sheet has duplicated BCL/Index pair:\n{df[dups]}"
@@ -55,9 +57,9 @@ summary['summary'] = summary['summary'].apply(blob2link)
 assert not summary.duplicated(subset=["BCL", "Index"]).any()
 
 # Update the sheet
-QC =           pd.merge(df, QC,      on=["BCL", "Index"], how="left").fillna('')["QC"]
-summary =      pd.merge(df, summary, on=["BCL", "Index"], how="left").fillna('')["summary"]
-recon_fastqs = pd.merge(df, fastqs,  on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
+QC =           pd.merge(df0, QC,      on=["BCL", "Index"], how="left").fillna('')["QC"]
+summary =      pd.merge(df0, summary, on=["BCL", "Index"], how="left").fillna('')["summary"]
+recon_fastqs = pd.merge(df0, fastqs,  on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
 assert len(QC) == len(summary) == len(recon_fastqs)
 
 sh.worksheet("Recon").update(values=[[v] for v in QC],           range_name=ranges["QC"],      raw=False)
@@ -67,10 +69,12 @@ sh.worksheet("Recon").update(values=[[v] for v in recon_fastqs], range_name=rang
 ################################################################################
 
 # Load <Slide-tags> worksheet
-df = get_as_dataframe(sh.worksheet("Slide-tags"))
-ranges = {col: get_column_letter(df.columns.get_loc(col)+1)+"2" for col in ["web_summary", "summary", "FASTQs"]}
-df = df.drop(columns=["web_summary", "summary", "FASTQs"])
-df.rename(columns={'RNAIndex': 'Index'}, inplace=True)
+df0 = get_as_dataframe(sh.worksheet("Slide-tags"))
+ranges = {col: get_column_letter(df0.columns.get_loc(col)+1)+"2" for col in ["web_summary", "summary", "FASTQs"]}
+df0 = df0.drop(columns=["web_summary", "summary", "FASTQs"])
+df0.rename(columns={'RNAIndex': 'Index'}, inplace=True)
+
+df = df0.copy()
 df = df.dropna(subset=['BCL', 'Index'])
 dups = df.duplicated(subset=["BCL", "Index"])
 assert not dups.any(), f"Slide-tags sheet has duplicated BCL/RNAIndex pair:\n{df[dups]}"
@@ -88,9 +92,9 @@ tags = pd.DataFrame(tags, columns=["BCL", "Index", "summary"])
 assert not tags.duplicated(subset=["BCL", "Index"]).any()
 
 # Update the sheet
-count =        pd.merge(df, count,  on=["BCL", "Index"], how="left").fillna('')["web_summary"]
-tags =         pd.merge(df, tags,   on=["BCL", "Index"], how="left").fillna('')["summary"]
-count_fastqs = pd.merge(df, fastqs, on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
+count =        pd.merge(df0, count,  on=["BCL", "Index"], how="left").fillna('')["web_summary"]
+tags =         pd.merge(df0, tags,   on=["BCL", "Index"], how="left").fillna('')["summary"]
+count_fastqs = pd.merge(df0, fastqs, on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
 assert len(count) == len(tags) == len(count_fastqs)
 
 sh.worksheet("Slide-tags").update(values=[[v] for v in count],        range_name=ranges["web_summary"], raw=False)
