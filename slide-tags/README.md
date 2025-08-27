@@ -3,11 +3,6 @@ Quick-start guide
 Example input directory structure:
 <pre>
 slide-tags/
-├── spatial-count.jl
-├── run-positioning.R
-├── positioning.R
-├── helpers.R
-├── plots.R
 ├── fastq_dir/
 │   ├── SI-TT-A1_S1_L001_R1_001.fastq.gz
 │   ├── SI-TT-A1_S1_L001_R2_001.fastq.gz
