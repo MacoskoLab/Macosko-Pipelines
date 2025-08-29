@@ -143,16 +143,16 @@ plot_SBlibrary <- function(dt, f) {
   cb.data2[, filter := "called cell barcodes only"]
   
   p1 <- ggplot(mapping=aes(x=index, y=N, col=filter)) + 
-               geom_line(data=cb.data) + geom_line(data=cb.data2) +
-               scale_x_log10() + scale_y_log10() + theme_bw() + 
-               ggtitle("SB UMI per cell") + ylab("SB UMI counts") + xlab("Cell barcode rank") +
-               theme(legend.position = "inside",
-                     legend.position.inside = c(0.05, 0.05),
-                     legend.justification.inside = c("left", "bottom"),
-                     legend.background = element_blank(),
-                     legend.spacing.y = unit(0.1,"lines"),
-                     legend.title=element_blank()) +
-               annotate("text", x=Inf, y=Inf, label=g("SB UMI in called cells: {sb_pct_in_called_cells}"), hjust=1.02, vjust=1.33)
+    geom_line(data=cb.data) + geom_line(data=cb.data2) +
+    scale_x_log10() + scale_y_log10() + theme_bw() + 
+    ggtitle("SB UMI per cell") + ylab("SB UMI counts") + xlab("Cell barcode rank") +
+    theme(legend.position = "inside",
+          legend.position.inside = c(0.05, 0.05),
+          legend.justification.inside = c("left", "bottom"),
+          legend.background = element_blank(),
+          legend.spacing.y = unit(0.1,"lines"),
+          legend.title=element_blank()) +
+    annotate("text", x=Inf, y=Inf, label=g("SB UMI in called cells: {sb_pct_in_called_cells}"), hjust=1.02, vjust=1.33)
   rm(cb.data, cb.data2) ; invisible(gc())
   
   # Panel 2: Spatial barcodes per bead
@@ -167,22 +167,22 @@ plot_SBlibrary <- function(dt, f) {
   sb.data2[, filter := "called cell barcodes only"]
   
   p2 <- ggplot(mapping=aes(x=index, y=N, col=filter)) + 
-               geom_line(data=sb.data) + geom_line(data=sb.data2) +
-               scale_x_log10() + scale_y_log10() + theme_bw() + 
-               ggtitle("SB UMI per bead") + ylab("SB UMI counts") + xlab("Beads") +
-               theme(legend.position = "inside",
-                     legend.position.inside = c(0.05, 0.05),
-                     legend.justification.inside = c("left", "bottom"),
-                     legend.background = element_blank(),
-                     legend.spacing.y = unit(0.1,"lines"),
-                     legend.title=element_blank())
+    geom_line(data=sb.data) + geom_line(data=sb.data2) +
+    scale_x_log10() + scale_y_log10() + theme_bw() + 
+    ggtitle("SB UMI per bead") + ylab("SB UMI counts") + xlab("Beads") +
+    theme(legend.position = "inside",
+          legend.position.inside = c(0.05, 0.05),
+          legend.justification.inside = c("left", "bottom"),
+          legend.background = element_blank(),
+          legend.spacing.y = unit(0.1,"lines"),
+          legend.title=element_blank())
   rm(sb.data, sb.data2) ; invisible(gc())
   
   # Panel 3: Spatial barcode library downsampling curve
   p3 <- data.frame(x = seq(0, 1, 0.05) * f("metadata/reads")/1000000,
                    y = f("metadata/downsampling")/1000000) %>% 
-        ggplot(aes(x=x,y=y)) + geom_point() + theme_bw() + 
-        xlab("Millions of SB reads") + ylab("Millions of filtered SB UMIs") + ggtitle("SB downsampling curve")
+    ggplot(aes(x=x,y=y)) + geom_point() + theme_bw() + 
+    xlab("Millions of SB reads") + ylab("Millions of filtered SB UMIs") + ggtitle("SB downsampling curve")
   
   # Panel 4: Reads per UMI distribution
   d <- dt[, .N, .(reads=pmin(reads, 10))][order(reads)]
@@ -213,7 +213,7 @@ plot_SBplot <- function(dt, puckdf) {
   
   sbd <- dt[!is.na(cb), .(umi=.N), sb] %>% merge(puckdf, by="sb", all=FALSE)
   p2 <- beadplot(sbd) + ggtitle(g("SB UMI per bead (called cells only)"))
-
+  
   return(plot_grid(p1, p2, ncol=1))
 }
 

@@ -272,8 +272,8 @@ obj %<>% AddMetaData(cbind(coords2[,.(x=x,y=y)],
                            coords2[,.(dbscan_score=score)]))
 
 # Create spatial reduction
-emb <- obj@meta.data %>% mutate(x = if_else(dbscan_clusters == 1, x, NA_real_),
-                                y = if_else(dbscan_clusters == 1, y, NA_real_)) %>% select(x,y)
+emb <- obj@meta.data %>% transmute(x = if_else(dbscan_clusters == 1, x, NA_real_),
+                                   y = if_else(dbscan_clusters == 1, y, NA_real_))
 colnames(emb) <- c("spatial_1", "spatial_2") ; rownames(emb) = rownames(obj@meta.data)
 obj[["spatial"]] <- CreateDimReducObject(embeddings=as.matrix(emb), key="spatial_", assay="RNA")
 

@@ -81,7 +81,7 @@ df <- df[, .(cb_fuzzy=listHD1neighbors(cb), match="fuzzy"), cb
            ][cb_fuzzy %in% dt$cb_fuzzy]
 # Label ambiguous matches
 df[, `:=`(cb = ifelse(.N > 1, NA, cb),
-       match = ifelse(.N > 1, "ambig", match)), cb_fuzzy]
+          match = ifelse(.N > 1, "ambig", match)), cb_fuzzy]
 df %<>% unique
 # Add exact matches
 df <- rbindlist(list(df, data.table(cb=cb_whitelist,
@@ -106,7 +106,7 @@ stopifnot(is.null(key(dt)), is.null(indices(dt)))
 
 # Record metadata
 metadata$CB_matching <- dt[, .(reads=sum(reads)), match][order(-reads)] %>% 
-            {setNames(.$reads, .$match %>% as.character %>% replace_na("none"))}
+  {setNames(.$reads, .$match %>% as.character %>% replace_na("none"))}
 stopifnot(sum(dt$reads) == sum(metadata$CB_matching))
 
 # Clean up
@@ -366,7 +366,7 @@ if (cmes > 0) {
     }
   }
 }
-  
+
 # Assign the centroid via a weighted mean
 coords <- imap(data.list, function(dl, cb){
   ret <- dl[,.(cb=cb,
@@ -445,21 +445,21 @@ if (cmes > 0) {
 # Assign the centroid via a weighted mean
 coords2 <- imap(data.list, function(dl, cb) {
   ret <- dl[,.(cb=cb, umi=sum(umi))]
-
+  
   # Position the cell, using the highest minPts that produces DBSCAN=1
   if (nrow(dl) > 0 && dl[,max(cluster1)] == 1) {
     s <- dl[cluster1 == 1, .(x=weighted.mean(x, umi),
                              y=weighted.mean(y, umi))]
     ret[, names(s) := s]
   }
-
+  
   # Compute statistics, using the highest minPts that produces DBSCAN=2
   s <- dl[cluster2 > 0, .(x=weighted.mean(x, umi),
                           y=weighted.mean(y, umi),
                           umi=sum(umi),
                           beads=.N,
                           h=h_index(umi)
-                         ), cluster2][order(-umi, cluster2)]
+  ), cluster2][order(-umi, cluster2)]
   setcolorder(s, c("x", "y", "umi", "beads", "h", "cluster2"))
   ret[, c("x1","y1","umi1","beads1","h1","cluster1") := s[1]] # Highest UMI DBSCAN cluster
   ret[, c("x2","y2","umi2","beads2","h2","cluster2") := s[2]] # Second-highest UMI DBSCAN cluster
@@ -497,5 +497,7 @@ file.remove(pdfs)
 c(plot_dbscan_cellplots(data.list),
   plot_debug_cellplots(data.list, coords2)) %>%
   make.pdf(file.path(out_path, "DBSCANs.pdf"), 7, 8)
+
+# rbindlist(data.list, use.names=TRUE) %>% fwrite(file.path(out_path, "matrixd.csv.gz"), quote=FALSE, sep=",", row.names=FALSE, col.names=TRUE, compress="gzip")
 
 stopifnot(coords$cb == coords2$cb)
