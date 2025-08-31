@@ -1,5 +1,8 @@
 library(ggplot2)
 library(ggrastr)
+library(cowplot)
+library(viridisLite)
+library(viridis)
 
 gdraw <- function(text, s=14) {cowplot::ggdraw()+cowplot::draw_label(text, size=s)}
 plot.tab <- function(df) {return(cowplot::plot_grid(gridExtra::tableGrob(df, rows=NULL)))}

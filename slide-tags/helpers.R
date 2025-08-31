@@ -6,9 +6,6 @@ library(dplyr)
 library(data.table)
 library(stringr)
 library(rdist)
-library(cowplot)
-library(viridisLite)
-library(viridis)
 library(rhdf5)
 library(qpdf)
 
@@ -206,7 +203,7 @@ ReadPuck <- function(f) {
   
   longest_run_length <- function(vec) {
     stopifnot(typeof(vec) == "character", nchar(vec) > 0)
-    ret = stringr::str_extract_all(vec, "(.)\\1*")
+    ret = str_extract_all(vec, "(.)\\1*")
     return(map_int(ret, ~max(nchar(.))))
   }
   puckdf[, lr := longest_run_length(sb)]

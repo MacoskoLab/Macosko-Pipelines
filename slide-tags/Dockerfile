@@ -4,11 +4,11 @@ ENV LANGUAGE C.UTF-8
 ENV LC_ALL C.UTF-8
 
 # Install system packages
-RUN apt-get update && apt-get install -y  \
-    wget curl patch gdebi-core gfortran   \
-    libssl-dev libxml2-dev                \
-    libhdf5-dev hdf5-tools hdf5-helpers   \
-    libpng-dev libtiff5-dev libjpeg-dev   \
+RUN apt-get update && apt-get install -y \
+    wget curl patch gdebi-core gfortran  \
+    libssl-dev libxml2-dev               \
+    libhdf5-dev hdf5-tools hdf5-helpers  \
+    libpng-dev libtiff5-dev libjpeg-dev  \
     libcairo2-dev libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev
     
 # Install Julia
@@ -56,6 +56,13 @@ RUN R -e "if (!require('BiocManager', quietly=TRUE)) {install.packages('BiocMana
           BiocManager::install(c('IRanges', 'rhdf5'))"
 # Install other R packages
 RUN R -e "remotes::install_github('broadinstitute/DropSift')"
-    
+
+# Download scripts
+#RUN wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/spatial-count.jl  \
+#         https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/run-positioning.R \
+#         https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/positioning.R     \
+#         https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/helpers.R         \
+#         https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/plots.R
+
 ENTRYPOINT ["/bin/bash", "-lc"]
 CMD ["/bin/bash", "-i"]

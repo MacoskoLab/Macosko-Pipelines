@@ -6,7 +6,7 @@ RUN echo "\numask 002" >> /etc/profile
 
 # Install system packages
 RUN apt-get update && apt-get install -y  \
-    sudo zip unzip less tree expect       \
+    sudo zip unzip less tree expect patch \
     wget curl rsync socat                 \
     vim nano tmux screen htop ncdu dstat  \
     procps moreutils gnupg ssh git-all    \
@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y  \
     libudunits2-dev libgdal-dev           \
     libncurses5-dev libncursesw5-dev      \
     zlib1g-dev liblzma-dev libbz2-dev     \
-    gdebi-core build-essential cmake pkg-config alien \
+    gdebi-core build-essential cmake pkg-config alien gfortran \
     libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev \
     apt-transport-https ca-certificates libssl-dev libxml2-dev \
     libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libcairo2-dev
@@ -85,10 +85,10 @@ RUN julia -e 'using Pkg;                \
                        "DataFrames",    \
                        "StatsPlots",    \
                        "StringViews",   \
-                       "Combinatorics", \
-                       "Distributions", \
                        "KernelDensity", \
-                       "LinearAlgebra"])'
+                       "LinearAlgebra", \
+                       "Combinatorics", \
+                       "Distributions"])'
 
 # Install R
 # https://docs.posit.co/resources/install-r.html
@@ -96,8 +96,8 @@ RUN export R_VERSION=4.3.3 && \
     curl -O https://cdn.rstudio.com/r/debian-12/pkgs/r-${R_VERSION}_1_amd64.deb && \
     echo y | gdebi r-${R_VERSION}_1_amd64.deb && \
     rm r-${R_VERSION}_1_amd64.deb && \
-    sudo ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R && \
-    sudo ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
+    ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R && \
+    ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
 
 # Install RStudio
 # https://posit.co/download/rstudio-server/
@@ -107,18 +107,18 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
     rstudio-server stop && sleep 1
 
 # Install R packages
-RUN R -e "install.packages(c('tidyverse', \
-                             'dplyr', 'tidyr', 'purrr', 'magrittr', \
-                             'future', 'furrr', 'parallelly', \
-                             'data.table', 'rlist', 'stringr', 'stringi', 'glue', \
+RUN R -e "install.packages(c('tidyverse', 'data.table',                    \
+                             'dplyr', 'tidyr', 'purrr', 'magrittr',        \
+                             'future', 'furrr', 'parallelly',              \
+                             'rlist', 'stringr', 'stringi', 'glue',        \
                              'ggplot2', 'ggrastr', 'cowplot', 'gridExtra', \
-                             'scCustomize', 'viridis', \
-                             'Seurat', 'SeuratObject', \
-                             'rdist', 'sf', 'dbscan', \
-                             'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2', \
+                             'scCustomize', 'viridis', 'viridisLite',      \
+                             'Seurat', 'SeuratObject',                     \
+                             'rdist', 'sf', 'dbscan', 'RANN',              \
+                             'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2',     \
                              'devtools', 'remotes', 'R.utils', 'optparse', \
-                             'shiny', 'IRkernel', 'duckdb'), \
-                             repos='http://cloud.r-project.org', \
+                             'shiny', 'IRkernel', 'duckdb'),               \
+                             repos='http://cloud.r-project.org',           \
                              Ncpus=$(nproc)L)"
 # Install Bioconductor packages
 RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager', repos='http://cloud.r-project.org')}; \
