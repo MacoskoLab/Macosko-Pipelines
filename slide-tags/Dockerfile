@@ -5,7 +5,7 @@ ENV LC_ALL C.UTF-8
 
 # Install system packages
 RUN apt-get update && apt-get install -y  \
-    wget curl gdebi-core gfortran         \
+    wget curl patch gdebi-core gfortran   \
     libssl-dev libxml2-dev                \
     libhdf5-dev hdf5-tools hdf5-helpers   \
     libpng-dev libtiff5-dev libjpeg-dev   \
