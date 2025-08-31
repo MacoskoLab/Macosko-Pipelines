@@ -53,9 +53,10 @@ RUN R -e "install.packages(c('tidyverse', 'dplyr', 'tidyr', 'purrr', 'magrittr',
                              repos='http://cloud.r-project.org')"
 # Install Bioconductor packages
 RUN R -e "if (!require('BiocManager', quietly=TRUE)) {install.packages('BiocManager', repos='http://cloud.r-project.org')}; \
-          BiocManager::install(c('IRanges', 'rhdf5'))"
+          BiocManager::install(c('rhdf5', 'IRanges', 'SummarizedExperiment'))"
 # Install other R packages
 RUN R -e "remotes::install_github('broadinstitute/DropSift')"
+RUN R -e "devtools::install_github('immunogenomics/presto')"
 
 # Download scripts
 #RUN wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/spatial-count.jl  \

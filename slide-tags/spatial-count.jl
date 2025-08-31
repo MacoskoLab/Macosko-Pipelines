@@ -147,7 +147,7 @@ empty!(puckdfs)
 # Create the sb_whitelist
 const sb_whitelist = [str for str in sort(collect(Set(puckdf.sb))) if count(c -> c == 'N', str) < 2]
 println("Total number of unique spatial barcodes: $(length(sb_whitelist))")
-@assert length(sb_whitelist) < 2^32-1 "Must change type of sb_i from U32 to U64"
+@assert length(sb_whitelist) < 2^32-1 "Must change type of sb_i from UInt32 to UInt64"
 
 println("") ; flush(stdout) ; GC.gc()
 
@@ -421,7 +421,7 @@ function process_fastqs(R1s, R2s)
         it2 = fastqpair[2] |> open |> GzipDecompressorStream |> FASTQ.Reader;
         for record in zip(it1, it2)
             # Random dropout for downsampling
-            prob < 1 && rand() > prob && continue
+            prob < 1 && (rand() > prob) && continue
             
             metadata["reads"] += 1
 

@@ -66,15 +66,15 @@ task tags {
 
     echo "----- Downloading gene expression -----"
     mkdir gex
-    gcloud storage cp "$gex_dir/filtered_feature_bc_matrix/barcodes.tsv.gz" "gex/cellranger.tsv.gz" || true
+    gcloud storage cp -r "$gex_dir/filtered_feature_bc_matrix/" gex || true
     gcloud storage cp "$gex_dir/*.h5" gex || true
     gcloud storage cp "$gex_dir/*.csv" gex || true
     gcloud storage cp "$gex_dir/*.h5ad" gex || true
     ls -1 gex
 
     echo "----- Running slide-tags -----"
-    if [ -f "gex/cellranger.tsv.gz" ]; then
-        Rscript --vanilla run-positioning.R gex cache output --cores=8 --cells=cellranger.tsv.gz ~{params}
+    if [ -f "gex/filtered_feature_bc_matrix/barcodes.tsv.gz" ]; then
+        Rscript --vanilla run-positioning.R gex cache output --cores=8 --cells='filtered_feature_bc_matrix/barcodes.tsv.gz' ~{params}
     else
         Rscript --vanilla run-positioning.R gex cache output --cores=8 ~{params}
     fi
