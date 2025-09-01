@@ -210,7 +210,7 @@ ReadPuck <- function(f) {
   
   sb_len = max(nchar(puckdf$sb))
   mc_tol = round(sb_len*4/5)
-  lr_tol = round(sb_len*2/3)
+  lr_tol = round(sb_len*5/7)
   
   dups = unique(puckdf$sb[duplicated(puckdf$sb)])
   Ns = puckdf[grepl("N", sb), sb]

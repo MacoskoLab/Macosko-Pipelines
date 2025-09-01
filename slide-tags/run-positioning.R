@@ -96,6 +96,12 @@ if (!is.null(cells) || dropsift) {
   } else if (dir.exists(file.path(rna_path, "filtered_feature_bc_matrix"))) {
     print("Loading filtered_feature_bc_matrix")
     mat <- Read10X(file.path(rna_path, "filtered_feature_bc_matrix"))
+  } else if (file.exists(file.path(rna_path, "sample_filtered_feature_bc_matrix.h5"))) {
+    print("Loading sample_filtered_feature_bc_matrix.h5")
+    mat <- Read10X_h5(file.path(rna_path, "sample_filtered_feature_bc_matrix.h5"))
+  } else if (dir.exists(file.path(rna_path, "sample_filtered_feature_bc_matrix"))) {
+    print("Loading sample_filtered_feature_bc_matrix")
+    mat <- Read10X(file.path(rna_path, "sample_filtered_feature_bc_matrix"))
   } else if (any(str_ends(list.files(rna_path), ".h5ad"))) {
     print("Loading .h5ad")
     matrix_path <-  list.files(rna_path, full.names=TRUE) %>% keep(~str_sub(.,-5) == ".h5ad") %T>% {stopifnot(len(.)==1)}

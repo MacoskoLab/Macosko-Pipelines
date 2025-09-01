@@ -485,10 +485,8 @@ plot_dbscan_score <- function(coords2) {
           legend.spacing.y = unit(0.1,"lines"),
           legend.title=element_blank())
   
-  xline <- seq(max(coords2$umi1, na.rm = TRUE))
-  yline <- quantile(coords2$umi1, probs=0.1*F1(xline), type=1, names=FALSE, na.rm = TRUE)
-  p4 <- ggplot() + geom_point(aes(x=log10(umi1),y=log10(umi2),col=score), coords2, size=0.1) + 
-    #geom_path(aes(x=log10(xline), y=log10(yline)),col="red", linewidth=0.2) +
+  p4 <- ggplot() + geom_bin2d(aes(x=log10(umi1),y=log10(umi2)), coords2, bins=31) +
+    #geom_point(aes(x=log10(umi1),y=log10(umi2),col=score), coords2, size=0.1) + 
     theme_bw() + scale_color_continuous(limits = c(0, 1)) + 
     labs(x="log10(UMI1)", y="log10(UMI2)", title="DBSCAN UMI Distribution") + 
     theme(legend.position = "inside",
@@ -577,12 +575,12 @@ plot_dbscan_cellplots <- function(data.list) {
   return(plots)
 }
 
-debug.plot <- function(dl) {
+debug.plot <- function(dl, d1=1, d2=2) {
   stopifnot(c("x","y","umi","cluster2") %in% names(dl))
   p1 <- ggplot() + theme_void() + coord_fixed(ratio=1) + cellplottheme +
     geom_point(aes(x=x,y=y,col=umi), dl[order(umi)], size=0.5) +
-    geom_point(aes(x=x,y=y), dl[cluster2==1, .(x=weighted.mean(x,umi), y=weighted.mean(y,umi))], color="red", shape=0) + 
-    geom_point(aes(x=x,y=y), dl[cluster2==2, .(x=weighted.mean(x,umi), y=weighted.mean(y,umi))], color="green", shape=0)
+    geom_point(aes(x=x,y=y), dl[cluster2==d1, .(x=weighted.mean(x,umi), y=weighted.mean(y,umi))], color="red", shape=0) + 
+    geom_point(aes(x=x,y=y), dl[cluster2==d2, .(x=weighted.mean(x,umi), y=weighted.mean(y,umi))], color="green", shape=0)
   p2 <- ggplot() + theme_void() + coord_fixed(ratio=1) + guides(col="none") +
     geom_point(aes(x=x,y=y), dl[cluster2==0], color="grey", size=0.5) + 
     geom_point(aes(x=x,y=y,col=as.factor(cluster2)), dl[cluster2>0], size=0.5)
@@ -595,18 +593,18 @@ debug.plot <- function(dl) {
   p2$layers[[2]]$aes_params$size <- 2
   
   # DBSCAN=1
-  xlims <- dl[cluster2==1,range(x)] %>% {2*(.-mean(.))+mean(.)}
-  ylims <- dl[cluster2==1,range(y)] %>% {2*(.-mean(.))+mean(.)}
+  xlims <- dl[cluster2==d1, range(x)] %>% {2*(.-mean(.))+mean(.)}
+  ylims <- dl[cluster2==d1, range(y)] %>% {2*(.-mean(.))+mean(.)}
   p3 <- p1 + xlim(xlims) + ylim(ylims)
   p4 <- p2 + xlim(xlims) + ylim(ylims) +
-    annotate("text", x=mean(xlims), y=ylims[[2]], label=g("UMI: {dl[cluster2==1,sum(umi)]}"))
+    annotate("text", x=mean(xlims), y=ylims[[2]], label=g("UMI: {dl[cluster2==d1, sum(umi)]}"))
   
   # DBSCAN=2
-  xlims <- dl[cluster2==2,range(x)] %>% {2*(.-mean(.))+mean(.)}
-  ylims <- dl[cluster2==2,range(y)] %>% {2*(.-mean(.))+mean(.)}
+  xlims <- dl[cluster2==d2, range(x)] %>% {2*(.-mean(.))+mean(.)}
+  ylims <- dl[cluster2==d2, range(y)] %>% {2*(.-mean(.))+mean(.)}
   p5 <- p1 + xlim(xlims) + ylim(ylims)
   p6 <- p2 + xlim(xlims) + ylim(ylims) +
-    annotate("text", x=mean(xlims), y=ylims[[2]], label=g("UMI: {dl[cluster2==2,sum(umi)]}"))
+    annotate("text", x=mean(xlims), y=ylims[[2]], label=g("UMI: {dl[cluster2==d2, sum(umi)]}"))
   
   return(suppressWarnings(plot_grid(p12,
                                     plot_grid(p3,p4,p5,p6,ncol=2),
@@ -614,10 +612,10 @@ debug.plot <- function(dl) {
 }
 
 plot_debug_cellplots <- function(data.list, coords2) {
-  coords2[!is.na(score)][order(-score)][round(seq(0.1,0.9,0.1)*.N), .(cb, score)] %>% 
-    pmap(function(cb, score) {
-      plot_grid(plot_grid(gdraw(g("[{cb}]")), plot_grid(gdraw(g("({score})")), ncol=2)),
-                debug.plot(data.list[[cb]]),
+  coords2[!is.na(score)][order(-score)][round(seq(0.1,0.9,0.1)*.N), .(cb, score, cluster1, cluster2)] %>% 
+    pmap(function(cb, score, cluster1, cluster2) {
+      plot_grid(plot_grid(gdraw(g("[{cb}]")), plot_grid(gdraw(g("({dec2pct(score)})")), ncol=2)),
+                debug.plot(data.list[[cb]], d1=cluster1, d2=cluster2),
                 ncol=1, rel_heights=c(0.05,0.95))
     })
 }

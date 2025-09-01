@@ -14,7 +14,7 @@ arguments <- OptionParser(
   option_list = list(
     make_option("--minPts", type="integer", help = "dbscan optimization override"),
     make_option("--eps", type="integer", help = "dbscan optimization override"),
-    make_option("--knn", type="integer", default=51L, help = "Number of bead neighbors used to compute eps [default: %default]"),
+    make_option("--knn", type="integer", default=36L, help = "Number of bead neighbors used to compute eps [default: %default]"),
     make_option("--cmes", type="double", default=0.0, help = "Reconstruction parameter"),
     make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]"),
     make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]")
@@ -109,6 +109,14 @@ metadata$CB_matching <- dt[, .(reads=sum(reads)), match][order(-reads)] %>%
   {setNames(.$reads, .$match %>% as.character %>% replace_na("none"))}
 stopifnot(sum(dt$reads) == sum(metadata$CB_matching))
 
+# Remap back
+if (remap) {
+  stopifnot(levels(dt$cb) == cb_whitelist)
+  cb_whitelist %<>% remap_10X_CB
+  levels(dt$cb) %<>% remap_10X_CB
+  stopifnot(levels(dt$cb) == cb_whitelist)
+}
+
 # Clean up
 dt[, match := NULL]
 setnames(dt, "cb_fuzzy", "cr")
@@ -116,7 +124,7 @@ setcolorder(dt, c("cr", "cb", "umi", "sb", "reads"))
 rm(df) ; invisible(gc())
 
 # Save matching result
-# fwrite(dt, file.path(out_path, "matrix0.csv.gz"), quote=FALSE, sep=",", row.names=FALSE, col.names=TRUE, compress="gzip")
+#fwrite(dt, file.path(out_path, "matrix0.csv.gz"), quote=FALSE, sep=",", row.names=FALSE, col.names=TRUE, compress="gzip")
 
 print(g("{dt[!is.na(cb), .N] %>% add.commas} matched UMIs"))
 
@@ -415,7 +423,6 @@ stopifnot(nrow(mranges) == len(cb_whitelist))
 
 # Write coords
 setcolorder(coords, c("cb","x","y"))
-if (remap) { coords$cb %<>% remap_10X_CB }
 fwrite(coords, file.path(out_path, "coords.csv"))
 
 # Plots
@@ -470,7 +477,9 @@ coords2 <- imap(data.list, function(dl, cb) {
 
 # Compute the score
 F1 <- ecdf(coords2$umi1)
-coords2[, score := 1-F1(umi2)/F1(umi1)]
+F2 <- ecdf(coords2$umi2)
+coords2[, score := (1-F1(umi2)/F1(umi1)) * F2(umi1)]
+coords2[is.na(cluster2), score := F2(umi1)]
 
 # Add DBSCAN parameters
 coords2[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
@@ -478,12 +487,17 @@ coords2[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
                                                        minPts1=mranges$i1*ms)]
 
 # Save results
-plot_dbscan_score(coords2) %>% make.pdf(file.path(out_path, "DBSCANscore.pdf"), 7, 8)
+plot_dbscan_score(coords2[umi>0]) %>% make.pdf(file.path(out_path, "DBSCANscore.pdf"), 7, 8)
 fwrite(coords2, file.path(out_path, "coords2.csv"))
 
 ### Final check ################################################################
 
 print("Writing output...")
+
+# Plot individual cell plots
+c(plot_dbscan_cellplots(data.list),
+  plot_debug_cellplots(data.list, coords2)) %>%
+  make.pdf(file.path(out_path, "DBSCANs.pdf"), 7, 8)
 
 # Combine into one PDF
 plotlist <- c("SBmetrics.pdf", "SBlibrary.pdf", "SBplot.pdf",
@@ -493,11 +507,7 @@ pdfs %<>% keep(file.exists)
 qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "SBsummary.pdf"))
 file.remove(pdfs)
 
-# Plot individual cell plots
-c(plot_dbscan_cellplots(data.list),
-  plot_debug_cellplots(data.list, coords2)) %>%
-  make.pdf(file.path(out_path, "DBSCANs.pdf"), 7, 8)
-
-# rbindlist(data.list, use.names=TRUE) %>% fwrite(file.path(out_path, "matrixd.csv.gz"), quote=FALSE, sep=",", row.names=FALSE, col.names=TRUE, compress="gzip")
+# Save DBSCAN cluster assignments per bead
+#rbindlist(data.list, use.names=TRUE, idcol='cb') %>% fwrite(file.path(out_path, "matrixd.csv.gz"), quote=FALSE, sep=",", row.names=FALSE, col.names=TRUE, compress="gzip")
 
 stopifnot(coords$cb == coords2$cb)
