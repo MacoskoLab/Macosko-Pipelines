@@ -39,8 +39,8 @@ stopifnot("RNA dir not found" = dir.exists(rna_path))
 stopifnot("RNA dir empty" = len(list.files(rna_path)) > 0)
 
 print(g("SB path: {normalizePath(sb_path)}"))
-if (dir.exists(sb_path)) { sb_path = file.path(sb_path, "SBcounts.h5") }
-stopifnot("SB path is not SBcounts.h5" = str_sub(sb_path, -11, -1) == "SBcounts.h5")
+if (dir.exists(sb_path)) { sb_path %<>% file.path("SBcounts.h5") }
+stopifnot("SB path is not an .h5" = str_sub(sb_path, -3, -1) == ".h5")
 stopifnot("SBcounts.h5 not found" = file.exists(sb_path))
 
 if (!dir.exists(out_path)) { dir.create(out_path, recursive = TRUE) }
@@ -116,12 +116,12 @@ if (!is.null(cells) || dropsift) {
 if (file.exists(file.path(rna_path, "molecule_info.h5"))) {
   print("Loading molecule_info.h5")
   pct_intronic <- ReadIntronic(file.path(rna_path, "molecule_info.h5"), colnames(mat))
-} else if (str_ends(matrix_path, ".h5ad")) {
+} else if (exists("matrix_path") && str_ends(matrix_path, ".h5ad")) {
   print("Loading .h5ad")
   pct_intronic <- ReadIntronic(matrix_path, colnames(mat))
 } else {
   print("No Intronic file found")
-  pct_intronic <- rep(NA, len(cb_list))
+  pct_intronic <- rep(NA, ncol(mat))
 }
 stopifnot(ncol(mat) == len(pct_intronic))
 

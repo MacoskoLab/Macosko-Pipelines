@@ -115,7 +115,7 @@ plot_umaps <- function(obj) {
     annotate("text", x = Inf, y = Inf, label = g("Median: {round(median(obj$pct.mt), 2)}%\nMean: {round(mean(obj$pct.mt), 2)}%"), hjust=1, vjust=1, size=2.5, color="black")
   
   # Intronic% UMAP
-  if ("pct_intronic" %in% names(obj@meta.data)) {
+  if ("pct_intronic" %in% names(obj@meta.data) && any(obj$pct_intronic > 0, na.rm=TRUE)) {
     obj$pct.intronic <- obj$pct_intronic * 100
     p4 <- FeaturePlot(obj, "pct.intronic") + ggtitle("%Intronic") + mytheme() + coord_fixed(ratio=1) +
       annotate("text", x = Inf, y = Inf, label = g("Median: {round(median(obj$pct.intronic), 2)}%\nMean: {round(mean(obj$pct.intronic), 2)}%"), hjust=1, vjust=1, size=2.5, color="black")
