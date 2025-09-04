@@ -48,7 +48,7 @@ print(g("Output dir: {normalizePath(out_path)}"))
 stopifnot("Could not create output path" = dir.exists(out_path))
 
 # Load optional arguments
-cells <- arguments$options$cells
+cells <- arguments$options$cells ; if (!is.null(cells) && nchar(cells) == 0) {cells <- NULL}
 dropsift <- arguments$options$dropsift %>% {ifelse(is.null(.), FALSE, .)}
 positioning_args <- arguments$options$args %>% trimws
 cores <- arguments$options$cores %>% ifelse(.<1, parallelly::availableCores(), .) ; print(g("cores: {cores}"))
