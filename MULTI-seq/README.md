@@ -23,8 +23,6 @@ Arguments:
 
 Outputs:
 bc_to_group.csv: Cell barcode to MULTI-seq group and cell condition mapping.
-
-
 ```
 
 
