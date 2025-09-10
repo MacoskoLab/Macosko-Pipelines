@@ -66,8 +66,10 @@ cat("\n")
 
 # Load the matrix
 if (!is.null(cells) || dropsift) {
-  cells <- file.path(rna_path, cells)
-  stopifnot(file.exists(cells))
+  if (!is.null(cells)) {
+    cells <- file.path(rna_path, cells)
+    stopifnot(file.exists(cells))
+  }
   
   # Load the raw matrix
   if (file.exists(file.path(rna_path, "raw_feature_bc_matrix.h5"))) {
