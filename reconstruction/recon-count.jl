@@ -238,7 +238,7 @@ addprocs(length(R1s))
             i > 100000 ? break : nothing
             seq = FASTQ.sequence(record)
             length(seq) < 36 ? continue : nothing
-            counts["V19"] += (get_V19(seq)[3] == UP1[1:10])
+            counts["V19"] += get_V19(seq)[3] == UP1[1:10]
             length(seq) < 42 ? continue : nothing
             counts["V10"] += get_V10(seq)[3] == UP1
             length(seq) < 44 ? continue : nothing

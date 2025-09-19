@@ -34,43 +34,43 @@ rna_path <- arguments$args[[1]]
 sb_path <- arguments$args[[2]]
 out_path <- arguments$args[[3]]
 
-print(g("RNA dir: {normalizePath(rna_path)}"))
-stopifnot("RNA dir not found" = dir.exists(rna_path))
-stopifnot("RNA dir empty" = len(list.files(rna_path)) > 0)
+stopifnot("RNA path not found" = dir.exists(rna_path))
+stopifnot("RNA path empty" = len(list.files(rna_path)) > 0)
+print(g("RNA path: {normalizePath(rna_path)}"))
 
-print(g("SB path: {normalizePath(sb_path)}"))
 if (dir.exists(sb_path)) { sb_path %<>% file.path("SBcounts.h5") }
 stopifnot("SB path is not an .h5" = str_sub(sb_path, -3, -1) == ".h5")
 stopifnot("SBcounts.h5 not found" = file.exists(sb_path))
+print(g("SB path: {normalizePath(sb_path)}"))
 
 if (!dir.exists(out_path)) { dir.create(out_path, recursive = TRUE) }
-print(g("Output dir: {normalizePath(out_path)}"))
 stopifnot("Could not create output path" = dir.exists(out_path))
+print(g("Output path: {normalizePath(out_path)}"))
 
 # Load optional arguments
-cells <- arguments$options$cells ; if (!is.null(cells) && (nchar(cells) == 0 || cells == "")) {cells <- NULL}
-dropsift <- arguments$options$dropsift %>% {ifelse(is.null(.), FALSE, .)}
-positioning_args <- arguments$options$args %>% trimws
-cores <- arguments$options$cores %>% ifelse(.<1, parallelly::availableCores(), .) ; print(g("cores: {cores}"))
-setDTthreads(cores)
-
+cells <- arguments$options$cells
+if (is.null(cells) || len(cells) != 1L || nchar(cells) < 1L) {cells <- NULL}
+if (!is.null(cells)) {cells <- file.path(rna_path, cells) ; stopifnot(file.exists(cells))}
 print(g("Cell barcode whitelist: {cells}"))
-print(g("DropSift: {dropsift}"))
-if (nchar(positioning_args) > 0) {
-  print(g("Positioning arguments override: {positioning_args}"))
-}
 
+dropsift <- arguments$options$dropsift
+if (is.null(dropsift)) {dropsift <- FALSE}
+print(g("DropSift: {dropsift}"))
+
+cores <- arguments$options$cores
+if (is.null(cores) || len(cores) != 1L || cores < 1L) {cores <- parallelly::availableCores()}
+setDTthreads(cores)
+print(g("cores: {cores}"))
+
+args <- arguments$options$args %>% trimws
+if (is.null(args) || len(args) != 1L || nchar(args) < 1L) {args <- ""}
+print(g("positioning.R arguments override: {args}"))
 cat("\n")
 
 ### Load the RNA ###############################################################
 
 # Load the matrix
 if (!is.null(cells) || dropsift) {
-  if (!is.null(cells)) {
-    cells <- file.path(rna_path, cells)
-    stopifnot(file.exists(cells))
-  }
-  
   # Load the raw matrix
   if (file.exists(file.path(rna_path, "raw_feature_bc_matrix.h5"))) {
     print("Loading raw_feature_bc_matrix.h5")
@@ -254,7 +254,7 @@ colnames(obj) %>% trim_10X_CB %>% writeLines(file.path(out_path, "cb_whitelist.t
 
 # Assign a position to each whitelist cell
 print(g("\nRunning positioning.R"))
-system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} --cores={cores} {positioning_args}"))
+system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} --cores={cores} {args}"))
 
 stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
                       file.path(out_path, "spatial_metadata.json"),
