@@ -246,7 +246,9 @@ addprocs(length(R1s))
         end
         counts["V19"] -= counts["V17"]
         myid() == 1 && println(counts)
-        (findmax(counts)[1] < 100000 * 0.01) && error("Unrecognized R1 bead structure for $R1")
+        max_matches = findmax(counts)[1]
+        max_pct = round(max_matches / 100000 * 100, digits=2)
+        (max_matches < 100000 * 0.007) && error("Unrecognized R1 bead structure for $R1: highest match was $max_matches ($max_pct%)")
         return(findmax(counts)[2])
     end
     
@@ -287,7 +289,9 @@ addprocs(length(R1s))
             counts["V16"] += get_V16(seq)[3] == UP2
         end
         myid() == 1 && println(counts)
-        (findmax(counts)[1] < 100000 * 0.01) && error("Unrecognized R2 bead structure for $R2")
+        max_matches = findmax(counts)[1]
+        max_pct = round(max_matches / 100000 * 100, digits=2)
+        (max_matches < 100000 * 0.007) && error("Unrecognized R2 bead structure for $R2: highest match was $max_matches ($max_pct%)")
         return(findmax(counts)[2])
     end
     

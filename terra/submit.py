@@ -145,6 +145,7 @@ elif workflow in ["recon", "reconstruction"]:
     # Compte the FASTQ sizes
     mem_GBs_fastq = getfastqsizes(df["Index"])
     mem_GBs_fastq = [math.ceil(2*mem) for mem in mem_GBs_fastq]
+    print('mem_GBs_fastq', mem_GBs_fastq)
     
     # Compute the intermediate matrix sizes
     recon_blobs = bucket.list_blobs(prefix=f"recon/{bcl}")
