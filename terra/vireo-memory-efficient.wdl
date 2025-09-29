@@ -3,11 +3,11 @@ version 1.0
 workflow DemultiplexSamples_removemis {
   input {
     Array[String] LIBNAMES
-    String gsbucket_cellbender = "gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d/libraries"
-    String gsbucket_GVCF       = "gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d/Stevens_Macosko_iNPH_WGS_filtered.vcf.gz"
-    String gsbucket_GVCF_index = "gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d/Stevens_Macosko_iNPH_WGS_filtered.vcf.gz.tbi"
+    String gsbucket_cellranger = "gs://fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36/gene-expression"
+    String gsbucket_GVCF      
+    String gsbucket_GVCF_index 
     String demx_docker         = "us-central1-docker.pkg.dev/velina-208320/macosko-vireo/img"
-    String thisBucket          = "gs://fc-secure-e9137293-6b1d-47ad-ad37-fc170e7bf33d"
+    String thisBucket          = "gs://fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
     String thisBucket_libfolder = "~{thisBucket}/RESULTS"
 
     Boolean do_cellsnp            = true
@@ -25,7 +25,7 @@ workflow DemultiplexSamples_removemis {
       call Run_cellsnp {
         input:
           thisLibName           = thisLibName,
-          gsbucket_cellbender   = gsbucket_cellbender,
+          gsbucket_cellranger   = gsbucket_cellranger,
           gsbucket_GVCF         = gsbucket_GVCF,
           gsbucket_GVCF_index   = gsbucket_GVCF_index,
           thisBucket            = thisBucket,
@@ -87,7 +87,7 @@ workflow DemultiplexSamples_removemis {
 task Run_cellsnp {
   input {
     String thisLibName
-    String gsbucket_cellbender
+    String gsbucket_cellranger
     String gsbucket_GVCF
     String gsbucket_GVCF_index
     String thisBucket_libfolder
@@ -97,12 +97,12 @@ task Run_cellsnp {
     Int Disk = 120
     Int CPU = 4
     File? forceOrder
-    Int? Preemtible = 1
+    Int? preemptible = 1
 
-    Float MakeSureBam              = size("~{gsbucket_cellbender}/~{thisLibName}/outs/possorted_genome_bam.bam")
-    Float MakeSureBamIdx           = size("~{gsbucket_cellbender}/~{thisLibName}/outs/possorted_genome_bam.bam.bai")
+    Float MakeSureBam              = size("~{gsbucket_cellranger}/~{thisLibName}/outs/possorted_genome_bam.bam")
+    Float MakeSureBamIdx           = size("~{gsbucket_cellranger}/~{thisLibName}/outs/possorted_genome_bam.bam.bai")
     Float MakeSureFilterVCF        = size("~{gsbucket_GVCF}")
-    Float MakeSureBcds             = size("~{gsbucket_cellbender}/~{thisLibName}/outs/filtered_feature_bc_matrix/barcodes.tsv.gz")
+    Float MakeSureBcds             = size("~{gsbucket_cellranger}/~{thisLibName}/outs/filtered_feature_bc_matrix/barcodes.tsv.gz")
     Float MakeSureFilterVCF_index  = size("~{gsbucket_GVCF_index}")
   }
 
@@ -122,10 +122,10 @@ micromamba activate base
 mkdir -p torun
 cd torun
 
-gcloud storage cp ~{gsbucket_cellbender}/~{thisLibName}/outs/possorted_genome_bam.bam .
-gcloud storage cp ~{gsbucket_cellbender}/~{thisLibName}/outs/possorted_genome_bam.bam.bai .
+gcloud storage cp ~{gsbucket_cellranger}/~{thisLibName}/outs/possorted_genome_bam.bam .
+gcloud storage cp ~{gsbucket_cellranger}/~{thisLibName}/outs/possorted_genome_bam.bam.bai .
 gcloud storage cp ~{gsbucket_GVCF} filtered.vcf.gz
-gcloud storage cp ~{gsbucket_cellbender}/~{thisLibName}/outs/filtered_feature_bc_matrix/barcodes.tsv.gz .
+gcloud storage cp ~{gsbucket_cellranger}/~{thisLibName}/outs/filtered_feature_bc_matrix/barcodes.tsv.gz .
 gcloud storage cp ~{gsbucket_GVCF_index} filtered.vcf.gz.tbi
 
 mkdir -p cellsnp_out
@@ -189,7 +189,7 @@ EOF
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
     cpu: "~{CPU}"
-    preemptible: Preemtible
+    preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
 }
@@ -206,7 +206,7 @@ task Run_subsetvcf_pileup {
     Int Disk = 10
     Int CPU = 2
     File? forceOrder
-    Int? Preemtible = 1
+    Int? preemptible = 1
 
     Float MakeSureFilterVCF = size("~{gsbucket_GVCF}")
   }
@@ -268,7 +268,7 @@ EOF
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
     cpu: "~{CPU}"
-    preemptible: Preemtible
+    preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
 }
@@ -283,7 +283,7 @@ task Run_vireo_nodoublet {
     Int Disk = 40
     Int CPU = 4
     File? forceOrder
-    Int? Preemtible = 1
+    Int? preemptible = 1
 
     Float MakeSureFilterCELL = size("~{thisBucket_libfolder}/~{thisLibName}/01_cellSNP/cellSNP.base.vcf.gz")
     Float MakeSureFilterVCF  = size("~{thisBucket_libfolder}/~{thisLibName}/02_VCFSUBSET1/pileup_filtered.vcf.gz")
@@ -347,7 +347,7 @@ EOF
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
     cpu: "~{CPU}"
-    preemptible: Preemtible
+    preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
 }
@@ -364,7 +364,7 @@ task Run_subsetvcf_samples {
     Int Disk = 10
     Int CPU = 2
     File? forceOrder
-    Int? Preemtible = 1
+    Int? preemptible = 1
 
     Float MakeSureFilterVCF       = size("~{gsbucket_GVCF}")
     Float MakeSureFilterVCF_index = size("~{gsbucket_GVCF_index}")
@@ -427,7 +427,7 @@ EOF
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
     cpu: "~{CPU}"
-    preemptible: Preemtible
+    preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
 }
@@ -442,7 +442,7 @@ task Run_vireo_withdoublet {
     Int Disk = 40
     Int CPU = 4
     File? forceOrder
-    Int? Preemtible = 1
+    Int? preemptible = 1
 
     Float MakeSureFinalVCF = size("~{thisBucket_libfolder}/~{thisLibName}/04_VCFSUBSET2/subsetted_filtered.vcf.gz")
   }
@@ -502,7 +502,7 @@ EOF
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
     cpu: "~{CPU}"
-    preemptible: Preemtible
+    preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
 }
