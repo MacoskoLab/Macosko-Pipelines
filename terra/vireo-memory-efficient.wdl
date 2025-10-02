@@ -7,8 +7,6 @@ workflow DemultiplexSamples_removemis {
     String gsbucket_GVCF      
     String gsbucket_GVCF_index 
     String demx_docker         = "us-central1-docker.pkg.dev/velina-208320/macosko-vireo/img"
-    String thisBucket          = "gs://fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
-    String thisBucket_libfolder = "~{thisBucket}/RESULTS"
 
     Boolean do_cellsnp            = true
     Boolean do_subsetvcf_pileup   = true
@@ -28,8 +26,7 @@ workflow DemultiplexSamples_removemis {
           gsbucket_cellranger   = gsbucket_cellranger,
           gsbucket_GVCF         = gsbucket_GVCF,
           gsbucket_GVCF_index   = gsbucket_GVCF_index,
-          thisBucket            = thisBucket,
-          thisBucket_libfolder  = thisBucket_libfolder,
+          thisBucket_libfolder  = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
           docker                = demx_docker
       }
     }
@@ -37,11 +34,9 @@ workflow DemultiplexSamples_removemis {
     if (do_subsetvcf_pileup) {
       call Run_subsetvcf_pileup {
         input:
-          thisLibName          = thisLibName,
           gsbucket_GVCF        = gsbucket_GVCF,
           gsbucket_GVCF_index  = gsbucket_GVCF_index,
-          thisBucket           = thisBucket,
-          thisBucket_libfolder = thisBucket_libfolder,
+          thisBucket_libfolder = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
           docker               = demx_docker,
           forceOrder           = select_first([Run_cellsnp.done, noneFile])
       }
@@ -50,9 +45,7 @@ workflow DemultiplexSamples_removemis {
     if (do_vireo_nodoublet) {
       call Run_vireo_nodoublet {
         input:
-          thisLibName          = thisLibName,
-          thisBucket           = thisBucket,
-          thisBucket_libfolder = thisBucket_libfolder,
+          thisBucket_libfolder = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
           docker               = demx_docker,
           forceOrder           = select_first([Run_subsetvcf_pileup.done, noneFile])
       }
@@ -61,11 +54,9 @@ workflow DemultiplexSamples_removemis {
     if (do_subsetvcf_samples) {
       call Run_subsetvcf_samples {
         input:
-          thisLibName          = thisLibName,
           gsbucket_GVCF        = gsbucket_GVCF,
           gsbucket_GVCF_index  = gsbucket_GVCF_index,
-          thisBucket           = thisBucket,
-          thisBucket_libfolder = thisBucket_libfolder,
+          thisBucket_libfolder = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
           docker               = demx_docker,
           forceOrder           = select_first([Run_vireo_nodoublet.done, noneFile])
       }
@@ -74,9 +65,7 @@ workflow DemultiplexSamples_removemis {
     if (do_vireo_withdoublet) {
       call Run_vireo_withdoublet {
         input:
-          thisLibName          = thisLibName,
-          thisBucket           = thisBucket,
-          thisBucket_libfolder = thisBucket_libfolder,
+          thisBucket_libfolder = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
           docker               = demx_docker,
           forceOrder           = select_first([Run_subsetvcf_samples.done, noneFile])
       }
@@ -91,7 +80,6 @@ task Run_cellsnp {
     String gsbucket_GVCF
     String gsbucket_GVCF_index
     String thisBucket_libfolder
-    String thisBucket
     String docker
     Int Memory = 16
     Int Disk = 120
@@ -156,7 +144,7 @@ fi
 echo ok > ../goodTask
 ls -l ..
 
-export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/01_cellSNP"
+export OUTPATH="~{thisBucket_libfolder}/01_cellSNP"
 date > .folder
 gcloud storage cp .folder "${OUTPATH}/.folder"
 gcloud storage cp cellsnp_out/cellSNP.tag.AD.mtx   "${OUTPATH}/cellSNP.tag.AD.mtx"
@@ -188,7 +176,7 @@ EOF
     docker: docker
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
-    cpu: "~{CPU}"
+    cpu: CPU
     preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
@@ -196,11 +184,9 @@ EOF
 
 task Run_subsetvcf_pileup {
   input {
-    String thisLibName
     String gsbucket_GVCF
     String gsbucket_GVCF_index
     String thisBucket_libfolder
-    String thisBucket
     String docker
     Int Memory = 8
     Int Disk = 10
@@ -225,7 +211,7 @@ micromamba activate base
 mkdir -p torun
 cd torun
 
-gcloud storage cp "~{thisBucket_libfolder}/~{thisLibName}/01_cellSNP/cellSNP.base.vcf.gz" .
+gcloud storage cp "~{thisBucket_libfolder}/01_cellSNP/cellSNP.base.vcf.gz" .
 gcloud storage cp "~{gsbucket_GVCF}" filtered.vcf.gz
 gcloud storage cp "~{gsbucket_GVCF_index}" filtered.vcf.gz.tbi
 
@@ -241,7 +227,7 @@ else
 fi
 ls -l ..
 
-export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/02_VCFSUBSET1"
+export OUTPATH="~{thisBucket_libfolder}/02_VCFSUBSET1"
 date > .folder
 gcloud storage cp .folder "${OUTPATH}/.folder"
 gcloud storage cp pileup_filtered.vcf.gz     "${OUTPATH}/pileup_filtered.vcf.gz"
@@ -267,7 +253,7 @@ EOF
     docker: docker
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
-    cpu: "~{CPU}"
+    cpu: CPU
     preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
@@ -275,9 +261,7 @@ EOF
 
 task Run_vireo_nodoublet {
   input {
-    String thisLibName
     String thisBucket_libfolder
-    String thisBucket
     String docker
     Int Memory = 80
     Int Disk = 40
@@ -285,8 +269,8 @@ task Run_vireo_nodoublet {
     File? forceOrder
     Int? preemptible = 1
 
-    Float MakeSureFilterCELL = size("~{thisBucket_libfolder}/~{thisLibName}/01_cellSNP/cellSNP.base.vcf.gz")
-    Float MakeSureFilterVCF  = size("~{thisBucket_libfolder}/~{thisLibName}/02_VCFSUBSET1/pileup_filtered.vcf.gz")
+    Float MakeSureFilterCELL = size("~{thisBucket_libfolder}/01_cellSNP/cellSNP.base.vcf.gz")
+    Float MakeSureFilterVCF  = size("~{thisBucket_libfolder}/02_VCFSUBSET1/pileup_filtered.vcf.gz")
   }
 
   command <<<
@@ -303,9 +287,9 @@ micromamba activate base
 mkdir -p torun
 cd torun
 
-gcloud storage cp -r "~{thisBucket_libfolder}/~{thisLibName}/01_cellSNP/" .
-gcloud storage cp    "~{thisBucket_libfolder}/~{thisLibName}/02_VCFSUBSET1/pileup_filtered.vcf.gz" .
-gcloud storage cp    "~{thisBucket_libfolder}/~{thisLibName}/02_VCFSUBSET1/pileup_filtered.vcf.gz.tbi" .
+gcloud storage cp -r "~{thisBucket_libfolder}/01_cellSNP/" .
+gcloud storage cp    "~{thisBucket_libfolder}/02_VCFSUBSET1/pileup_filtered.vcf.gz" .
+gcloud storage cp    "~{thisBucket_libfolder}/02_VCFSUBSET1/pileup_filtered.vcf.gz.tbi" .
 
 mkdir -p vireo_all_out
 vireo -c 01_cellSNP/ -o vireo_all_out -d pileup_filtered.vcf.gz -t GT --noDoublet
@@ -320,7 +304,7 @@ fi
 awk 'NR>1 && $2>50 && $1!="unassigned" {print $1}' vireo_all_out/summary.tsv > samples.txt
 ls -l ..
 
-export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/03_VIREO1"
+export OUTPATH="~{thisBucket_libfolder}/03_VIREO1"
 date > .folder
 gcloud storage cp .folder "${OUTPATH}/.folder"
 gcloud storage cp -r vireo_all_out "${OUTPATH}/"
@@ -346,7 +330,7 @@ EOF
     docker: docker
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
-    cpu: "~{CPU}"
+    cpu: CPU
     preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
@@ -354,11 +338,9 @@ EOF
 
 task Run_subsetvcf_samples {
   input {
-    String thisLibName
     String gsbucket_GVCF
     String gsbucket_GVCF_index
     String thisBucket_libfolder
-    String thisBucket
     String docker
     Int Memory = 8
     Int Disk = 10
@@ -384,10 +366,10 @@ micromamba activate base
 mkdir -p torun
 cd torun
 
-gcloud storage cp "~{thisBucket_libfolder}/~{thisLibName}/01_cellSNP/cellSNP.base.vcf.gz" .
+gcloud storage cp "~{thisBucket_libfolder}/01_cellSNP/cellSNP.base.vcf.gz" .
 gcloud storage cp "~{gsbucket_GVCF}"       filtered.vcf.gz
 gcloud storage cp "~{gsbucket_GVCF_index}" filtered.vcf.gz.tbi
-gcloud storage cp "~{thisBucket_libfolder}/~{thisLibName}/03_VIREO1/samples.txt" .
+gcloud storage cp "~{thisBucket_libfolder}/03_VIREO1/samples.txt" .
 
 bcftools view -S samples.txt filtered.vcf.gz -R cellSNP.base.vcf.gz -Oz -o subsetted_filtered.vcf.gz
 bcftools index -t subsetted_filtered.vcf.gz
@@ -400,7 +382,7 @@ else
 fi
 ls -l ..
 
-export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/04_VCFSUBSET2"
+export OUTPATH="~{thisBucket_libfolder}/04_VCFSUBSET2"
 date > .folder
 gcloud storage cp .folder "${OUTPATH}/.folder"
 gcloud storage cp subsetted_filtered.vcf.gz     "${OUTPATH}/subsetted_filtered.vcf.gz"
@@ -426,7 +408,7 @@ EOF
     docker: docker
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
-    cpu: "~{CPU}"
+    cpu: CPU
     preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
@@ -434,9 +416,7 @@ EOF
 
 task Run_vireo_withdoublet {
   input {
-    String thisLibName
     String thisBucket_libfolder
-    String thisBucket
     String docker
     Int Memory = 80
     Int Disk = 40
@@ -444,7 +424,7 @@ task Run_vireo_withdoublet {
     File? forceOrder
     Int? preemptible = 1
 
-    Float MakeSureFinalVCF = size("~{thisBucket_libfolder}/~{thisLibName}/04_VCFSUBSET2/subsetted_filtered.vcf.gz")
+    Float MakeSureFinalVCF = size("~{thisBucket_libfolder}/04_VCFSUBSET2/subsetted_filtered.vcf.gz")
   }
 
   command <<<
@@ -461,9 +441,9 @@ micromamba activate base
 mkdir -p torun
 cd torun
 
-gcloud storage cp -r "~{thisBucket_libfolder}/~{thisLibName}/01_cellSNP/" .
-gcloud storage cp    "~{thisBucket_libfolder}/~{thisLibName}/04_VCFSUBSET2/subsetted_filtered.vcf.gz" .
-gcloud storage cp    "~{thisBucket_libfolder}/~{thisLibName}/04_VCFSUBSET2/subsetted_filtered.vcf.gz.tbi" .
+gcloud storage cp -r "~{thisBucket_libfolder}/01_cellSNP/" .
+gcloud storage cp    "~{thisBucket_libfolder}/04_VCFSUBSET2/subsetted_filtered.vcf.gz" .
+gcloud storage cp    "~{thisBucket_libfolder}/04_VCFSUBSET2/subsetted_filtered.vcf.gz.tbi" .
 
 mkdir -p vireo_final_out
 vireo -c 01_cellSNP/ -o vireo_final_out -d subsetted_filtered.vcf.gz -t GT
@@ -476,7 +456,7 @@ else
 fi
 ls -l ..
 
-export OUTPATH="~{thisBucket_libfolder}/~{thisLibName}/05_VIREO"
+export OUTPATH="~{thisBucket_libfolder}/05_VIREO"
 date > .folder
 gcloud storage cp .folder "${OUTPATH}/.folder"
 gcloud storage cp -r vireo_final_out "${OUTPATH}/"
@@ -501,7 +481,7 @@ EOF
     docker: docker
     memory: "~{Memory} GB"
     disks: "local-disk ~{Disk} HDD"
-    cpu: "~{CPU}"
+    cpu: CPU
     preemptible: preemptible
     zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
   }
