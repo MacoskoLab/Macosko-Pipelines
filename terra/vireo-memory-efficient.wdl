@@ -4,6 +4,8 @@ workflow DemultiplexSamples_removemis {
   input {
     Array[String] LIBNAMES
     String gsbucket_cellranger = "gs://fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36/gene-expression"
+    String bcl 
+    String rna_index
     String gsbucket_GVCF      
     String gsbucket_GVCF_index 
     String demx_docker         = "us-central1-docker.pkg.dev/velina-208320/macosko-vireo/img"
@@ -22,11 +24,11 @@ workflow DemultiplexSamples_removemis {
     if (do_cellsnp) {
       call Run_cellsnp {
         input:
-          thisLibName           = thisLibName,
+          thisLibName           = "~{bcl}/~{rna_index}",
           gsbucket_cellranger   = gsbucket_cellranger,
           gsbucket_GVCF         = gsbucket_GVCF,
           gsbucket_GVCF_index   = gsbucket_GVCF_index,
-          thisBucket_libfolder  = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
+          thisBucket_libfolder  = "~{gsbucket_cellranger}/~{bcl}/~{rna_index}/vireo",
           docker                = demx_docker
       }
     }
@@ -36,7 +38,7 @@ workflow DemultiplexSamples_removemis {
         input:
           gsbucket_GVCF        = gsbucket_GVCF,
           gsbucket_GVCF_index  = gsbucket_GVCF_index,
-          thisBucket_libfolder = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
+          thisBucket_libfolder = "~{gsbucket_cellranger}/~{bcl}/~{rna_index}/vireo",
           docker               = demx_docker,
           forceOrder           = select_first([Run_cellsnp.done, noneFile])
       }
@@ -45,7 +47,7 @@ workflow DemultiplexSamples_removemis {
     if (do_vireo_nodoublet) {
       call Run_vireo_nodoublet {
         input:
-          thisBucket_libfolder = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
+          thisBucket_libfolder = "~{gsbucket_cellranger}/~{bcl}/~{rna_index}/vireo",
           docker               = demx_docker,
           forceOrder           = select_first([Run_subsetvcf_pileup.done, noneFile])
       }
@@ -56,7 +58,7 @@ workflow DemultiplexSamples_removemis {
         input:
           gsbucket_GVCF        = gsbucket_GVCF,
           gsbucket_GVCF_index  = gsbucket_GVCF_index,
-          thisBucket_libfolder = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
+          thisBucket_libfolder = "~{gsbucket_cellranger}/~{bcl}/~{rna_index}/vireo",
           docker               = demx_docker,
           forceOrder           = select_first([Run_vireo_nodoublet.done, noneFile])
       }
@@ -65,7 +67,7 @@ workflow DemultiplexSamples_removemis {
     if (do_vireo_withdoublet) {
       call Run_vireo_withdoublet {
         input:
-          thisBucket_libfolder = "~{gsbucket_cellranger}/~{thisLibName}/vireo",
+          thisBucket_libfolder = "~{gsbucket_cellranger}/~{bcl}/~{rna_index}/vireo",
           docker               = demx_docker,
           forceOrder           = select_first([Run_subsetvcf_samples.done, noneFile])
       }
