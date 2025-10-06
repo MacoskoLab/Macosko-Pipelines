@@ -2,8 +2,9 @@ version 1.0
 
 task recon {
     input {
-        String bcl
-        String index
+        String bcl = ""
+        String index = ""
+        String note = ""
         Int mem_GB
         Int disk_GB
         Int bc1
@@ -52,7 +53,7 @@ task recon {
     fi
 
     echo "----- Running recon.py -----"
-    /root/.local/bin/micromamba run python recon.py -i cache -o output -b 2 ~{params}
+    /root/.local/bin/micromamba run python recon.py -i cache -o output -b 2 --bcl ~{bcl} --index ~{index} --note ~{note} ~{params}
 
     echo "----- Uploading results -----"
     gcloud storage cp -r output/* "$recon_dir/"
@@ -71,8 +72,9 @@ task recon {
 
 workflow reconstruction {
     input {
-        String bcl
-        String index
+        String bcl = ""
+        String index = ""
+        String note = ""
         Int mem_GB
         Int disk_GB
         Int bc1 = 0
@@ -85,6 +87,7 @@ workflow reconstruction {
         input:
             bcl = bcl,
             index = index,
+            note = note,
             mem_GB = mem_GB,
             disk_GB = disk_GB,
             bc1 = bc1,

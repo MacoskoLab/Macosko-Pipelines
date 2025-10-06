@@ -11,6 +11,9 @@ def get_args():
     parser = argparse.ArgumentParser(description='2D embedding of reconstruction data')
     parser.add_argument("-i", "--in_dir", help="input data folder", type=str, default=".")
     parser.add_argument("-o", "--out_dir", help="output data folder", type=str, default=".")
+    parser.add_argument("--bcl", help="BCL identifier", type=str, default="")
+    parser.add_argument("--index", help="Index identifier", type=str, default="")
+    parser.add_argument("--note", help="Note/description", type=str, default="")
     parser.add_argument("-c", "--cores", type=int, default=-1)
     parser.add_argument("-b", "--bead", type=int, default=2)
     parser.add_argument("-D", "--diameter", type=float, default=0) # in microns, <= 0 estimates using bead count
@@ -32,6 +35,9 @@ args = get_args()
 
 in_dir = args.in_dir             ; print(f"input directory: {in_dir}")
 out_dir = args.out_dir           ; print(f"output directory: {out_dir}")
+bcl = args.bcl                   ; print(f"BCL: {bcl}")
+index = args.index               ; print(f"Index: {index}")
+note = args.note                 ; print(f"Note: {note}")
 cores = args.cores               ; print(f"cores: {cores}")
 bead = args.bead                 ; print(f"bead: {bead}")
 diameter = args.diameter         ; print(f"diameter: {'auto' if diameter <= 0 else diameter}")
@@ -256,9 +262,20 @@ assert embedding.shape[0] == knn.matrix.shape[0]
 
 # Create the Puck file
 embedding_scaled = embedding / np.mean(np.ptp(embedding, axis=0)) * diameter_micron
-np.savetxt(os.path.join(out_dir, 'Puck.csv'),
+puck_path = os.path.join(out_dir, 'Puck.csv')
+full_path = os.path.abspath(puck_path)
+
+# Create header with BCL, index, note, and UMAP parameters
+header_lines = [
+    f"BCL: {bcl}",
+    f"Index: {index}",
+    f"Note: {note}",
+    f"UMAP parameters: n_neighbors={opts['n_neighbors']}, min_dist={opts['min_dist']}, spread={opts['spread']}, local_connectivity={opts['local_connectivity']}, repulsion_strength={opts['repulsion_strength']}, negative_sample_rate={opts['negative_sample_rate']}, n_epochs={opts['n_epochs']}"
+]
+
+np.savetxt(puck_path,
            np.column_stack([knn.sb, embedding_scaled]),
-           delimiter=',', fmt='%s')
+           delimiter=',', fmt='%s', header='\n'.join(header_lines))
 
 # Plot the UMAP embedding
 title = f"UMAP hexbin ({embedding.shape[0]:} beads)"
