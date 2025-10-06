@@ -190,7 +190,9 @@ def submit(config, user_comment=""):
     
     # Submit the job
     res = fapi.create_submission(wnamespace, workspace, cnamespace, config, user_comment=user_comment, use_callcache=False)
-    assert res.status_code == 201, res.status_code + ": " + res.json()['message']
+    if res.status_code != 201:
+        print("Full error response:", res.json())
+    assert res.status_code == 201, str(res.status_code) + ": " + res.json()['message']
     print(f"Submitted {config} {user_comment}")
 
 def run_cellranger_count(bcl, index, reference, mem_GB, disk_GB, params=None, user_comment=""):
