@@ -112,7 +112,7 @@ puck_paths = filter(puck -> endswith(puck, ".csv"), puck_paths)
 puck_paths = filter(puck -> occursin(puck_regex, puck), puck_paths)
 @assert length(puck_paths) > 0 "ERROR: No pucks found"
 println("Pucks: ", basename.(puck_paths))
-puckdfs = [rename(CSV.read(puck, DataFrame, header=false, types=[String, Float64, Float64]), [:sb,:x,:y]) for puck in puck_paths]
+puckdfs = [rename(CSV.read(puck, DataFrame, header=false, types=[String, Float64, Float64], comment="#"), [:sb,:x,:y]) for puck in puck_paths]
 
 # Get the spatial barcode length
 function get_sb_length(puckdfs)
