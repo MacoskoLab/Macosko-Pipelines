@@ -86,27 +86,27 @@ ReadAnnDataX <- function(matrix_path, calledonly=TRUE) {
   indptr <- fetch("X/indptr") %>% as.numeric
   
   if ("star_IsCell" %in% fields) { # Optimus
-    row_names <- fetch("var/_index") %>% as.character %>% make.unique
-    col_names <- fetch("obs/_index") %>% as.character %>% make.unique
-    mat <- Matrix::sparseMatrix(
-      j = indices,
-      p = indptr,
-      x = data,
-      dimnames = list(row_names, col_names),
-      index1 = FALSE,
-      check = TRUE
-    )
+    
+    mat <- DropSift::parseH5ad(matrix_path,
+                               expression_matrix_path = "X",
+                               gene_id_path = "/var/_index",
+                               cell_id_path = "/obs/_index")$dge
+
     if (calledonly == TRUE) {
       star_IsCell <- fetch("obs/star_IsCell") %>% as.logical
       stopifnot(ncol(mat) == len(star_IsCell))
       mat <- mat[,star_IsCell==TRUE]
     }
+    
   } else if ("CELL_BARCODE" %in% fields) { # BICAN
+    
     mat <- DropSift::parseH5ad(matrix_path,
                                expression_matrix_path = "X",
                                gene_id_path = "/var/gene_symbol", # /var/gene_ids
                                cell_id_path = "/obs/CELL_BARCODE")$dge
+    
     stopifnot(calledonly == TRUE)
+    
   } else {
     stop("Unknown .h5ad format")
   }

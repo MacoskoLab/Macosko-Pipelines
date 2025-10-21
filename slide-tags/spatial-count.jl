@@ -78,6 +78,7 @@ const puck_path = args["puck_path"]
 println("Puck path: "*puck_path)
 @assert isdir(puck_path) "ERROR: Puck path not found"
 @assert !isempty(readdir(puck_path)) "ERROR: Puck path is empty"
+@assert length(readdir(puck_path)) < 4 "Puck path has 4+ files - should only contain files for this lane"
 
 const out_path = args["out_path"]
 println("Output path: "*out_path)
