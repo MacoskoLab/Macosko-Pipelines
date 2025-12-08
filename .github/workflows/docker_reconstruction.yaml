@@ -1,0 +1,25 @@
+name: Reconstruction Docker
+
+on:
+  push:
+    branches: [ "main" ]
+    # Publish semver tags as releases.
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - '.github/workflows/docker_reusable.yaml'
+      - '.github/workflows/docker_reconstruction.yaml'
+      - 'reconstruction/**'
+  workflow_dispatch:
+
+jobs:
+  docker_reconstruction:
+    uses: ./.github/workflows/docker_reusable.yaml
+    with:
+      registry: quay.io
+      image_name: broadinstitute/macosko-pipelines_reconstruction
+      dockerfile: reconstruction/Dockerfile
+    secrets: inherit
+    permissions:
+      contents: read
