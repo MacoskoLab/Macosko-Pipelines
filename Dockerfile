@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y  \
     gdebi-core build-essential cmake pkg-config alien gfortran \
     libhdf5-dev hdf5-tools libpng-dev libtiff5-dev libjpeg-dev \
     apt-transport-https ca-certificates libssl-dev libxml2-dev \
-    libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libcairo2-dev
+    libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libcairo2-dev \
+    libzmq3-dev
 
 # Install Google Cloud SDK
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
@@ -107,7 +108,8 @@ RUN wget https://download2.rstudio.org/server/jammy/amd64/rstudio-server-2024.09
     rstudio-server stop && sleep 1
 
 # Install R packages
-RUN R -e "install.packages(c('tidyverse', 'data.table',                    \
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bookworm/latest')); \
+          install.packages(c('tidyverse', 'data.table',                    \
                              'dplyr', 'tidyr', 'purrr', 'magrittr',        \
                              'future', 'furrr', 'parallelly',              \
                              'rlist', 'stringr', 'stringi', 'glue',        \
@@ -118,17 +120,19 @@ RUN R -e "install.packages(c('tidyverse', 'data.table',                    \
                              'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2',     \
                              'devtools', 'remotes', 'R.utils', 'optparse', \
                              'shiny', 'IRkernel', 'duckdb'),               \
-                             repos='http://cloud.r-project.org',           \
+                             repos='https://packagemanager.posit.co/cran/__linux__/bookworm/latest', \
                              Ncpus=$(nproc)L)"
 # Install Bioconductor packages
-RUN R -e "if (!require('BiocManager', quietly=T)) {install.packages('BiocManager', repos='http://cloud.r-project.org')}; \
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bookworm/latest')); \
+          if (!require('BiocManager', quietly=T)) {install.packages('BiocManager', repos='https://packagemanager.posit.co/cran/__linux__/bookworm/latest')}; \
           BiocManager::install(c('IRanges', 'GenomicRanges', 'GenomicFeatures', 'GenomicAlignments', \
                                  'ShortRead', 'Rsamtools', 'VariantAnnotation', 'rtracklayer', \
                                  'AnnotationDbi', 'BiocParallel', 'SingleCellExperiment', 'rhdf5' \
                                 ), Ncpus=$(nproc)L)"
 # Install other R packages
-RUN R -e "devtools::install_github('immunogenomics/presto')"
-RUN R -e "remotes::install_github('broadinstitute/DropSift')"
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bookworm/latest')); \
+          remotes::install_github('immunogenomics/presto'); \
+          remotes::install_github('broadinstitute/DropSift')"
 
 # Install micromamba
 RUN curl -L micro.mamba.pm/install.sh | /bin/bash
