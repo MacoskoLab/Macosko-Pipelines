@@ -98,12 +98,13 @@ ReadAnnDataX <- function(matrix_path, calledonly=TRUE) {
       mat <- mat[,star_IsCell==TRUE]
     }
     
-  } else if ("CELL_BARCODE" %in% fields) { # BICAN
-    
+  } else if ("cell_barcode" %in% tolower(fields)) { # BICAN
+
+    cb_label = fields[tolower(fields) == "cell_barcode"]
     mat <- DropSift::parseH5ad(matrix_path,
                                expression_matrix_path = "X",
                                gene_id_path = "/var/gene_symbol", # /var/gene_ids
-                               cell_id_path = "/obs/CELL_BARCODE")$dge
+                               cell_id_path = paste0("/obs/", cb_label))$dge
     
     stopifnot(calledonly == TRUE)
     
