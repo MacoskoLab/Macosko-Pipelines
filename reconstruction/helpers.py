@@ -138,7 +138,7 @@ def estimate_diameter(in_dir):
         diameter_micron = 30_000
     elif n > 1.63*1e6:
         diameter_micron = 20_000
-    elif n > 0.8*1e6:
+    elif n > 0.4*1e6:
         diameter_micron = 12_000
     else:
         sys.exit(f"Unknown puck size: sb1={num_sb1}, sb2={num_sb2}")
