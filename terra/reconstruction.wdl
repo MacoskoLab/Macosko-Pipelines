@@ -11,6 +11,7 @@ task recon {
         Int lanes
         String params
         String docker
+        Float downsample_prop
     }
     command <<<
     set -euo pipefail
@@ -43,7 +44,7 @@ task recon {
         ls -1 fastqs
 
         mkdir cache
-        julia --threads 8 recon-count.jl fastqs cache -x ~{bc1} -y ~{bc2} -r '_L00[~{lanes}]_'
+        julia --threads 8 recon-count.jl fastqs cache -x ~{bc1} -y ~{bc2} -r '_L00[~{lanes}]_' -p ~{downsample_prop}
         /root/.local/bin/micromamba run python knn.py -i cache -o cache -b 2 -k 2
         ls -1 cache
 
@@ -80,6 +81,7 @@ workflow reconstruction {
         Int lanes = 12345678
         String params = ""
         String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image:latest"
+        Float downsample_prop = 1.0
     }
     call recon {
         input:
@@ -91,6 +93,7 @@ workflow reconstruction {
             bc2 = bc2,
             lanes = lanes,
             params = params,
-            docker = docker
+            docker = docker,
+            downsample_prop = downsample_prop
     }
 }
