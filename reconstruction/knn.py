@@ -14,7 +14,7 @@ def get_args():
     parser.add_argument("-n", "--n_neighbors", type=int, default=150)
     parser.add_argument("-b", "--bead", type=int, default=2)
     parser.add_argument("-c", "--cores", type=int, default=-1)
-    parser.add_argument("-k", "--chunks", type=int, default=2)
+    parser.add_argument("-k", "--chunks", type=int, default=-1)
     
     args, unknown = parser.parse_known_args()
     [print(f"WARNING: unknown command-line argument {u}") for u in unknown]
@@ -35,7 +35,12 @@ os.makedirs(out_dir, exist_ok=True)
 assert os.path.exists(out_dir)
 
 # Get number of allowed cores
-avail_cores = len(os.sched_getaffinity(0))
+try:
+    avail_cores = len(os.sched_getaffinity(0))
+except AttributeError:
+    # Fall back to the cpu_count when running on macos
+    # https://github.com/python/cpython/issues/81781
+    avail_cores = os.cpu_count()
 if cores < 1:
     cores = avail_cores
 if cores > avail_cores:
@@ -46,7 +51,7 @@ if cores > avail_cores:
 assert n_neighbors > 0
 assert bead in [1, 2]
 assert 0 < cores <= avail_cores
-assert chunks > 0
+assert chunks > 0 or chunks == -1
 
 # Read matrix file
 print('Loading the matrix...')
@@ -78,12 +83,18 @@ def process(mat):
 mat_norm = process(mat)
 del mat ; gc.collect()
 
+chunks_max_nnz = 2**31-1
+if chunks == -1:
+    chunks = int(np.ceil(mat_norm.getnnz() / chunks_max_nnz))
+    chunks = max(chunks, 1)
+    print(f"Calculated number of chunks: {chunks}")
+
 # Chunk the matrix
 print('Chunking the matrix...')
 ABs = [mat_norm[chunk] for chunk in np.array_split(range(mat_norm.shape[0]), chunks)]
 del mat_norm ; gc.collect()
-for AB in ABs:
-    assert AB.getnnz() < 2**31-1, "Matrix is too large, increase 'chunks'"
+ABs_max_nnz = max(AB.getnnz() for AB in ABs)
+assert ABs_max_nnz < chunks_max_nnz, f"Matrix max non-zero entries per chunk ({ABs_max_nnz}) exceeds {chunks_max_nnz}, increase 'chunks' or set 'chunks' to -1 to calculate number of chunks"
 
 # Calculate Top-N KNN
 print('Multiplying sub-matrices...')
