@@ -89,7 +89,8 @@ RUN julia -e 'using Pkg;                \
                        "KernelDensity", \
                        "LinearAlgebra", \
                        "Combinatorics", \
-                       "Distributions"])'
+                       "Distributions", \
+                       "DataStructures"])'
 
 # Install R
 # https://docs.posit.co/resources/install-r.html
