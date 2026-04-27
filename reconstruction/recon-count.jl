@@ -1,5 +1,4 @@
 using CSV
-using HDF5
 using Plots
 using Peaks: findminima
 using ArgParse
@@ -139,6 +138,7 @@ savefig(p, joinpath(out_path, "filepaths.pdf"))
 addprocs(length(R1s))
 
 @everywhere begin
+    using HDF5
     using FASTX
     using CodecZlib
     using IterTools: product
@@ -342,7 +342,7 @@ end
 println("\nReading FASTQs...") ; flush(stdout)
 
 # Read the FASTQs
-@everywhere function process_fastqs(R1, R2)
+@everywhere function process_fastqs(R1, R2, tmp)
     it1 = R1 |> open |> GzipDecompressorStream |> FASTQ.Reader
     it2 = R2 |> open |> GzipDecompressorStream |> FASTQ.Reader
 
@@ -466,17 +466,52 @@ println("\nReading FASTQs...") ; flush(stdout)
             println(metadata["reads_filtered"]) ; flush(stdout)
         end
     end
-        
+
+    # Write results to disk
+    h5open(tmp, "w") do file
+        file["sb1_i", compress=0] = df[!, :sb1_i]
+        file["umi1_i", compress=0] = df[!, :umi1_i]
+        file["sb2_i", compress=0] = df[!, :sb2_i]
+        file["umi2_i", compress=0] = df[!, :umi2_i]
+    end
+    
+    df = nothing ; GC.gc()
+    return metadata
+end
+
+function process_results(R1s, R2s)
+    # Write the tmp files
+    tmps = [joinpath(out_path, "tmp$(i).h5") for i in 1:length(R1s)]
+    metadatas = pmap(pair -> process_fastqs(pair...), zip(R1s, R2s, tmps))
+    rmprocs(workers())
+    metadata = reduce((x, y) -> mergewith(+, x, y), metadatas)
+
+    # Read the tmp files
+    df = DataFrame(
+        sb1_i  = Vector{UInt64}(undef, metadata["reads_filtered"]),
+        umi1_i = Vector{UInt32}(undef, metadata["reads_filtered"]),
+        sb2_i  = Vector{UInt64}(undef, metadata["reads_filtered"]),
+        umi2_i = Vector{UInt32}(undef, metadata["reads_filtered"]),
+    )
+    pos = 1
+    for i in 1:length(R1s)
+        n = metadatas[i]["reads_filtered"]
+        r = pos:(pos + n - 1)
+        h5open(tmps[i], "r") do file
+            df.sb1_i[r]  .= read(file["sb1_i"])
+            df.umi1_i[r] .= read(file["umi1_i"])
+            df.sb2_i[r]  .= read(file["sb2_i"])
+            df.umi2_i[r] .= read(file["umi2_i"])
+        end
+        pos += n
+    end
+    @assert metadata["reads_filtered"] == pos - 1
+    rm.(tmps)
+    
     return df, metadata
 end
 
-results = pmap(pair -> process_fastqs(pair...), zip(R1s, R2s))
-rmprocs(workers())
-
-df = vcat([r[1] for r in results]...)
-metadata = reduce((x, y) -> mergewith(+, x, y), [r[2] for r in results])
-results = nothing
-
+df, metadata = process_results(R1s, R2s)
 println("...done") ; flush(stdout) ; GC.gc()
 
 ################################################################################
@@ -499,33 +534,33 @@ function count_reads(df, metadata)
 end
 count_reads(df, metadata) # this function modifies in-place
 
-# Save reads per umi distribution
-function save_rpu(df, path)
-    rpu_dict = countmap(df[!,:reads])
-    rpu_df = DataFrame(reads_per_umi = collect(keys(rpu_dict)), umis = collect(values(rpu_dict)))
-    sort!(rpu_df, :reads_per_umi)
-    CSV.write(path, rpu_df, writeheader=true)
-end
-save_rpu(df, joinpath(out_path, "reads_per_umi.csv"))
+# # Save reads per umi distribution
+# function save_rpu(df, path)
+#     rpu_dict = countmap(df[!,:reads])
+#     rpu_df = DataFrame(reads_per_umi = collect(keys(rpu_dict)), umis = collect(values(rpu_dict)))
+#     sort!(rpu_df, :reads_per_umi)
+#     CSV.write(path, rpu_df, writeheader=true)
+# end
+# save_rpu(df, joinpath(out_path, "reads_per_umi.csv"))
 
-# Save reads per bead, umis per bead
-function save_rupb(df::DataFrame, col::Symbol, decode::Function, path::String)
-    gdf = combine(groupby(df, col), 
-        :reads => sum => :reads,
-        nrow => :umis
-    )
-    gdf[!,Symbol(String(col)[1:3])] = decode.(gdf[!,col])
-    CSV.write(path, gdf[:, [4, 2, 3]], writeheader=true, compress=true)
-end
-save_rupb(df, :sb1_i, decode_sb1, joinpath(out_path, "readumi_per_sb1.csv.gz"))
-save_rupb(df, :sb2_i, decode_sb2, joinpath(out_path, "readumi_per_sb2.csv.gz"))
+# # Save reads per bead, umis per bead
+# function save_rupb(df::DataFrame, col::Symbol, decode::Function, path::String)
+#     gdf = combine(groupby(df, col), 
+#         :reads => sum => :reads,
+#         nrow => :umis
+#     )
+#     gdf[!,Symbol(String(col)[1:3])] = decode.(gdf[!,col])
+#     CSV.write(path, gdf[:, [4, 2, 3]], writeheader=true, compress=true)
+# end
+# save_rupb(df, :sb1_i, decode_sb1, joinpath(out_path, "readumi_per_sb1.csv.gz"))
+# save_rupb(df, :sb2_i, decode_sb2, joinpath(out_path, "readumi_per_sb2.csv.gz"))
 
 println("done") ; flush(stdout) ; GC.gc()
 println("Total UMIs: $(nrow(df))") ; flush(stdout)
 
 ################################################################################
 
-# Save results of fastq parsing
+# # Save results of fastq parsing
 # h5open(joinpath(out_path, "reads.h5"), "w") do file
 #     file["sb1_2bit", compress=1] = df[!, :sb1_i]
 #     file["umi1_2bit", compress=1] = df[!, :umi1_i]
@@ -534,7 +569,7 @@ println("Total UMIs: $(nrow(df))") ; flush(stdout)
 #     file["reads", compress=1] = df[!, :reads]
 # end
 
-# Load previous fastq parsing results
+# # Load previous fastq parsing results
 # df = h5open(joinpath(out_path, "reads.h5"), "r") do file 
 #     DataFrame(sb1_i = read(file["sb1_2bit"]),
 #               umi1_i = read(file["umi1_2bit"]),
