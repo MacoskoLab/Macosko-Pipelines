@@ -39,7 +39,9 @@ def run_consensus(cnmf_obj, k: int, dt: float, prefix: str):
 def detect_auto_density_threshold(local_density_df: pd.DataFrame, fallback: float) -> float:
     """Auto-detect selective density threshold from local density histogram.
 
-    Uses the elbow/drop-off point on the right side of the histogram peak.
+    Applies the knee/max-distance-to-chord method on the right side of the
+    histogram peak: finds the bin whose perpendicular distance to the line
+    connecting the peak bin and the last bin is greatest.
     Returns a value in [0.03, 0.16] or fallback if no clear threshold found.
     """
     if not isinstance(local_density_df, pd.DataFrame):
@@ -58,29 +60,51 @@ def detect_auto_density_threshold(local_density_df: pd.DataFrame, fallback: floa
     centers = (edges[:-1] + edges[1:]) / 2
 
     max_idx = int(np.argmax(counts))
-    right_counts = counts[max_idx:]
+    right_counts = counts[max_idx:].astype(float)
+    right_centers = centers[max_idx:]
 
-    if len(right_counts) < 3:
+    if len(right_counts) < 2:
         print(f"Auto-threshold detection: too few bins right of peak, using fallback={fallback}", flush=True)
         return fallback
 
-    curve = np.diff(right_counts.astype(float), n=2)
-    elbow_rel = int(np.argmax(np.abs(curve))) + 1  # +1: second-diff centers at j+1
-    elbow_idx = max_idx + elbow_rel
+    x = right_centers
+    y = right_counts
 
-    if counts[elbow_idx] < 0.10 * counts[max_idx]:
-        candidate = centers[elbow_idx]
-    else:
-        # Scan right of elbow for first bin < 10% of max
-        below = np.where(counts[elbow_idx:] < 0.10 * counts[max_idx])[0]
-        if len(below) == 0:
-            print(f"Auto-threshold detection: no bin < 10% of peak found, using fallback={fallback}", flush=True)
-            return fallback
-        first_below = elbow_idx + below[0]
-        candidate = centers[first_below]
+    # Normalize both axes to [0, 1]
+    x_min, x_max = x[0], x[-1]
+    y_min, y_max = y.min(), y.max()
+
+    if x_max == x_min or y_max == y_min:
+        print(f"Auto-threshold detection: degenerate histogram, using fallback={fallback}", flush=True)
+        return fallback
+
+    xn = (x - x_min) / (x_max - x_min)
+    yn = (y - y_min) / (y_max - y_min)
+
+    # Line through first point A=(xn[0], yn[0]) and last point B=(xn[-1], yn[-1])
+    A = np.array([xn[0], yn[0]])
+    B = np.array([xn[-1], yn[-1]])
+    AB = B - A
+    ab2 = float(np.dot(AB, AB))
+
+    if ab2 == 0:
+        print(f"Auto-threshold detection: degenerate chord, using fallback={fallback}", flush=True)
+        return fallback
+
+    # Perpendicular distance from each point to the chord
+    dists = np.empty(len(xn))
+    for i in range(len(xn)):
+        P = np.array([xn[i], yn[i]])
+        AP = P - A
+        t = np.dot(AP, AB) / ab2
+        proj = A + t * AB
+        dists[i] = np.sqrt(np.sum((P - proj) ** 2))
+
+    knee_rel = int(np.argmax(dists))
+    candidate = float(right_centers[knee_rel])
 
     if 0.03 <= candidate <= 0.16:
-        return float(candidate)
+        return candidate
     else:
         print(
             f"Auto-threshold candidate={candidate:.4f} outside [0.03, 0.16], "
