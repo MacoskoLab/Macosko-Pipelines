@@ -29,6 +29,8 @@ task validate_and_prepare {
     Int     min_genes
     Int     min_counts
     Boolean filter_adata
+    Array[String] obs_cols_to_correlate
+    Array[String] sample_cols = []
     Int     mem_GB             = 64
     Int     disk_GB            = 100
     String  docker
@@ -80,6 +82,8 @@ task validate_and_prepare {
       --min-genes   ~{min_genes} \
       --min-counts  ~{min_counts} \
       ~{if filter_adata then "--filter-adata" else ""} \
+      --obs-cols    ~{sep=" " obs_cols_to_correlate} \
+      --sample-cols ~{sep=" " sample_cols} \
       --output-dir  cnmf_output
 
     echo "validate_prepare.py complete."
@@ -394,10 +398,12 @@ workflow cnmf {
       seed         = seed,
       min_genes    = min_genes,
       min_counts   = min_counts,
-      filter_adata = filter_adata,
-      mem_GB       = prepare_mem_GB,
-      disk_GB      = prepare_disk_GB,
-      docker       = docker,
+      filter_adata          = filter_adata,
+      obs_cols_to_correlate = obs_cols_to_correlate,
+      sample_cols           = sample_cols,
+      mem_GB                = prepare_mem_GB,
+      disk_GB               = prepare_disk_GB,
+      docker                = docker,
   }
 
   # Step 2: factorize — scatter over worker shards

@@ -36,6 +36,8 @@ def main():
     parser.add_argument("--min-genes", type=int, default=200)
     parser.add_argument("--min-counts", type=int, default=200)
     parser.add_argument("--filter-adata", action="store_true")
+    parser.add_argument("--obs-cols", nargs="+", default=[])
+    parser.add_argument("--sample-cols", nargs="*", default=[])
     parser.add_argument("--output-dir", default="cnmf_output")
     args = parser.parse_args()
 
@@ -45,6 +47,20 @@ def main():
     print(f"Loading {args.h5ad}...", flush=True)
     adata = ad.read_h5ad(args.h5ad)
     print(f"Loaded: {adata.n_obs} cells x {adata.n_vars} genes", flush=True)
+
+    # Fail fast: validate obs/sample columns before any compute
+    missing_obs = [c for c in args.obs_cols if c not in adata.obs.columns]
+    if missing_obs:
+        raise ValueError(
+            f"--obs-cols columns not found in adata.obs: {missing_obs}. "
+            f"Available columns: {list(adata.obs.columns)}"
+        )
+    missing_sample = [c for c in args.sample_cols if c not in adata.obs.columns]
+    if missing_sample:
+        raise ValueError(
+            f"--sample-cols columns not found in adata.obs: {missing_sample}. "
+            f"Available columns: {list(adata.obs.columns)}"
+        )
 
     # Determine count matrix
     counts = None
