@@ -18,6 +18,18 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 import anndata as ad
 from cnmf import cNMF
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+LOCAL_NEIGHBORHOOD_SIZE   = 0.3    # cNMF local_neighborhood_size for consensus
+N_TOP_GENES               = 100    # top genes per GEP to report
+DENSITY_HIST_STEP         = 0.02   # histogram bin width for local density
+AUTO_DT_MIN               = 0.03   # knee candidates below this use fallback
+AUTO_DT_MAX               = 0.15   # knee candidates above this use fallback; also the fallback value
+AUTO_DT_ROUND             = 4      # decimal places to round auto threshold
+HEATMAP_YTICK_MAX_GROUPS  = 30     # suppress y-tick labels if n_groups exceeds this
+HEATMAP_ZSCORE_CLAMP      = 2.0    # symmetric vmin/vmax for column z-scored sample heatmaps
+
 
 def density_threshold_str(dt: float) -> str:
     # Must match cNMF's own convention: str(density_threshold).replace('.', '_')
@@ -30,7 +42,7 @@ def run_consensus(cnmf_obj, k: int, dt: float, prefix: str):
     cnmf_obj.consensus(
         k,
         density_threshold=dt,
-        local_neighborhood_size=0.3,
+        local_neighborhood_size=LOCAL_NEIGHBORHOOD_SIZE,
         show_clustering=True,
         close_clustergram_fig=True,
     )
@@ -42,7 +54,7 @@ def detect_auto_density_threshold(local_density_df: pd.DataFrame, fallback: floa
     Applies the knee/max-distance-to-chord method on the right side of the
     histogram peak: finds the bin whose perpendicular distance to the line
     connecting the peak bin and the last bin is greatest.
-    Returns a value in [0.03, 0.16] or fallback if no clear threshold found.
+    Returns a value in [AUTO_DT_MIN, AUTO_DT_MAX] or fallback if no clear threshold found.
     """
     if not isinstance(local_density_df, pd.DataFrame):
         raise ValueError(f"local_density_df must be a DataFrame, got {type(local_density_df)}")
@@ -55,9 +67,9 @@ def detect_auto_density_threshold(local_density_df: pd.DataFrame, fallback: floa
         raise ValueError(f"fallback must be a positive finite float, got {fallback}")
 
     values = local_density_df["local_density"].values
-    edges = np.linspace(0, 1, 50)  # 49 bins
+    edges = np.arange(0, 1 + 1e-9, DENSITY_HIST_STEP)
     counts, edges = np.histogram(values, bins=edges)
-    centers = (edges[:-1] + edges[1:]) / 2
+    centers = (edges[:-1] + edges[1:]) / 2  # clean values: 0.01, 0.03, 0.05, ...
 
     max_idx = int(np.argmax(counts))
     right_counts = counts[max_idx:].astype(float)
@@ -101,13 +113,13 @@ def detect_auto_density_threshold(local_density_df: pd.DataFrame, fallback: floa
         dists[i] = np.sqrt(np.sum((P - proj) ** 2))
 
     knee_rel = int(np.argmax(dists))
-    candidate = float(right_centers[knee_rel])
+    candidate = round(float(right_centers[knee_rel]), AUTO_DT_ROUND)
 
-    if 0.03 <= candidate <= 0.16:
+    if AUTO_DT_MIN <= candidate <= AUTO_DT_MAX:
         return candidate
     else:
         print(
-            f"Auto-threshold candidate={candidate:.4f} outside [0.03, 0.16], "
+            f"Auto-threshold candidate={candidate} outside [{AUTO_DT_MIN}, {AUTO_DT_MAX}], "
             f"using fallback={fallback}",
             flush=True,
         )
@@ -133,7 +145,6 @@ def make_top_genes_csv(
     k: int,
     dt: float,
     gene_name_map: dict,
-    n_top: int = 100,
 ) -> str:
     dt_str = density_threshold_str(dt)
     score_file = os.path.join(
@@ -148,7 +159,7 @@ def make_top_genes_csv(
 
     top_genes_dict = {}
     for gep in gene_scores.columns:
-        sorted_genes = gene_scores[gep].sort_values(ascending=False).index[:n_top]
+        sorted_genes = gene_scores[gep].sort_values(ascending=False).index[:N_TOP_GENES]
         top_genes_dict[f"GEP{gep}"] = [gene_name_map.get(g, g) for g in sorted_genes]
 
     top_genes_df = pd.DataFrame(top_genes_dict)
@@ -353,11 +364,20 @@ def make_sample_heatmaps(
         else:
             bulk_clustered = bulk_df
 
-        fig_width = max(8, k * 0.7)
-        fig_height = max(6, min(n_groups, 30) * 0.35 + 2)
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        # Column z-score: each factor centered/scaled across samples
+        # Factors with zero variance (ubiquitous) stay at 0 → render as neutral
+        col_mean = bulk_clustered.mean(axis=0)
+        col_std  = bulk_clustered.std(axis=0, ddof=1).replace(0, np.nan)
+        bulk_zscore = (bulk_clustered - col_mean) / col_std
+        bulk_zscore = bulk_zscore.fillna(0)
 
-        yticklabels = False if n_groups > 30 else True
+        fig_width = max(8, k * 0.7)
+        fig_height = max(6, min(n_groups, HEATMAP_YTICK_MAX_GROUPS) * 0.35 + 2)
+        yticklabels = n_groups <= HEATMAP_YTICK_MAX_GROUPS
+        safe_col = re.sub(r"[^\w]", "_", sample_col)
+
+        # --- Absolute usage ---
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
         sns.heatmap(
             bulk_clustered,
             ax=ax,
@@ -366,26 +386,45 @@ def make_sample_heatmaps(
             vmax=1,
             yticklabels=yticklabels,
             xticklabels=True,
+            cbar_kws={"label": "mean usage"},
         )
-        ax.set_title(f"Sample usage heatmap: {sample_col}, k={k}, dt={dt}", fontsize=11)
+        ax.set_title(f"Sample usage: {sample_col}, k={k}, dt={dt}", fontsize=11)
         ax.set_xlabel("GEP")
         ax.set_ylabel(sample_col)
-
         plt.tight_layout()
-
-        safe_col = re.sub(r"[^\w]", "_", sample_col)
-        svg_path = f"{prefix}.sample_heatmap.{safe_col}.k_{k}.dt_{dt_str}.svg"
-        csv_path = f"{prefix}.sample_heatmap.{safe_col}.k_{k}.dt_{dt_str}.csv"
-
-        fig.savefig(svg_path, format="svg", bbox_inches="tight")
+        svg_abs  = f"{prefix}.sample_heatmap.{safe_col}.k_{k}.dt_{dt_str}.svg"
+        csv_abs  = f"{prefix}.sample_heatmap.{safe_col}.k_{k}.dt_{dt_str}.csv"
+        fig.savefig(svg_abs, format="svg", bbox_inches="tight")
         plt.close(fig)
-        print(f"Written sample heatmap: {svg_path}", flush=True)
+        bulk_df.to_csv(csv_abs)
+        print(f"Written sample heatmap: {svg_abs}", flush=True)
 
-        # CSV: pre-clustering-reorder bulk averages
-        bulk_df.to_csv(csv_path)
-        print(f"Written sample heatmap CSV: {csv_path}", flush=True)
+        # --- Column z-score ---
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        sns.heatmap(
+            bulk_zscore,
+            ax=ax,
+            cmap="RdBu_r",
+            vmin=-HEATMAP_ZSCORE_CLAMP,
+            vmax=HEATMAP_ZSCORE_CLAMP,
+            center=0,
+            yticklabels=yticklabels,
+            xticklabels=True,
+            cbar_kws={"label": "z-score"},
+        )
+        ax.set_title(f"Sample usage (z-score): {sample_col}, k={k}, dt={dt}", fontsize=11)
+        ax.set_xlabel("GEP")
+        ax.set_ylabel(sample_col)
+        plt.tight_layout()
+        svg_z   = f"{prefix}.sample_heatmap_zscore.{safe_col}.k_{k}.dt_{dt_str}.svg"
+        csv_z   = f"{prefix}.sample_heatmap_zscore.{safe_col}.k_{k}.dt_{dt_str}.csv"
+        fig.savefig(svg_z, format="svg", bbox_inches="tight")
+        plt.close(fig)
+        bulk_zscore.to_csv(csv_z)
+        print(f"Written sample heatmap z-score: {svg_z}", flush=True)
 
-        output_paths.append((svg_path, csv_path))
+        output_paths.append((svg_abs, csv_abs))
+        output_paths.append((svg_z, csv_z))
 
     return output_paths
 
@@ -397,7 +436,7 @@ def main():
     parser.add_argument("--h5ad", required=True)
     parser.add_argument("--k", type=int, required=True)
     parser.add_argument("--default-density-threshold", type=float, required=True)
-    parser.add_argument("--fallback-selective-density-threshold", type=float, required=True)
+    parser.add_argument("--fallback-selective-density-threshold", type=float, default=AUTO_DT_MAX)
     parser.add_argument("--gene-name-col", default="gene_name")
     parser.add_argument("--obs-cols", nargs="+", default=[
         "frac_mito", "frac_intronic", "log10_nUMI", "sex", "age", "case_control"

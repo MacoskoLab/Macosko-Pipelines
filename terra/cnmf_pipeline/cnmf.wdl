@@ -349,7 +349,7 @@ workflow cnmf {
 
     # --- Density thresholds for consensus ---
     Float default_density_threshold              = 2.0
-    Float fallback_selective_density_threshold   = 0.05
+    Float fallback_selective_density_threshold   = 0.15
 
     # --- k selection filters ---
     # Local maxima with stability < min_stability are excluded.
