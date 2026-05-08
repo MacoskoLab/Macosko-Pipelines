@@ -13,7 +13,7 @@ This PR contains: a WDL, a directory with Python scripts the WDL uses, and a Doc
 | `h5ad_file` | A `gs://` path to an `adata.h5ad` file. |
 | `bucket` | GCS bucket for outputs. Defaults to the standard Terra bucket. |
 | `docker` | Docker image to use. Defaults to the standard cNMF image. |
-| `prefix` | Must be unique within `<bucket>/cNMF/outputs`. Fast failure occurs otherwise. |
+| `prefix` | Must be unique within `<bucket>/cNMF/outputs`. Fast failure occurs otherwise. Defaults to basename(h5ad_file, ".h5ad") |
 | `obs_cols_to_correlate` | Array of columns in `adata.obs` to correlate (e.g. `["col1", "col2"]`). Fast failure if any element is not a valid column. |
 | `sample_cols` | Array of columns in `adata.obs` (e.g. `["col1", "col2"]`). Fast failure if any element is not a valid column. |
 | `k_min` | Minimum k value to test. Cannot be less than 3. |
