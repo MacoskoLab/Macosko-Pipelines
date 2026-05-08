@@ -14,21 +14,21 @@ This PR contains: a WDL, a directory with Python scripts the WDL uses, and a Doc
 | `bucket` | GCS bucket for outputs. Defaults to the standard Terra bucket. |
 | `docker` | Docker image to use. Defaults to the standard cNMF image. |
 | `prefix` | Must be unique within `<bucket>/cNMF/outputs`. Fast failure occurs otherwise. Defaults to basename(h5ad_file, ".h5ad") |
-| `obs_cols_to_correlate` | Array of columns in `adata.obs` to correlate (e.g. `["col1", "col2"]`). Fast failure if any element is not a valid column. |
-| `sample_cols` | Array of columns in `adata.obs` (e.g. `["col1", "col2"]`). Fast failure if any element is not a valid column. |
-| `k_min` | Minimum k value to test. Cannot be less than 3. |
-| `k_max` | Maximum k value to test. |
-| `num_iter` | Number of times to run NMF at each k. |
+| `obs_cols_to_correlate` | Array of columns in `adata.obs` to correlate against GEP usages. Fast failure if any element is not a valid column. Defaults to `[“frac_mito", "frac_intronic", "log10_nUMI", "sex", "age", "case_control”]` |
+| `sample_cols` | Array of columns in `adata.obs` by which to aggregate GEP usages, each producing a heatmap of mean usages per sample (e.g. `["participant_id", "brain_bank", "study"]`). Fast failure if any element is not a valid column. Defaults to [] |
+| `k_min` | Minimum k value to test. Cannot be less than 3. Defaults to 3 |
+| `k_max` | Maximum k value to test. Defaults to 50 |
+| `num_iter` | Number of times to run NMF at each k. Defaults to 200 |
 | `*_disk_GB` / `*_mem_GB` | Disk and memory allocations for different workflow steps (have defaults). |
-| `default_density_threshold` | Defaults to cNMF magic number from Jim Nemesh. |
-| `min_counts` | Defaults to cNMF magic number from Jim Nemesh. |
-| `min_genes` | Defaults to cNMF magic number from Jim Nemesh. |
-| `num_hv_genes` | Defaults to cNMF magic number from Jim Nemesh. |
+| `default_density_threshold` | Defaults to cNMF magic number (2) from Jim Nemesh. |
+| `min_counts` | Defaults to cNMF magic number (200) from Jim Nemesh. |
+| `min_genes` | Defaults to cNMF magic number (200) from Jim Nemesh. |
+| `num_hv_genes` | Defaults to cNMF magic number (2000) from Jim Nemesh. |
 | `filter_adata` | Boolean. If `true`, filters out lowly expressed genes, mitochondrial genes, and cells with few genes. Defaults to `false` — keeping these in can help identify factors with high loadings on nuisance genes. |
-| `gene_name_col` | Column in `adata.var` containing gene names. |
-| `max_k_values` | Maximum number of k values to select automatically. |
-| `min_stability` | Minimum stability threshold for automatic k selection. |
-| `fallback_selective_density_threshold` | Fallback parameter for automatic factor-factor distance threshold selection. |
+| `gene_name_col` | Column in `adata.var` containing gene names. Defaults to `gene_name`. |
+| `max_k_values` | Maximum number of k values to select automatically. Defaults to 10. |
+| `min_stability` | Minimum stability threshold for automatic k selection. Defaults to 0.7. |
+| `fallback_selective_density_threshold` | Fallback parameter for automatic factor-factor distance threshold selection. Defaults to 0.15. |
 
 ---
 
