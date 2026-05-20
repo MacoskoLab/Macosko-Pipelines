@@ -32,10 +32,28 @@ determine_remap_10X_CB <- function(vec, dt) {
   } else if (!all(unique(substr(vec,8,9)) %in% c("TC","AG","GT","CA"))) {
     return(FALSE)
   }
-  
+
   # Determine which mapping has more reads
   reads_noremap <- dt[cb %in% cb_whitelist, sum(reads)]
   reads_remap <- dt[cb %in% remap_10X_CB(cb_whitelist), sum(reads)]
+  return(reads_remap > reads_noremap)
+}
+
+# Raw-vector variant of determine_remap_10X_CB, used when the input is too
+# large to fit in a data.table (long vectors > 2^31 break setDT).
+determine_remap_10X_CB_raw <- function(cb_whitelist, cb_list, cb_index, reads) {
+  if (class(cb_whitelist) != "character") {
+    return(FALSE)
+  } else if (!all(nchar(cb_whitelist) == 16)) {
+    return(FALSE)
+  } else if (!all(unique(substr(cb_whitelist,8,9)) %in% c("TC","AG","GT","CA"))) {
+    return(FALSE)
+  }
+
+  noremap_idx <- which(cb_list %in% cb_whitelist)
+  remap_idx   <- which(cb_list %in% remap_10X_CB(cb_whitelist))
+  reads_noremap <- sum(reads[cb_index %in% noremap_idx])
+  reads_remap   <- sum(reads[cb_index %in% remap_idx])
   return(reads_remap > reads_noremap)
 }
 
@@ -147,17 +165,62 @@ ReadIntronic <- function(intronic_path, cb_list) {
 }
 
 
-ReadSpatialMatrix <- function(f) {
-  cb_list <- f("lists/cb_list")
-  sb_list <- f("lists/sb_list")
-  
-  dt <- data.table(cb = f("matrix/cb_index") %>% as.integer %>% factor(levels=seq_along(cb_list), labels=cb_list),
-                   umi = f("matrix/umi") %>% as.integer,
-                   sb = f("matrix/sb_index") %>% as.integer %>% factor(levels=seq_along(sb_list), labels=sb_list),
-                   reads = f("matrix/reads") %>% as.integer)
-  
+# Reads the SBcounts.h5 matrix as raw integer vectors plus the cb/sb dictionaries.
+# No data.table is constructed here, so length > 2^31 is fine.
+ReadSpatialMatrixRaw <- function(f) {
+  raw <- list(
+    cb_list  = f("lists/cb_list"),
+    sb_list  = f("lists/sb_list"),
+    cb_index = f("matrix/cb_index") %>% as.integer,
+    umi      = f("matrix/umi")      %>% as.integer,
+    sb_index = f("matrix/sb_index") %>% as.integer,
+    reads    = f("matrix/reads")    %>% as.integer
+  )
   invisible(gc())
-  return(dt)
+  return(raw)
+}
+
+# Filters the raw matrix to (HD1-expanded CB whitelist) x (puck SB whitelist)
+# before constructing the data.table — keeps the data.table under setDT's
+# 2^31 ceiling. Also computes the five metadata fields that positioning.R
+# currently derives from dt at mid-pipeline states, since those rows are
+# pre-removed here.
+BuildSpatialMatrix <- function(raw, cb_whitelist, cb_whitelist_hd1, sb_whitelist) {
+  valid_cb_idx <- which(raw$cb_list %in% cb_whitelist_hd1)
+  exact_cb_idx <- which(raw$cb_list %in% cb_whitelist)
+  valid_sb_idx <- which(raw$sb_list %in% sb_whitelist)
+
+  sb_mask <- raw$sb_index %in% valid_sb_idx
+  cb_mask <- raw$cb_index %in% valid_cb_idx
+
+  reads_total_after_sb <- sum(raw$reads[sb_mask])
+  rows_after_sb        <- sum(sb_mask)
+
+  preserved <- list(
+    reads_lqsb              = sum(raw$reads[!sb_mask]),
+    reads_nocb              = sum(raw$reads[sb_mask & !cb_mask]),
+    umi_pct_in_called_cells = round(sum(sb_mask & cb_mask) / rows_after_sb * 100, digits=2),
+    sequencing_saturation   = round((1 - rows_after_sb / reads_total_after_sb) * 100, digits=2)
+  )
+
+  keep <- sb_mask & cb_mask
+  rm(sb_mask, cb_mask); invisible(gc())
+  stopifnot(sum(keep) < 2^31)
+
+  cb_index <- raw$cb_index[keep]
+  sb_index <- raw$sb_index[keep]
+  umi_vec  <- raw$umi[keep]
+  reads    <- raw$reads[keep]
+
+  dt <- data.table(
+    cb    = factor(cb_index, levels=seq_along(raw$cb_list), labels=raw$cb_list),
+    umi   = umi_vec,
+    sb    = factor(sb_index, levels=seq_along(raw$sb_list), labels=raw$sb_list),
+    reads = reads
+  )
+
+  invisible(gc())
+  return(list(dt = dt, metadata = preserved))
 }
 
 

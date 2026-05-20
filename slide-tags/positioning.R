@@ -43,32 +43,50 @@ stopifnot(dir.exists(out_path))
 
 # Load the spatial barcode count matrix
 f <- function(p){return(rhdf5::h5read(sb_path, p))}
-dt <- ReadSpatialMatrix(f)
-metadata <- ReadSpatialMetadata(f)
-print(g("{add.commas(sum(dt$reads))} spatial barcode reads loaded"))
-stopifnot(names(dt) == c("cb","umi","sb","reads"))
 
+# Load the CB whitelist (needed up front to filter the matrix at H5 read time —
+# the long-format triplet table can exceed 2^31 rows, which breaks data.table::setDT)
+cb_whitelist <- readLines(cb_path)
+puck_sb <- f("puck/sb") %>% as.character
+
+# Read the matrix as raw integer vectors (no data.table yet)
+raw <- ReadSpatialMatrixRaw(f)
+metadata <- ReadSpatialMetadata(f)
+print(g("{add.commas(sum(raw$reads))} spatial barcode reads loaded"))
+
+# Apply read downsampling on raw vectors so preserved metadata reflects it
 if (prob < 1) {
-  dt[, reads := rbinom(.N, reads, prob)]
-  dt <- dt[reads > 0]
-  print(g("{add.commas(sum(dt$reads))} downsampled spatial barcode reads"))
+  raw$reads <- rbinom(length(raw$reads), raw$reads, prob)
+  keep <- raw$reads > 0
+  raw$cb_index <- raw$cb_index[keep]
+  raw$umi      <- raw$umi[keep]
+  raw$sb_index <- raw$sb_index[keep]
+  raw$reads    <- raw$reads[keep]
+  rm(keep); invisible(gc())
+  print(g("{add.commas(sum(raw$reads))} downsampled spatial barcode reads"))
 }
 
-# load the CB whitelist
-cb_whitelist <- readLines(cb_path)
-
-# determine CB remap
-remap <- determine_remap_10X_CB(cb_whitelist, dt)
+# Determine CB remap on raw vectors
+remap <- determine_remap_10X_CB_raw(cb_whitelist, raw$cb_list, raw$cb_index, raw$reads)
 if (remap) { cb_whitelist %<>% remap_10X_CB }
 metadata$SB_info$remap_10X_CB <- remap
 
-# validate CB whitelist
+# Validate CB whitelist
 stopifnot(class(cb_whitelist) == "character")
 stopifnot(!duplicated(cb_whitelist))
 stopifnot(uniqueN(nchar(cb_whitelist)) == 1)
 stopifnot(map_lgl(strsplit(cb_whitelist, ""), ~all(. %in% c("A","C","G","T"))))
 print(g("{len(cb_whitelist)} cell barcodes loaded"))
-invisible(gc())
+
+# Build the data.table, filtering the matrix to (HD1-expanded CB whitelist) x (puck SBs)
+# so that we stay under setDT's 2^31 ceiling. The same rows would have been
+# dropped downstream anyway (see SB filter at :154 and CB filter at :170 — now no-ops).
+cb_whitelist_hd1 <- unique(c(cb_whitelist, unlist(lapply(cb_whitelist, listHD1neighbors))))
+built <- BuildSpatialMatrix(raw, cb_whitelist, cb_whitelist_hd1, puck_sb)
+dt <- built$dt
+preserved <- built$metadata
+rm(raw, built, cb_whitelist_hd1); invisible(gc())
+stopifnot(names(dt) == c("cb","umi","sb","reads"))
 
 ### Fuzzy matching #############################################################
 
@@ -105,9 +123,18 @@ dt <- merge(dt, df, by = "cb_fuzzy", all.x = TRUE, all.y = FALSE, sort = FALSE)
 stopifnot(is.null(key(dt)), is.null(indices(dt)))
 
 # Record metadata
-metadata$CB_matching <- dt[, .(reads=sum(reads)), match][order(-reads)] %>% 
+metadata$CB_matching <- dt[, .(reads=sum(reads)), match][order(-reads)] %>%
   {setNames(.$reads, .$match %>% as.character %>% replace_na("none"))}
-stopifnot(sum(dt$reads) == sum(metadata$CB_matching))
+# Reads pre-filtered at H5 read time (CBs outside HD1-expanded whitelist) are
+# not in dt, so add their count to the "none" bucket here for parity with the
+# pre-pre-filter pipeline.
+if ("none" %in% names(metadata$CB_matching)) {
+  metadata$CB_matching[["none"]] <- metadata$CB_matching[["none"]] + preserved$reads_nocb
+} else {
+  metadata$CB_matching <- c(metadata$CB_matching, none = preserved$reads_nocb)
+}
+metadata$CB_matching <- metadata$CB_matching[order(-metadata$CB_matching)]
+stopifnot(sum(dt$reads) + preserved$reads_nocb == sum(metadata$CB_matching))
 
 # Remap back
 if (remap) {
@@ -148,9 +175,10 @@ if (!exists("eps") || !is.numeric(eps) || !(eps > 0)) {
 }
 
 # Filter reads with a low-quality spatial barcode
+# (No-op after pre-filtering in BuildSpatialMatrix; reads_lqsb comes from preserved metadata.)
 print("Removing low-quality spatial barcodes")
 dt[, m := sb %in% puckdf$sb]
-metadata$SB_filtering %<>% c(reads_lqsb=dt[m == FALSE, sum(reads)])
+metadata$SB_filtering %<>% c(reads_lqsb = preserved$reads_lqsb)
 dt <- dt[m == TRUE]
 dt[, m := NULL]
 invisible(gc())
@@ -162,10 +190,12 @@ plot_SBlibrary(dt, f) %>% make.pdf(file.path(out_path, "SBlibrary.pdf"), 7, 8)
 plot_SBplot(dt, puckdf) %>% make.pdf(file.path(out_path, "SBplot.pdf"), 7, 8)
 
 # Delete cell barcodes for cells that were not called
+# (Pre-filter already removed CBs outside HD1-expanded whitelist; three metrics
+# below come from preserved metadata so values match the pre-pre-filter pipeline.)
 print("Removing non-whitelist cells")
-metadata$SB_filtering %<>% c(reads_nocb = dt[is.na(cb), sum(reads)])
-metadata$SB_info$UMI_pct_in_called_cells <- round(dt[,sum(!is.na(cb))/.N]*100, digits=2) %>% paste0("%")
-metadata$SB_info$sequencing_saturation <- round((1 - nrow(dt) / sum(dt$reads)) * 100, 2) %>% paste0("%")
+metadata$SB_filtering %<>% c(reads_nocb = preserved$reads_nocb)
+metadata$SB_info$UMI_pct_in_called_cells <- preserved$umi_pct_in_called_cells %>% paste0("%")
+metadata$SB_info$sequencing_saturation <- preserved$sequencing_saturation %>% paste0("%")
 dt[, cr := NULL]
 dt <- dt[!is.na(cb)]
 dt <- dt[, .(reads=sum(reads)), .(cb,umi,sb)] # collapse post-matched barcodes
