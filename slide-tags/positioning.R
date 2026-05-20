@@ -42,7 +42,10 @@ if (!dir.exists(out_path)) {dir.create(out_path, recursive=TRUE)}
 stopifnot(dir.exists(out_path))
 
 # Load the spatial barcode count matrix
-f <- function(p){return(rhdf5::h5read(sb_path, p))}
+# bit64conversion="double" so 64-bit metadata counters (e.g. metadata/reads)
+# above the 2^31 int limit read back as doubles instead of NA. Matrix datasets
+# are 32-bit and unaffected.
+f <- function(p){return(rhdf5::h5read(sb_path, p, bit64conversion="double"))}
 
 # Load the CB whitelist (needed up front to filter the matrix at H5 read time —
 # the long-format triplet table can exceed 2^31 rows, which breaks data.table::setDT)
