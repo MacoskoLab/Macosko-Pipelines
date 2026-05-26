@@ -27,7 +27,7 @@ bcl = args.bcl.strip("/ \t\n\r")     ; print(f"     bcl: {bcl}")
 index = args.index.strip("/ \t\n\r") ; print(f"   index: {index}")
 dryrun = args.dryrun                 ; print(f"  dryrun: {dryrun}")
 
-assert workflow in ["cellranger-count", "slide-tags", "recon", "reconstruction"]
+assert workflow in ["cellranger-count", "slide-tags", "recon", "reconstruction", "singlecell", "scrna"]
 assert not any(c.isspace() for c in bcl), f"remove whitespace from bcl ({bcl})"
 assert not any(c.isspace() for c in index), f"remove whitespace from index ({index})"
 
@@ -45,7 +45,10 @@ if workflow in ["cellranger-count", "slide-tags"]:
 elif workflow in ["recon", "reconstruction"]:
     df = get_as_dataframe(sh.worksheet("Recon"))
     cols = ["BCL", "Index", "bc1", "bc2", "params"]
-
+elif workflow in ["singlecell", "scrna"]:
+    df = get_as_dataframe(sh.worksheet("SingleCell"))
+    cols = ["Sample", "BCL", "Reference", "RNAIndex", "Multiseq Index", "Puck", "params"]
+    workflow = "cellranger-count"
 
 # Clean the worksheet
 assert all(col in df.columns for col in cols)
