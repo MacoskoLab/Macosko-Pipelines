@@ -100,3 +100,30 @@ assert len(count) == len(tags) == len(count_fastqs)
 sh.worksheet("Slide-tags").update(values=[[v] for v in count],        range_name=ranges["web_summary"], raw=False)
 sh.worksheet("Slide-tags").update(values=[[v] for v in tags],         range_name=ranges["summary"],     raw=False)
 sh.worksheet("Slide-tags").update(values=[[v] for v in count_fastqs], range_name=ranges["FASTQs"],      raw=False)
+
+################################################################################
+
+# Load <SingleCell> worksheet
+df0 = get_as_dataframe(sh.worksheet("SingleCell"))
+ranges = {col: get_column_letter(df0.columns.get_loc(col)+1)+"2" for col in ["web_summary", "summary", "FASTQs"]}
+df0 = df0.drop(columns=["web_summary", "summary", "FASTQs"])
+df0.rename(columns={'RNAIndex': 'Index'}, inplace=True)
+
+df = df0.copy()
+df = df.dropna(subset=['BCL', 'Index'])
+dups = df.duplicated(subset=["BCL", "Index"])
+assert not dups.any(), f"SingleCell sheet has duplicated BCL/RNAIndex pair:\n{df[dups]}"
+
+# Load cellranger-count blobs
+count = [blob.name for blob in bucket.list_blobs(prefix=f"gene-expression") if blob.name.endswith("/web_summary.html")]
+count = [(c.split("/")[1], c.split("/")[2], blob2link(c)) for c in count]
+count = pd.DataFrame(count, columns=["BCL", "Index", "web_summary"])
+assert not count.duplicated(subset=["BCL", "Index"]).any()
+
+# Update the sheet
+count =        pd.merge(df0, count,  on=["BCL", "Index"], how="left").fillna('')["web_summary"]
+count_fastqs = pd.merge(df0, fastqs, on=["BCL", "Index"], how="left").fillna('')["FASTQs"]
+assert len(count) == len(count_fastqs)
+
+sh.worksheet("SingleCell").update(values=[[v] for v in count],        range_name=ranges["web_summary"], raw=False)
+sh.worksheet("SingleCell").update(values=[[v] for v in count_fastqs], range_name=ranges["FASTQs"],      raw=False)
