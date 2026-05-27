@@ -1,9 +1,9 @@
 ### Quick Start guide
 
-1\) Log in and create user directory
+1\) Log in and create user directory (UPDATE (5/27/2026): login00.broadinstitute.org has been discontinued)
 
 ```
-ssh login00.broadinstitute.org
+ssh 10.192.4.44
 ```
 ```
 mkdir -p /broad/macosko/$USER
