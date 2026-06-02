@@ -3,6 +3,7 @@ version 1.0
 task tags {
     input {
         String bcl
+        String sb_bcl = ""
         String rna_index
         String sb_index
         Array[String] puck_paths
@@ -21,7 +22,11 @@ task tags {
     wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/plots.R
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
-    fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
+    if [ -n "~{sb_bcl}" ]; then
+        fastq_dir="gs://$BUCKET/fastqs/~{sb_bcl}"
+    else
+        fastq_dir="gs://$BUCKET/fastqs/~{bcl}"
+    fi
     gex_dir="gs://$BUCKET/gene-expression/~{bcl}/~{rna_index}"
     tags_dir="gs://$BUCKET/slide-tags/~{bcl}/~{rna_index}"
 
@@ -98,6 +103,7 @@ task tags {
 workflow slide_tags {
     input {
         String bcl
+        String sb_bcl = ""
         String rna_index
         String sb_index
         Array[String] puck_paths
@@ -109,6 +115,7 @@ workflow slide_tags {
     call tags {
         input:
             bcl = bcl,
+            sb_bcl = sb_bcl,
             rna_index = rna_index,
             sb_index = sb_index,
             puck_paths = puck_paths,
