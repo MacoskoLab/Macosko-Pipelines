@@ -83,17 +83,24 @@ def process(mat):
 mat_norm = process(mat)
 del mat ; gc.collect()
 
+chunks_calculated = chunks == -1
 chunks_max_nnz = 2**31-1
-if chunks == -1:
+if chunks_calculated:
     chunks = int(np.ceil(mat_norm.getnnz() / chunks_max_nnz))
     chunks = max(chunks, 1)
     print(f"Calculated number of chunks: {chunks}")
 
 # Chunk the matrix
-print('Chunking the matrix...')
-ABs = [mat_norm[chunk] for chunk in np.array_split(range(mat_norm.shape[0]), chunks)]
+while True:
+    print('Chunking the matrix...')
+    ABs = [mat_norm[chunk] for chunk in np.array_split(range(mat_norm.shape[0]), chunks)]
+    ABs_max_nnz = max(AB.getnnz() for AB in ABs)
+    if ABs_max_nnz < chunks_max_nnz or not chunks_calculated:
+        break
+    chunks += 1
+    print(f"Matrix max non-zero entries per chunk ({ABs_max_nnz}) exceeds {chunks_max_nnz}, incrementing chunks to {chunks}")
+
 del mat_norm ; gc.collect()
-ABs_max_nnz = max(AB.getnnz() for AB in ABs)
 assert ABs_max_nnz < chunks_max_nnz, f"Matrix max non-zero entries per chunk ({ABs_max_nnz}) exceeds {chunks_max_nnz}, increase 'chunks' or set 'chunks' to -1 to calculate number of chunks"
 
 # Calculate Top-N KNN
