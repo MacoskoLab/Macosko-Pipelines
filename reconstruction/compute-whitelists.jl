@@ -3,14 +3,14 @@ using StatsBase
 using DataFrames
 using Distributions: pdf, Exponential
 
-function compute_whitelists(
-    df::DataFrame,
+function compute_cutoffs(
+    tab1::Dict{UInt64,Int64},
+    tab2::Dict{UInt64,Int64},
     metadata::Dict{String,Int64},
     R1_barcodes::Int64,
     R2_barcodes::Int64,
     out_path::String,
-)::Tuple{Dict{UInt64,Int64}, Dict{UInt64,Int64}, Cutoffs}
-    print("Computing barcode whitelist... ") ; flush(stdout)
+)::Cutoffs
 
     # Helper method
     function remove_intermediate(x, y)
@@ -18,10 +18,6 @@ function compute_whitelists(
         x = x[m] ; y = y[m]
         return(x, y)
     end
-
-    # Count the number of times each barcode appears
-    tab1 = countmap(df[!,:sb1_i]) # const
-    tab2 = countmap(df[!,:sb2_i]) # const
 
     # Automatic cutoff
     # Use the elbow plot to determine which beads to use as our whitelist
@@ -153,7 +149,40 @@ function compute_whitelists(
     metadata["R1_barcodes"] = bc1
     metadata["R2_barcodes"] = bc2
 
-    println("done") ; flush(stdout) ; GC.gc()
-    cutoffs = Cutoffs(uc1, bc1, uc2, bc2)
+    return Cutoffs(uc1, bc1, uc2, bc2)
+end
+
+function compute_whitelists(
+    df::DataFrame,
+    metadata::Dict{String,Int64},
+    R1_barcodes::Int64,
+    R2_barcodes::Int64,
+    out_path::String,
+)::Tuple{Dict{UInt64,Int64}, Dict{UInt64,Int64}, Cutoffs}
+    print_start("Computing barcode whitelist... ")
+
+    # Count the number of times each barcode appears
+    tab1 = countmap(df[!,:sb1_i]) # const
+    tab2 = countmap(df[!,:sb2_i]) # const
+
+    cutoffs = compute_cutoffs(tab1, tab2, metadata, R1_barcodes, R2_barcodes, out_path)
+
+    println_done()
     return tab1, tab2, cutoffs
+end
+
+function compute_whitelists(
+    tab1::Dict{UInt64,Int64},
+    tab2::Dict{UInt64,Int64},
+    metadata::Dict{String,Int64},
+    R1_barcodes::Int64,
+    R2_barcodes::Int64,
+    out_path::String,
+)::Cutoffs
+    print_start("Computing barcode whitelist... ")
+
+    cutoffs = compute_cutoffs(tab1, tab2, metadata, R1_barcodes, R2_barcodes, out_path)
+
+    println_done()
+    return cutoffs
 end

@@ -20,7 +20,7 @@ function write_outputs(
     decode_sb1 = bead1_info.decode_sb
     decode_sb2 = bead2_info.decode_sb
 
-    print("Writing output... ") ; flush(stdout)
+    print_start("Writing output... ")
 
     # Compute more metadata
     sequencing_saturation = round((1 - (metadata["umis_filtered"] / metadata["reads_filtered"]))*100, digits=1)
@@ -120,6 +120,17 @@ function write_outputs(
 
     @assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.txt.gz", "sb2.txt.gz", "QC.pdf", "metadata.csv"])
 
-    println("done") ; flush(stdout) ; GC.gc()
+    println_done()
+    return nothing
+end
+
+function copy_pdfs(in_path::String, out_path::String)::Nothing
+    pdfs = readdir(in_path, join=true)
+    pdfs = filter(pdf -> endswith(pdf, ".pdf"), pdfs)
+    println("Copying pdfs: ", basename.(pdfs))
+    @assert length(pdfs) > 0 "ERROR: No PDFs found"
+    for pdf in pdfs
+        cp(pdf, joinpath(out_path, basename(pdf)), force=true)
+    end
     return nothing
 end
