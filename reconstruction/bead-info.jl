@@ -127,3 +127,23 @@ function bead2_type_to_info(bead2_type::String)::BeadInfo
 
     return BeadInfo(bead2_type, R2_len, get_R2, encode_sb2, decode_sb2)
 end
+
+function bead_types_to_metadata(bead1_type::String, bead2_type::String)::Dict{String,Int64}
+    metadata = Dict{String,Int64}()
+    metadata["R1_beadtype"] = parse(Int, join(filter(isdigit, bead1_type)))
+    metadata["R2_beadtype"] = parse(Int, join(filter(isdigit, bead2_type)))
+    return metadata
+end
+
+function metadata_to_bead_types(metadata::Dict{String,Int64})::Tuple{String, String}
+    bead1_type = "V"*string(metadata["R1_beadtype"])
+    bead2_type = "V"*string(metadata["R2_beadtype"])
+    return bead1_type, bead2_type
+end
+
+function metadata_to_bead_infos(metadata::Dict{String,Int64})::Tuple{BeadInfo, BeadInfo}
+    bead1_type, bead2_type = metadata_to_bead_types(metadata)
+    bead1_info = bead1_type_to_info(bead1_type)
+    bead2_info = bead2_type_to_info(bead2_type)
+    return bead1_info, bead2_info
+end

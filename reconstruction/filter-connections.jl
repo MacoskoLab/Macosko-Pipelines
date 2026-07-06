@@ -9,7 +9,7 @@ function filter_connections(
     metadata::Dict{String,Int64},
     out_path::String,
 )::Nothing
-    print("Connection filter... ") ; flush(stdout)
+    print_start("Connection filter... ")
 
     function connection_filter(df::DataFrame, metadata::Dict, col::Symbol, z=+3)
         R = "R"*string(col)[3] # R1 or R2
@@ -84,6 +84,6 @@ function filter_connections(
     metadata["umis_final"] = sum(df.umi)
     metadata["connections_final"] = nrow(df)
 
-    println("done") ; flush(stdout) ; GC.gc()
+    println_done()
     return nothing
 end

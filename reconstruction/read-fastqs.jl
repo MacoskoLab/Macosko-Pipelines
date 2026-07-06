@@ -46,7 +46,7 @@ end
 end
 
 # Read the FASTQs
-@everywhere function process_fastqs(prob, bead1_type, bead2_type, R1, R2, tmp)
+@everywhere function process_fastqs(prob, bead1_type, bead2_type, R1_filter, R2_filter, R1, R2, tmp)
     bead1_info = bead1_type_to_info(bead1_type)
     bead2_info = bead2_type_to_info(bead2_type)
     R1_len = bead1_info.R_len
@@ -71,11 +71,18 @@ end
         # Random dropout for downsampling
         prob < 1 && rand() > prob && continue
 
-        metadata["reads"] += 1
-
         # Load the sequences
         seq1 = FASTQ.sequence(record[1])
         seq2 = FASTQ.sequence(record[2])
+
+        if (!startswith(seq1, R1_filter))
+            continue
+        end
+        if (!startswith(seq2, R2_filter))
+            continue
+        end
+
+        metadata["reads"] += 1
 
         # Validate the sequence length
         skip = false
@@ -193,14 +200,17 @@ end
     return metadata
 end
 
-function process_results(out_path, prob, bead1_type, bead2_type, R1s, R2s)
-    println("\nReading FASTQs...") ; flush(stdout)
+function process_results(out_path, prob, bead1_type, bead2_type, R1s, R2s, R1_filter = "", R2_filter = "")
+    print_start("\nReading FASTQs...\n")
 
     # Write the tmp files
     tmps = [joinpath(out_path, "tmp$(i).h5") for i in 1:length(R1s)]
-    metadatas = pmap(pair -> process_fastqs(prob, bead1_type, bead2_type, pair...), zip(R1s, R2s, tmps))
+    metadatas = pmap(pair ->
+        process_fastqs(prob, bead1_type, bead2_type, R1_filter, R2_filter, pair...),
+        zip(R1s, R2s, tmps),
+    )
 
-    println("...done") ; flush(stdout) ; GC.gc()
+    println_done()
     return metadatas
 end
 
@@ -208,7 +218,7 @@ function combine_results(
     out_path::String,
     metadatas::Vector{Dict{String, Int64}},
 )::Tuple{DataFrame, Dict{String, Int64}}
-    print("Combining FASTQ results...") ; flush(stdout)
+    print_start("Combining FASTQ results... ")
 
     tmps = [joinpath(out_path, "tmp$(i).h5") for i in 1:length(metadatas)]
     metadata = reduce((x, y) -> mergewith(+, x, y), metadatas)
@@ -235,6 +245,6 @@ function combine_results(
     @assert metadata["reads_filtered"] == pos - 1
     rm.(tmps)
 
-    println("...done") ; flush(stdout) ; GC.gc()
+    println_done()
     return df, metadata
 end

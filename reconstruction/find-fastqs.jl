@@ -1,4 +1,5 @@
 using Plots
+using DelimitedFiles
 
 function find_fastqs(
     fastq_path::String,
@@ -36,5 +37,22 @@ function find_fastqs(
         annotate!(p, 2, 0, text("$(length(R1s)-N+6) FASTQ file(s) not shown", :center, 9))
     end
     savefig(p, joinpath(out_path, "filepaths.pdf"))
+    return R1s, R2s
+end
+
+function save_fastqs(R1s::Vector{String}, R2s::Vector{String}, out_path::String)::Nothing
+    writedlm(joinpath(out_path, "fastqs1.txt"), R1s, "\n")
+    writedlm(joinpath(out_path, "fastqs2.txt"), R2s, "\n")
+    return nothing
+end
+
+function load_fastqs(in_path::String)::Tuple{Vector{String}, Vector{String}}
+    fastqs1_path = joinpath(in_path, "fastqs1.txt")
+    fastqs2_path = joinpath(in_path, "fastqs2.txt")
+    @assert isfile(fastqs1_path) "ERROR: $fastqs1_path not found"
+    @assert isfile(fastqs2_path) "ERROR: $fastqs2_path not found"
+    R1s = readlines(fastqs1_path)
+    R2s = readlines(fastqs2_path)
+    @assert length(R1s) == length(R2s) "ERROR: Number of R1 and R2 FASTQs do not match"
     return R1s, R2s
 end
