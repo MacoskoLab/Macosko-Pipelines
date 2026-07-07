@@ -71,8 +71,7 @@ sheets_creds = impersonated_credentials.Credentials(
 )
 sh = gspread.authorize(sheets_creds).open_by_key("1NOaWXARQiSA6fquOtcouQPREPN4buYIf13tq_F6D9As")
 if workflow == "cellranger-count":
-    df = pd.concat([get_as_dataframe(sh.worksheet("Slide-tags")),
-                    get_as_dataframe(sh.worksheet("SingleCell"))], ignore_index=True)
+    df = get_as_dataframe(sh.worksheet("Slide-tags"))
     cols = ["BCL", "Reference", "RNAIndex", "SBIndex", "Puck", "params"]
 elif workflow == "slide-tags":
     df = get_as_dataframe(sh.worksheet("Slide-tags"))
