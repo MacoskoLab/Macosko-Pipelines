@@ -50,6 +50,7 @@ function count_umis(
         return sum(sort(v, rev=true)[1:min(n, length(v))])
     end
     function plot_umi_distributions(df, col::Symbol)
+        local p1, p2
         R = "R"*string(col)[3] # R1 or R2
 
         if nrow(df) == 0
