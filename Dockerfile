@@ -141,11 +141,11 @@ RUN /bin/bash -lc "micromamba clean --locks"
 
 # Install python packages
 RUN /bin/bash -lc "micromamba install -c conda-forge python=3.11.2 jupyterlab \
-                   numpy pandas scipy scikit-learn \
-                   matplotlib seaborn plotly pypdf \
+                   numpy=2.3.5 pandas=2.3.3 scipy=1.16.3 scikit-learn=1.7.2 \
+                   matplotlib=3.10.8 seaborn plotly pypdf=6.4.1 \
                    networkx rustworkx igraph graph-tool \
-                   umap-learn pynndescent leidenalg"
-RUN /bin/bash -lc "micromamba run pip install sparse_dot_topn"
+                   umap-learn=0.5.9.post2 pynndescent numba=0.62.1 leidenalg=0.11.0"
+RUN /bin/bash -lc "micromamba run pip install sparse_dot_topn==1.1.5"
 
 # Install vireo
 RUN /bin/bash -lc "micromamba create -n vireo bioconda::cellsnp-lite bioconda::vireosnp"
