@@ -629,7 +629,7 @@ anno_polar <- function(df) {
 # - (color is optional, but helps with drawing)
 
 # Option 1: load + select seurat data
-# obj = qread("seurat.qs")
+# obj = qs2::qs_read("seurat.qs2")
 # obj %<>% cluster_selector
 # df <- data.frame(x=obj$x_um, y=obj$y_um, col=obj$seurat_clusters) %>% dplyr::filter(is.finite(x), is.finite(y))
 # df %<>% layer_selector

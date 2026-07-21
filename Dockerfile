@@ -118,7 +118,7 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
                              'scCustomize', 'viridis', 'viridisLite',      \
                              'Seurat', 'SeuratObject',                     \
                              'rdist', 'sf', 'dbscan', 'RANN',              \
-                             'jsonlite', 'hdf5r', 'qpdf', 'qs', 'qs2',     \
+                             'jsonlite', 'hdf5r', 'qpdf', 'qs2',           \
                              'devtools', 'remotes', 'R.utils', 'optparse', \
                              'shiny', 'IRkernel', 'duckdb'),               \
                              repos='https://packagemanager.posit.co/cran/__linux__/bookworm/latest', \

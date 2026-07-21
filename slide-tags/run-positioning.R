@@ -11,7 +11,7 @@ stopifnot(file.exists("positioning.R", "helpers.R", "plots.R"))
 suppressMessages(source("helpers.R"))
 suppressMessages(source("plots.R"))
 suppressMessages(library(Seurat))
-suppressMessages(library(qs))
+suppressMessages(library(qs2))
 Sys.setenv(PATH = paste(Sys.getenv("PATH"), "/usr/local/bin", sep = ":"))
 if (Sys.which("Rscript") == "") {
   stop("Rscript not found")
@@ -298,5 +298,5 @@ qpdf::pdf_combine(input=pdfs, output=file.path(out_path, "summary.pdf"))
 file.remove(pdfs)
 
 # Save the seurat object
-qsave(obj, file.path(out_path, "seurat.qs"))
+qs2::qs_save(obj, file.path(out_path, "seurat.qs2"))
 print("Done!")
