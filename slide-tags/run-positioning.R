@@ -147,10 +147,9 @@ if (dropsift) {
     svmNucleusCaller <- SvmNucleusCaller(cellFeatures=cellFeatures,
                                          dgeMatrix=mat,
                                          useCBRBFeatures = FALSE)
-    is_cell <- svmNucleusCaller$cell_features$is_cell %>% as.logical
-    is_cell_prob <- svmNucleusCaller$cell_features$is_cell_prob
-    dropsift <- data.frame(cell_barcode = colnames(mat)[is_cell==TRUE],
-                           is_cell_prob = is_cell_prob[is_cell==TRUE])
+    cell_features <- svmNucleusCaller$cell_features
+    is_cell <- cell_features$is_cell %>% as.logical
+    dropsift <- cell_features[is_cell, c("cell_barcode", "is_cell_prob")]
     write.table(dropsift, file.path(rna_path, "dropsift.csv"),
                 sep=",", row.names=FALSE, col.names=FALSE, quote=FALSE)
   }
