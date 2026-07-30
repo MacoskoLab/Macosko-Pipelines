@@ -86,8 +86,13 @@ del mat ; gc.collect()
 chunks_calculated = chunks == -1
 chunks_max_nnz = 2**31-1
 if chunks_calculated:
-    chunks = int(np.ceil(mat_norm.getnnz() / chunks_max_nnz))
-    chunks = max(chunks, 1)
+    chunks = max(
+        1,
+        # This avoids a separate "MemoryError: std::bad_array_new_length" calling sp_matmul_topn
+        int(np.ceil(mat_norm.shape[0] * n_neighbors / (2**31-1))),
+        # This is the original limit check, only examining the number of nonzero values
+        int(np.ceil(mat_norm.getnnz() / chunks_max_nnz)),
+    )
     print(f"Calculated number of chunks: {chunks}")
 
 # Chunk the matrix
