@@ -416,6 +416,21 @@ coords[, `:=`(eps=eps, minPts=minPts)]
 coords[clusters==1, `:=`(x=x1, y=y1)]
 print(g("Placed: {round(coords[,sum(clusters==1)/.N]*100, 2)}%"))
 
+# Map placements back to a common (un-stacked) coordinate space.
+# Multiplexed pucks are stacked along x in ReadPuck (helpers.R); only x is
+# shifted, so y_orig == y. Each puck's stacking offset is recovered from
+# puck_boundaries: a cell placed at x in puck i is offset by
+# puck_boundaries[i] - puck_boundaries[1]. For the first puck (and the
+# single-puck case) this offset is 0, so x_orig == x.
+pb <- metadata$puck_info$puck_boundaries
+add_orig_coords <- function(dt) {
+  idx <- findInterval(dt$x, pb, rightmost.closed = TRUE) # 1..(length(pb)-1)
+  idx[idx < 1L] <- NA_integer_                           # unplaced / NA x
+  dt[, x_orig := x - pb[idx] + pb[1]]
+  dt[, y_orig := y]
+}
+add_orig_coords(coords)
+
 # Final check
 stopifnot(names(data.list) == cb_whitelist)
 stopifnot(coords$cb == cb_whitelist)
@@ -485,6 +500,9 @@ coords2[is.na(cluster2), score := F2(umi1)]
 coords2[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
                                                        minPts2=mranges$i2*ms,
                                                        minPts1=mranges$i1*ms)]
+
+# Map placements back to a common (un-stacked) coordinate space (see above)
+add_orig_coords(coords2)
 
 # Save results
 plot_dbscan_score(coords2[umi>0]) %>% make.pdf(file.path(out_path, "DBSCANscore.pdf"), 7, 8)
