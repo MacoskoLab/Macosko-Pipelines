@@ -11,17 +11,28 @@ task tags {
         Int disk_GB
         String params
         String docker
+        String tag
+        String branch
+        Int? pr
+        String? subfolder
+        String? bucket
     }
     command <<<
     set -euo pipefail
-    
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/spatial-count.jl
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/run-positioning.R
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/positioning.R
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/helpers.R
-    wget https://raw.githubusercontent.com/MacoskoLab/Macosko-Pipelines/refs/heads/main/slide-tags/plots.R
 
-    BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
+    # Resolve the git ref to pull scripts from: a PR number (refs/pull/<n>/head) wins,
+    # otherwise ~{branch} is used as a raw ref (branch/tag name or commit SHA).
+    BRANCH="~{branch}"
+    PR="~{default="" pr}"
+    if [ -n "$PR" ]; then REF="refs/pull/$PR/head"; else REF="$BRANCH"; fi
+
+    # Download the entire slide-tags/ folder for this ref into the working dir
+    wget -q -O repo.tar.gz "https://codeload.github.com/MacoskoLab/Macosko-Pipelines/tar.gz/$REF"
+    mkdir repo && tar xzf repo.tar.gz -C repo --strip-components=1
+    cp repo/slide-tags/* .
+    rm -rf repo repo.tar.gz
+
+    BUCKET="~{default="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36" bucket}"
     if [ -n "~{sb_bcl}" ]; then
         fastq_dir="gs://$BUCKET/fastqs/~{sb_bcl}"
     else
@@ -29,6 +40,18 @@ task tags {
     fi
     gex_dir="gs://$BUCKET/gene-expression/~{bcl}/~{rna_index}"
     tags_dir="gs://$BUCKET/slide-tags/~{bcl}/~{rna_index}"
+
+    # Determine the output subfolder: explicit override wins, else a PR names it pr-<n>,
+    # else a non-main branch names it, else none.
+    SUBFOLDER="~{default="" subfolder}"
+    if [ -z "$SUBFOLDER" ]; then
+        if   [ -n "$PR" ];            then SUBFOLDER="pr-$PR"
+        elif [ "$BRANCH" != "main" ]; then SUBFOLDER="$BRANCH"
+        fi
+    fi
+    if [ -n "$SUBFOLDER" ]; then
+        tags_dir="$tags_dir/$SUBFOLDER"
+    fi
 
     # Cell Ranger writes to /outs subdirectory
     if gcloud storage ls "${gex_dir%/}/outs" &> /dev/null; then
@@ -95,7 +118,7 @@ task tags {
         cpu: 8
         memory: "~{mem_GB} GB"
         disks: "local-disk ~{disk_GB} SSD"
-        docker: docker
+        docker: "~{docker}:~{tag}"
         preemptible: 0
     }
 }
@@ -109,8 +132,13 @@ workflow slide_tags {
         Array[String] puck_paths
         Int mem_GB
         Int disk_GB
-        String params = "--dropsift --args='--cmes=10.0'"
-        String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image:latest"
+        String params = "--args='--cmes=10.0'"
+        String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image"
+        String tag = "latest"
+        String branch = "main"
+        Int? pr
+        String? subfolder
+        String? bucket
     }
     call tags {
         input:
@@ -122,6 +150,11 @@ workflow slide_tags {
             mem_GB = mem_GB,
             disk_GB = disk_GB,
             params = params,
-            docker = docker
+            docker = docker,
+            tag = tag,
+            branch = branch,
+            pr = pr,
+            subfolder = subfolder,
+            bucket = bucket
     }
 }
