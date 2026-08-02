@@ -274,7 +274,7 @@ Misc(obj, "coords") <- coords
 Misc(obj, "coords2") <- coords2
 
 # Add metadata
-obj %<>% AddMetaData(cbind(coords2[,.(x=x, y=y, x_orig=x_orig, y_orig=y_orig)],
+obj %<>% AddMetaData(cbind(coords2[,.(x=x, y=y, x_orig=x_orig, y_orig=y_orig, puckid=puckid)],
                            coords[,.(dbscan_clusters=clusters)],
                            coords2[,.(dbscan_score=score)]))
 

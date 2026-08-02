@@ -426,6 +426,7 @@ pb <- metadata$puck_info$puck_boundaries
 add_orig_coords <- function(dt) {
   idx <- findInterval(dt$x, pb, rightmost.closed = TRUE) # 1..(length(pb)-1)
   idx[idx < 1L] <- NA_integer_                           # unplaced / NA x
+  dt[, puckid := idx]                                    # which puck the cell is on
   dt[, x_orig := x - pb[idx] + pb[1]]
   dt[, y_orig := y]
 }
