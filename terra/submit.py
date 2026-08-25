@@ -1,88 +1,122 @@
 import sys
+import json
 import math
 import gspread
 import argparse
 import pandas as pd
 import firecloud.api as fapi
-from google.auth import default
 from google.cloud import storage
 from google.auth import default as google_auth_default
 from google.auth import impersonated_credentials
 from gspread_dataframe import get_as_dataframe
 
-wnamespace = "testmybroad"
-workspace = "Macosko-Pipelines"
-cnamespace = "macosko-pipelines"
+# Built-in profile defaults reproduce the Macosko-Pipelines workspace behavior.
+# Pass --config <profile.json> to override these values (e.g. bican.json) and
+# serve as a drop-in for another workspace.
+DEFAULT_PROFILE = {
+    "sa": "pipelines",
+    "wnamespace": "testmybroad",
+    "workspace": "Macosko-Pipelines",
+    "bucket": "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36",
+    "sheet_key": "1NOaWXARQiSA6fquOtcouQPREPN4buYIf13tq_F6D9As",
+    "fastq_match": "_S",
+    "singlecell_concat": True,
+    "use_sbbcl": False,
+    "interactive_puck": False,
+    "subfolder_aware_cache": False,
+    "methods": {
+        "cellranger-count": {"namespace": "macosko-pipelines", "config": "cellranger-count", "extra_inputs": []},
+        "reconstruction":   {"namespace": "macosko-pipelines", "config": "reconstruction",   "extra_inputs": []},
+        "slide-tags":       {"namespace": "macosko-pipelines", "config": "slide-tags",       "extra_inputs": []},
+    },
+}
 
 def get_args():
     parser = argparse.ArgumentParser(description='Terra job submission script')
     parser.add_argument("workflow", type=str)
     parser.add_argument("bcl", type=str)
     parser.add_argument("index", type=str)
-    parser.add_argument("--sa", type=str, default="pipelines",
-                        help="Service account to impersonate (short name or full email) for Google Sheets/Drive access")
-    parser.add_argument("--sb-bcl", type=str, default=None,
-                        help="Override sb_bcl for every row (takes precedence over the sheet column)")
+    parser.add_argument("--config", type=str, default=None, help="Path to JSON profile overriding the built-in Macosko defaults")
+    parser.add_argument("--sa", type=str, default=None, help="Service account to impersonate (short name or full email) for Google Sheets access; overrides the profile 'sa'")
     parser.add_argument("--dryrun", action='store_true')
     parser.add_argument("--mem", type=int, default=None, help="Override memory (GB) for all jobs")
-    parser.add_argument("--branch", type=str, default=None, help="Git ref to pull pipeline scripts from: branch/tag name or commit SHA (recon only; default: main)")
-    parser.add_argument("--pr", type=int, default=None, help="Pull request number to pull pipeline scripts from; overrides --branch (recon only)")
-    parser.add_argument("--subfolder", type=str, default=None, help="Output subfolder name override (recon only)")
+    parser.add_argument("--branch", type=str, default=None, help="Git ref to pull pipeline scripts from: branch/tag name or commit SHA (slide-tags/recon only; default: main)")
+    parser.add_argument("--pr", type=int, default=None, help="Pull request number to pull pipeline scripts from; overrides --branch (slide-tags/recon only)")
+    parser.add_argument("--subfolder", type=str, default=None, help="Output subfolder name override (slide-tags/recon only)")
+    parser.add_argument("--bucket", type=str, default=None, help="Override GCS bucket name (slide-tags only)")
+    parser.add_argument("--tag", type=str, default=None, help="Override docker image tag (slide-tags only; default: latest)")
     args = parser.parse_args()
     return args
 
 args = get_args()
+
+# Load the profile (built-in defaults, overridden by --config)
+profile = json.loads(json.dumps(DEFAULT_PROFILE))  # deep copy
+if args.config is not None:
+    with open(args.config) as f:
+        override = json.load(f)
+    methods_override = override.pop("methods", {})
+    profile.update(override)
+    for name, method in methods_override.items():
+        profile["methods"].setdefault(name, {}).update(method)
+if args.sa is not None:
+    profile["sa"] = args.sa
+
 workflow = args.workflow.lower()     ; print(f"workflow: {workflow}")
 bcl = args.bcl.strip("/ \t\n\r")     ; print(f"     bcl: {bcl}")
 index = args.index.strip("/ \t\n\r") ; print(f"   index: {index}")
 dryrun = args.dryrun                 ; print(f"  dryrun: {dryrun}")
 mem_override = args.mem              ; print(f"     mem: {mem_override}")
-sb_bcl_override = args.sb_bcl.strip("/ \t\n\r") if args.sb_bcl else None
-print(f"  sb_bcl: {sb_bcl_override}")
 branch = args.branch                 ; print(f"  branch: {branch}")
 pr = args.pr                         ; print(f"      pr: {pr}")
 subfolder = args.subfolder           ; print(f"  subfolder: {subfolder}")
+bucket_override = args.bucket if args.bucket is not None else profile["bucket"] ; print(f"  bucket: {bucket_override}")
+tag = args.tag                       ; print(f"     tag: {tag}")
+print(f"workspace: {profile['wnamespace']}/{profile['workspace']}")
 
-assert workflow in ["cellranger-count", "slide-tags", "recon", "reconstruction", "singlecell", "scrna"]
+assert workflow in ["cellranger-count", "slide-tags", "recon", "reconstruction"]
 assert not any(c.isspace() for c in bcl), f"remove whitespace from bcl ({bcl})"
 assert not any(c.isspace() for c in index), f"remove whitespace from index ({index})"
 
 # Load bucket (uses standard ADC with cloud-platform scope only)
-BUCKET = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
+BUCKET = profile["bucket"]
 bucket = storage.Client().bucket(BUCKET)
 bucket.reload()
 
 
 # Load the worksheet using impersonated service account credentials
-source_creds, project = google_auth_default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-if "@" in args.sa:
-    sa_email = args.sa
+# (avoids needing a service account key file - uses ADC + impersonation)
+source_creds, gcp_project = google_auth_default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+if "@" in profile["sa"]:
+    sa_email = profile["sa"]
 else:
-    assert project, "Could not infer project from ADC; pass the full SA email to --sa"
-    sa_email = f"{args.sa}@{project}.iam.gserviceaccount.com"
+    assert gcp_project, "Could not infer project from ADC; pass a full SA email via --sa or profile 'sa'"
+    sa_email = f"{profile['sa']}@{gcp_project}.iam.gserviceaccount.com"
 sheets_creds = impersonated_credentials.Credentials(
     source_credentials=source_creds,
     target_principal=sa_email,
     target_scopes=[
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+        "https://www.googleapis.com/auth/drive.readonly",
     ],
     lifetime=3600,
 )
-sh = gspread.authorize(sheets_creds).open_by_key("1NOaWXARQiSA6fquOtcouQPREPN4buYIf13tq_F6D9As")
-if workflow == "cellranger-count":
-    df = get_as_dataframe(sh.worksheet("Slide-tags"))
+sh = gspread.authorize(sheets_creds).open_by_key(profile["sheet_key"])
+if workflow in ["cellranger-count", "slide-tags"]:
+    if workflow == "cellranger-count" and profile["singlecell_concat"]:
+        df = pd.concat([get_as_dataframe(sh.worksheet("Slide-tags")),
+                        get_as_dataframe(sh.worksheet("SingleCell"))], ignore_index=True)
+    else:
+        df = get_as_dataframe(sh.worksheet("Slide-tags"))
     cols = ["BCL", "Reference", "RNAIndex", "SBIndex", "Puck", "params"]
-elif workflow == "slide-tags":
-    df = get_as_dataframe(sh.worksheet("Slide-tags"))
-    cols = ["BCL", "Reference", "RNAIndex", "SBIndex", "SBBcl", "Puck", "params"]
+    if profile["use_sbbcl"]:
+        if "SBBCL" not in df.columns:
+            df["SBBCL"] = pd.NA
+        cols = ["BCL", "Reference", "RNAIndex", "SBIndex", "SBBCL", "Puck", "params"]
 elif workflow in ["recon", "reconstruction"]:
     df = get_as_dataframe(sh.worksheet("Recon"))
     cols = ["BCL", "Index", "bc1", "bc2", "params"]
-elif workflow in ["singlecell", "scrna"]:
-    df = get_as_dataframe(sh.worksheet("SingleCell"))
-    cols = ["Sample", "BCL", "Reference", "RNAIndex", "Multiseq Index", "Puck", "params"]
-    workflow = "cellranger-count"
+
 
 # Clean the worksheet
 assert all(col in df.columns for col in cols)
@@ -147,27 +181,34 @@ elif workflow == "slide-tags":
         URIs = []
         for puck in [s.strip() for s in pucks.split(',')]:
             matches = [s for s in all_pucks if puck in s]
-            assert len(matches) == 1, f"{len(matches)} pucks found for '{puck}': {matches}"
-            URIs.append("gs://"+BUCKET+"/"+matches[0])
+            if not profile["interactive_puck"]:
+                assert len(matches) == 1, f"{len(matches)} pucks found for '{puck}': {matches}"
+                URIs.append("gs://"+BUCKET+"/"+matches[0])
+            elif len(matches) == 0:
+                assert False, f"0 pucks found for '{puck}'"
+            elif len(matches) == 1:
+                URIs.append("gs://"+BUCKET+"/"+matches[0])
+            else:
+                print(f"\nMultiple pucks found for '{puck}':")
+                for i, m in enumerate(matches):
+                    print(f"  [{i}] {m}")
+                choice = input(f"Select puck(s) (comma-separated, or 'all'): ").strip()
+                if choice.lower() == "all":
+                    URIs.extend("gs://"+BUCKET+"/"+m for m in matches)
+                else:
+                    for idx in choice.split(","):
+                        idx = int(idx.strip())
+                        assert 0 <= idx < len(matches), f"Invalid choice: {idx}"
+                        URIs.append("gs://"+BUCKET+"/"+matches[idx])
         return URIs
 
     pucks = df["Puck"].apply(pucks_to_URIs)
-
-    # Resolve effective sb_bcl per row: CLI flag overrides sheet, blank sheet falls back to bcl in the WDL
-    def resolve_sb_bcl(row_val):
-        if sb_bcl_override is not None:
-            return sb_bcl_override
-        if pd.isna(row_val) or not str(row_val).strip():
-            return ""
-        return str(row_val).strip()
-
-    sb_bcls = df["SBBcl"].apply(resolve_sb_bcl)
 
 
 # Compute memory requirements
 fastq_blobs = bucket.list_blobs(prefix=f"fastqs/{bcl}")
 fastqs = [(blob.name, blob.size) for blob in fastq_blobs if blob.name.endswith(".fastq.gz")]
-getfastqsizes = lambda inds: [math.ceil(sum(s for n,s in fastqs if "/"+i+"_S" in n) / 1e9) for i in inds]
+getfastqsizes = lambda inds: [math.ceil(sum(s for n,s in fastqs if "/"+i+profile["fastq_match"] in n) / 1e9) for i in inds]
 
 if workflow == "cellranger-count":
     # Compute the FASTQ sizes
@@ -175,22 +216,28 @@ if workflow == "cellranger-count":
     mem_GBs = [math.ceil(5*mem+20) for mem in mem_GBs]
 
 elif workflow == "slide-tags":
-    # SB FASTQ sizes — list per unique effective sb_bcl (falls back to bcl when blank)
-    sb_size_cache = {}
-    def sb_fastq_size(sb_idx, effective_bcl):
-        key = effective_bcl or bcl
-        if key not in sb_size_cache:
-            blobs = bucket.list_blobs(prefix=f"fastqs/{key}")
-            sb_size_cache[key] = [(b.name, b.size) for b in blobs if b.name.endswith(".fastq.gz")]
-        files = sb_size_cache[key]
-        return math.ceil(sum(s for n,s in files if "/"+sb_idx+"_S" in n) / 1e9)
-
-    mem_GBs_fastq = [math.ceil(2 * sb_fastq_size(idx, eff)) for idx, eff in zip(df["SBIndex"], sb_bcls)]
+    # Compute the FASTQ sizes
+    mem_GBs_fastq = getfastqsizes(df["SBIndex"])
+    mem_GBs_fastq = [math.ceil(2*mem) for mem in mem_GBs_fastq]
 
     # Compute the SBcounts.h5 size
     tags_blobs = bucket.list_blobs(prefix=f"slide-tags/{bcl}")
     tags = [(blob.name, blob.size) for blob in tags_blobs if blob.name.endswith("/SBcounts.h5")]
-    mem_GBs_mat = [max((s for n,s in tags if "/"+i+"/" in n), default=0) / 1e9 for i in df["RNAIndex"]]
+    if profile["subfolder_aware_cache"]:
+        # Resolve the output subfolder exactly as slide-tags.wdl does, so the cache
+        # lookup targets the same path the workflow will actually stat/reuse.
+        if subfolder:
+            sub = subfolder
+        elif pr is not None:
+            sub = f"pr-{pr}"
+        elif branch is not None and branch != "main":
+            sub = branch
+        else:
+            sub = None
+        tags_suffix = f"/{sub}/SBcounts.h5" if sub else "/SBcounts.h5"
+        mem_GBs_mat = [max((s for n,s in tags if n == f"slide-tags/{bcl}/{i}{tags_suffix}"), default=0) / 1e9 for i in df["RNAIndex"]]
+    else:
+        mem_GBs_mat = [max((s for n,s in tags if "/"+i+"/" in n), default=0) / 1e9 for i in df["RNAIndex"]]
     mem_GBs_mat = [math.ceil(20*mem) for mem in mem_GBs_mat]
 
     # Take the max (TODO)
@@ -217,7 +264,18 @@ if mem_override is not None:
 print(f"Memory (GB): {mem_GBs}")
 
 
+# Warn about CLI flags not supported by the active profile's method
+_wf = "reconstruction" if workflow == "recon" else workflow
+supported_extra = set(profile["methods"].get(_wf, {}).get("extra_inputs", []))
+for flag_name, flag_val in [("branch", branch), ("pr", pr), ("subfolder", subfolder),
+                            ("bucket", args.bucket), ("tag", tag)]:
+    if flag_val is not None and flag_name not in supported_extra:
+        print(f"WARNING: --{flag_name} is not supported by profile method '{_wf}' - ignoring")
+
+
 # Compute the names, assert the jobs are not already running
+wnamespace = profile["wnamespace"]
+workspace = profile["workspace"]
 job_names = ["_".join([workflow, idx, bcl]) for idx in df[idx_col]]
 resp = fapi.list_submissions(wnamespace, workspace)
 if resp.status_code != 200:
@@ -240,21 +298,36 @@ if dryrun:
 
 ### Terra Submission ###########################################################
 
-def submit(config, user_comment=""):
+def submit(config, ns, user_comment=""):
     # Validate the configuration
-    res = fapi.validate_config(wnamespace, workspace, cnamespace, config).json()
+    res = fapi.validate_config(wnamespace, workspace, ns, config).json()
     assert res["extraInputs"] == [], f"ERROR: extra input: \n{res['extraInputs']}"
     assert res["invalidInputs"] == {}, f"ERROR: invalid input: \n{res['invalidInputs']}"
     assert res["invalidOutputs"] == {}, f"ERROR: invalid output: \n{res['invalidOutputs']}"
     assert res["missingInputs"] == [], f"ERROR: missing input: \n{res['missingInputs']}"
 
     # Submit the job
-    res = fapi.create_submission(wnamespace, workspace, cnamespace, config, user_comment=user_comment, use_callcache=False)
+    res = fapi.create_submission(wnamespace, workspace, ns, config, user_comment=user_comment, use_callcache=False)
     assert res.status_code == 201, f"{res.status_code}: {res.json()['message']}"
     print(f"Submitted {config} {user_comment}")
 
-def run_cellranger_count(bcl, index, reference, mem_GB, disk_GB, params=None, user_comment=""):
-    body = fapi.get_workspace_config(wnamespace, workspace, cnamespace, "cellranger-count").json()
+def write_extra_inputs(body, extra_inputs, values):
+    # Write only the inputs the active profile's method declares as supported
+    for name in extra_inputs:
+        if name not in values:
+            continue
+        val = values[name]
+        # numeric inputs (pr) are written bare, strings are quoted
+        if name == "pr":
+            body["inputs"][f"slide_tags.{name}"] = f'{val}' if pd.notna(val) else f''
+        else:
+            body["inputs"][f"slide_tags.{name}"] = f'"{val}"' if pd.notna(val) else f''
+
+def run_cellranger_count(method, bcl, index, reference, mem_GB, disk_GB, params=None, user_comment=""):
+    ns, config = method["namespace"], method["config"]
+    resp = fapi.get_workspace_config(wnamespace, workspace, ns, config)
+    assert resp.status_code == 200, f"get_workspace_config({config}) failed ({resp.status_code}): {resp.text[:500]}"
+    body = resp.json()
     body["inputs"]["cellranger_count.bcl"] = f'"{bcl}"'
     body["inputs"]["cellranger_count.index"] = f'"{index}"'
     body["inputs"]["cellranger_count.reference"] = f'"{reference}"'
@@ -262,14 +335,18 @@ def run_cellranger_count(bcl, index, reference, mem_GB, disk_GB, params=None, us
     body["inputs"]["cellranger_count.disk_GB"] = f'{disk_GB}'
     body["inputs"]["cellranger_count.params"] = f'"{params}"' if pd.notna(params) else f''
     body["inputs"]["cellranger_count.docker"] = f''
-    res = fapi.update_workspace_config(wnamespace, workspace, cnamespace, "cellranger-count", body)
+    res = fapi.update_workspace_config(wnamespace, workspace, ns, config, body)
     assert res.status_code == 200, res.json()['message']
 
-    submit("cellranger-count", user_comment)
+    submit(config, ns, user_comment)
     return True
 
-def run_reconstruction(bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, lanes=None, params=None, branch=None, pr=None, subfolder=None, user_comment=""):
-    body = fapi.get_workspace_config(wnamespace, workspace, cnamespace, "reconstruction").json()
+def run_reconstruction(method, bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, lanes=None, params=None,
+                       branch=None, pr=None, subfolder=None, user_comment=""):
+    ns, config = method["namespace"], method["config"]
+    resp = fapi.get_workspace_config(wnamespace, workspace, ns, config)
+    assert resp.status_code == 200, f"get_workspace_config({config}) failed ({resp.status_code}): {resp.text[:500]}"
+    body = resp.json()
     body["inputs"]["reconstruction.bcl"] = f'"{bcl}"'
     body["inputs"]["reconstruction.index"] = f'"{index}"'
     body["inputs"]["reconstruction.mem_GB"] = f'{mem_GB}'
@@ -278,45 +355,61 @@ def run_reconstruction(bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, lanes=No
     body["inputs"]["reconstruction.bc2"] = f'{bc2}' if pd.notna(bc2) else f''
     body["inputs"]["reconstruction.lanes"] = f'{lanes}' if pd.notna(lanes) else f''
     body["inputs"]["reconstruction.params"] = f'"{params}"' if pd.notna(params) else f''
-    body["inputs"]["reconstruction.branch"] = f'"{branch}"' if pd.notna(branch) else f''
-    body["inputs"]["reconstruction.pr"] = f'{pr}' if pd.notna(pr) else f''
-    body["inputs"]["reconstruction.subfolder"] = f'"{subfolder}"' if pd.notna(subfolder) else f''
+    for name in method["extra_inputs"]:
+        val = {"branch": branch, "pr": pr, "subfolder": subfolder}.get(name)
+        if name == "pr":
+            body["inputs"][f"reconstruction.{name}"] = f'{val}' if pd.notna(val) else f''
+        else:
+            body["inputs"][f"reconstruction.{name}"] = f'"{val}"' if pd.notna(val) else f''
     body["inputs"]["reconstruction.docker"] = f''
-    res = fapi.update_workspace_config(wnamespace, workspace, cnamespace, "reconstruction", body)
+    res = fapi.update_workspace_config(wnamespace, workspace, ns, config, body)
     assert res.status_code == 200, res.json()['message']
 
-    submit("reconstruction", user_comment)
+    submit(config, ns, user_comment)
     return True
 
-def run_slidetags(bcl, sb_bcl, rna_index, sb_index, puck_paths, mem_GB, disk_GB, params=None, user_comment=""):
-    body = fapi.get_workspace_config(wnamespace, workspace, cnamespace, "slide-tags").json()
+def run_slidetags(method, bcl, rna_index, sb_index, puck_paths, mem_GB, disk_GB, sb_bcl=None, params=None,
+                  branch=None, pr=None, subfolder=None, bucket=None, tag=None, user_comment=""):
+    ns, config = method["namespace"], method["config"]
+    resp = fapi.get_workspace_config(wnamespace, workspace, ns, config)
+    assert resp.status_code == 200, f"get_workspace_config({config}) failed ({resp.status_code}): {resp.text[:500]}"
+    body = resp.json()
     body["inputs"]["slide_tags.bcl"] = f'"{bcl}"'
-    body["inputs"]["slide_tags.sb_bcl"] = f'"{sb_bcl}"' if sb_bcl else f''
     body["inputs"]["slide_tags.rna_index"] = f'"{rna_index}"'
     body["inputs"]["slide_tags.sb_index"] = f'"{sb_index}"'
     body["inputs"]["slide_tags.puck_paths"] = "[" + ", ".join(f'"{gs}"' for gs in puck_paths) + "]"
     body["inputs"]["slide_tags.mem_GB"] = f'{mem_GB}'
     body["inputs"]["slide_tags.disk_GB"] = f'{disk_GB}'
     body["inputs"]["slide_tags.params"] = f'"{params}"' if pd.notna(params) else f''
+    write_extra_inputs(body, method["extra_inputs"],
+                       {"sb_bcl": sb_bcl, "branch": branch, "pr": pr,
+                        "subfolder": subfolder, "bucket": bucket, "tag": tag})
     body["inputs"]["slide_tags.docker"] = f''
-    res = fapi.update_workspace_config(wnamespace, workspace, cnamespace, "slide-tags", body)
+    res = fapi.update_workspace_config(wnamespace, workspace, ns, config, body)
     assert res.status_code == 200, res.json()['message']
 
-    submit("slide-tags", user_comment)
+    submit(config, ns, user_comment)
     return True
 
 if workflow == "cellranger-count":
+    method = profile["methods"]["cellranger-count"]
     for r, m, j in zip(df.itertuples(index=False), mem_GBs, job_names):
-        run_cellranger_count(r.BCL, r.RNAIndex, r.Reference, 100, m, None, j)
+        run_cellranger_count(method, r.BCL, r.RNAIndex, r.Reference, 100, m, None, j)
 
 elif workflow == "slide-tags":
-    for r, sb, p, m, j in zip(df.itertuples(index=False), sb_bcls, pucks, mem_GBs, job_names):
-        run_slidetags(r.BCL, sb, r.RNAIndex, r.SBIndex, p, m, m, r.params, j)
+    method = profile["methods"]["slide-tags"]
+    for r, p, m, j in zip(df.itertuples(index=False), pucks, mem_GBs, job_names):
+        sb_bcl = getattr(r, "SBBCL", None) if profile["use_sbbcl"] else None
+        run_slidetags(method, r.BCL, r.RNAIndex, r.SBIndex, p, m, m, sb_bcl, r.params,
+                      branch, pr, subfolder, bucket_override, tag, j)
+
 elif workflow in ["recon", "reconstruction"]:
+    method = profile["methods"]["reconstruction"]
     for r, m, j in zip(df.itertuples(index=False), mem_GBs, job_names):
         assert r.Index.count("-") <= 1
         idx, _, lanes = r.Index.partition("-") ;
-        run_reconstruction(r.BCL, idx, m, m, r.bc1, r.bc2, lanes or None, r.params, branch, pr, subfolder, j)
+        run_reconstruction(method, r.BCL, idx, m, m, r.bc1, r.bc2, lanes or None, r.params,
+                           branch, pr, subfolder, j)
 
 ### Terra Commands #############################################################
 
