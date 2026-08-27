@@ -26,7 +26,7 @@ DEFAULT_PROFILE = {
     "subfolder_aware_cache": False,
     "methods": {
         "cellranger-count": {"namespace": "macosko-pipelines", "config": "cellranger-count", "extra_inputs": []},
-        "reconstruction":   {"namespace": "macosko-pipelines", "config": "reconstruction",   "extra_inputs": []},
+        "reconstruction":   {"namespace": "macosko-pipelines", "config": "reconstruction",   "extra_inputs": ["selection"]},
         "slide-tags":       {"namespace": "macosko-pipelines", "config": "slide-tags",       "extra_inputs": []},
     },
 }
@@ -43,6 +43,7 @@ def get_args():
     parser.add_argument("--branch", type=str, default=None, help="Git ref to pull pipeline scripts from: branch/tag name or commit SHA (slide-tags/recon only; default: main)")
     parser.add_argument("--pr", type=int, default=None, help="Pull request number to pull pipeline scripts from; overrides --branch (slide-tags/recon only)")
     parser.add_argument("--subfolder", type=str, default=None, help="Output subfolder name override (slide-tags/recon only)")
+    parser.add_argument("--selection", type=str, default=None, help="Submit curated bead selections instead of the full puck (recon only): a selection name, or 'all' for every selection found. Selections are created by tools/puck-select.py")
     parser.add_argument("--bucket", type=str, default=None, help="Override GCS bucket name (slide-tags only)")
     parser.add_argument("--tag", type=str, default=None, help="Override docker image tag (slide-tags only; default: latest)")
     args = parser.parse_args()
@@ -70,6 +71,7 @@ mem_override = args.mem              ; print(f"     mem: {mem_override}")
 branch = args.branch                 ; print(f"  branch: {branch}")
 pr = args.pr                         ; print(f"      pr: {pr}")
 subfolder = args.subfolder           ; print(f"  subfolder: {subfolder}")
+selection = args.selection           ; print(f"  selection: {selection}")
 bucket_override = args.bucket if args.bucket is not None else profile["bucket"] ; print(f"  bucket: {bucket_override}")
 tag = args.tag                       ; print(f"     tag: {tag}")
 print(f"workspace: {profile['wnamespace']}/{profile['workspace']}")
@@ -77,6 +79,18 @@ print(f"workspace: {profile['wnamespace']}/{profile['workspace']}")
 assert workflow in ["cellranger-count", "slide-tags", "recon", "reconstruction"]
 assert not any(c.isspace() for c in bcl), f"remove whitespace from bcl ({bcl})"
 assert not any(c.isspace() for c in index), f"remove whitespace from index ({index})"
+assert selection is None or workflow in ["recon", "reconstruction"], "--selection is recon-only"
+
+# Resolve the output subfolder exactly as the WDLs do, so every cache lookup below targets
+# the same path the workflow will actually stat and reuse.
+if subfolder:
+    sub = subfolder
+elif pr is not None:
+    sub = f"pr-{pr}"
+elif branch is not None and branch != "main":
+    sub = branch
+else:
+    sub = None
 
 # Load bucket (uses standard ADC with cloud-platform scope only)
 BUCKET = profile["bucket"]
@@ -146,6 +160,39 @@ assert_unique_column(df[idx_col])
 df = df if index.lower() == "all" else df[df[idx_col] == index]
 print(f"Index rows found: {len(df.index)}")
 assert len(df.index) >= 1, f"No index rows found ({index})"
+
+
+# Expand recon rows into one job per bead selection
+if workflow in ["recon", "reconstruction"]:
+    def recon_base(idx):
+        """GCS prefix reconstruction.wdl writes an index's outputs to (no trailing slash)."""
+        d = idx[:-len("-12345678")] if idx.endswith("-12345678") else idx
+        return f"recon/{bcl}/{d}" + (f"/{sub}" if sub else "")
+
+    df["selection"] = pd.NA
+    if selection:
+        # A selection is named by the folder holding the selection.json that
+        # tools/puck-select.py uploads; reconstruction.wdl reads the same file.
+        found = {}
+        sel_blobs = [b.name for b in bucket.list_blobs(prefix=f"recon/{bcl}")
+                     if b.name.endswith("/selection.json")]
+        for i in df[idx_col]:
+            prefix = recon_base(i) + "/"
+            for name in sel_blobs:
+                if not name.startswith(prefix):
+                    continue
+                sel = name[len(prefix):-len("/selection.json")]
+                # exactly one level down: not the base dir itself, not a nested subfolder
+                if sel and "/" not in sel and selection in ("all", sel):
+                    found.setdefault(i, []).append(sel)
+
+        missing = [i for i in df[idx_col] if i not in found]
+        assert not missing, (f"No selection.json found for {missing} under recon/{bcl}"
+                             + (f" named '{selection}'" if selection != "all" else "")
+                             + " - run tools/puck-select.py first")
+        df = pd.DataFrame([{**r, "selection": s} for r in df.to_dict("records")
+                                                 for s in sorted(found[r[idx_col]])])
+        print(f"Selection rows found: {len(df.index)} ({sorted(set(df['selection']))})")
 
 
 # Assert necessary supplementary files exist
@@ -224,16 +271,6 @@ elif workflow == "slide-tags":
     tags_blobs = bucket.list_blobs(prefix=f"slide-tags/{bcl}")
     tags = [(blob.name, blob.size) for blob in tags_blobs if blob.name.endswith("/SBcounts.h5")]
     if profile["subfolder_aware_cache"]:
-        # Resolve the output subfolder exactly as slide-tags.wdl does, so the cache
-        # lookup targets the same path the workflow will actually stat/reuse.
-        if subfolder:
-            sub = subfolder
-        elif pr is not None:
-            sub = f"pr-{pr}"
-        elif branch is not None and branch != "main":
-            sub = branch
-        else:
-            sub = None
         tags_suffix = f"/{sub}/SBcounts.h5" if sub else "/SBcounts.h5"
         mem_GBs_mat = [max((s for n,s in tags if n == f"slide-tags/{bcl}/{i}{tags_suffix}"), default=0) / 1e9 for i in df["RNAIndex"]]
     else:
@@ -248,14 +285,27 @@ elif workflow in ["recon", "reconstruction"]:
     mem_GBs_fastq = getfastqsizes(df["Index"])
     mem_GBs_fastq = [math.ceil(2*mem) for mem in mem_GBs_fastq]
 
-    # Compute the intermediate matrix sizes
-    recon_blobs = bucket.list_blobs(prefix=f"recon/{bcl}")
-    recons = [(blob.name, blob.size) for blob in recon_blobs if blob.name.endswith("/knn2.npz")]
-    mem_GBs_mat = [max((s for n,s in recons if "/"+i+"/" in n), default=0) / 1e9 for i in df["Index"]]
-    mem_GBs_mat = [math.ceil(25*mem) for mem in mem_GBs_mat]
+    # Compute the intermediate file sizes. Resolve the exact paths the WDL will stat rather
+    # than substring matching, since a selection's knn2.npz also contains "/<Index>/" and
+    # would otherwise be maxed in against the base run's.
+    sizes = {blob.name: blob.size for blob in bucket.list_blobs(prefix=f"recon/{bcl}")}
+    mem_GBs_mat = []
+    for i, s in zip(df["Index"], df["selection"]):
+        base = recon_base(i)
+        work = f"{base}/{s}" if pd.notna(s) else base
+        if sizes.get(f"{work}/knn2.npz", 0):
+            mem_GBs_mat.append(math.ceil(25 * sizes[f"{work}/knn2.npz"] / 1e9))
+        else:
+            # No knn2.npz yet (first run, or knn.py died). Size off the matrix instead: an
+            # observed knn2.npz is ~1.8x its matrix.csv.gz, so 25x knn ~= 45x matrix. A
+            # selection's own matrix may not exist yet either, and is strictly smaller than
+            # the base one it is cut from, so falling back to the base over-provisions safely.
+            mat = sizes.get(f"{work}/matrix.csv.gz", 0) or sizes.get(f"{base}/matrix.csv.gz", 0)
+            mem_GBs_mat.append(math.ceil(45 * mat / 1e9))
 
-    # Take the max (TODO)
-    mem_GBs = [max(x,y) for x,y in zip(mem_GBs_fastq, mem_GBs_mat)]
+    # Take the max (TODO) - except a selection never reads the FASTQs
+    mem_GBs = [y if pd.notna(s) else max(x, y)
+               for x, y, s in zip(mem_GBs_fastq, mem_GBs_mat, df["selection"])]
 
 assert all(m > 0 for m in mem_GBs), f"Incomplete memory estimation: {mem_GBs} (missing input files)"
 mem_GBs = [math.ceil(max(mem, 64)) for mem in mem_GBs]
@@ -268,7 +318,7 @@ print(f"Memory (GB): {mem_GBs}")
 _wf = "reconstruction" if workflow == "recon" else workflow
 supported_extra = set(profile["methods"].get(_wf, {}).get("extra_inputs", []))
 for flag_name, flag_val in [("branch", branch), ("pr", pr), ("subfolder", subfolder),
-                            ("bucket", args.bucket), ("tag", tag)]:
+                            ("selection", selection), ("bucket", args.bucket), ("tag", tag)]:
     if flag_val is not None and flag_name not in supported_extra:
         print(f"WARNING: --{flag_name} is not supported by profile method '{_wf}' - ignoring")
 
@@ -276,7 +326,13 @@ for flag_name, flag_val in [("branch", branch), ("pr", pr), ("subfolder", subfol
 # Compute the names, assert the jobs are not already running
 wnamespace = profile["wnamespace"]
 workspace = profile["workspace"]
-job_names = ["_".join([workflow, idx, bcl]) for idx in df[idx_col]]
+# The selection belongs in the name: --selection all submits several jobs for one index at
+# once, and they would otherwise share a userComment and collide in the in-flight guard below
+if workflow in ["recon", "reconstruction"]:
+    job_names = ["_".join([workflow, idx] + ([sel] if pd.notna(sel) else []) + [bcl])
+                 for idx, sel in zip(df[idx_col], df["selection"])]
+else:
+    job_names = ["_".join([workflow, idx, bcl]) for idx in df[idx_col]]
 resp = fapi.list_submissions(wnamespace, workspace)
 if resp.status_code != 200:
     print(f"Terra API error {resp.status_code}: {resp.text[:500]}")
@@ -342,7 +398,7 @@ def run_cellranger_count(method, bcl, index, reference, mem_GB, disk_GB, params=
     return True
 
 def run_reconstruction(method, bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, lanes=None, params=None,
-                       branch=None, pr=None, subfolder=None, user_comment=""):
+                       branch=None, pr=None, subfolder=None, selection=None, user_comment=""):
     ns, config = method["namespace"], method["config"]
     resp = fapi.get_workspace_config(wnamespace, workspace, ns, config)
     assert resp.status_code == 200, f"get_workspace_config({config}) failed ({resp.status_code}): {resp.text[:500]}"
@@ -356,7 +412,7 @@ def run_reconstruction(method, bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, 
     body["inputs"]["reconstruction.lanes"] = f'{lanes}' if pd.notna(lanes) else f''
     body["inputs"]["reconstruction.params"] = f'"{params}"' if pd.notna(params) else f''
     for name in method["extra_inputs"]:
-        val = {"branch": branch, "pr": pr, "subfolder": subfolder}.get(name)
+        val = {"branch": branch, "pr": pr, "subfolder": subfolder, "selection": selection}.get(name)
         if name == "pr":
             body["inputs"][f"reconstruction.{name}"] = f'{val}' if pd.notna(val) else f''
         else:
@@ -409,7 +465,7 @@ elif workflow in ["recon", "reconstruction"]:
         assert r.Index.count("-") <= 1
         idx, _, lanes = r.Index.partition("-") ;
         run_reconstruction(method, r.BCL, idx, m, m, r.bc1, r.bc2, lanes or None, r.params,
-                           branch, pr, subfolder, j)
+                           branch, pr, subfolder, r.selection, j)
 
 ### Terra Commands #############################################################
 
