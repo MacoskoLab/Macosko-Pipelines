@@ -46,6 +46,8 @@ def get_args():
     parser.add_argument("--selection", type=str, default=None, help="Submit curated bead selections instead of the full puck (recon only): a selection name, or 'all' for every selection found. Selections are created by tools/puck-select.py")
     parser.add_argument("--bucket", type=str, default=None, help="Override GCS bucket name (slide-tags only)")
     parser.add_argument("--tag", type=str, default=None, help="Override docker image tag (slide-tags only; default: latest)")
+    parser.add_argument("--named-puckid", type=str, default=None, choices=["true", "false"],
+                        help="Write puckid as the puck's name instead of its integer index (slide-tags only; default: false)")
     args = parser.parse_args()
     return args
 
@@ -74,6 +76,7 @@ subfolder = args.subfolder           ; print(f"  subfolder: {subfolder}")
 selection = args.selection           ; print(f"  selection: {selection}")
 bucket_override = args.bucket if args.bucket is not None else profile["bucket"] ; print(f"  bucket: {bucket_override}")
 tag = args.tag                       ; print(f"     tag: {tag}")
+named_puckid = args.named_puckid     ; print(f"  named_puckid: {named_puckid}")
 print(f"workspace: {profile['wnamespace']}/{profile['workspace']}")
 
 assert workflow in ["cellranger-count", "slide-tags", "recon", "reconstruction"]
@@ -318,7 +321,8 @@ print(f"Memory (GB): {mem_GBs}")
 _wf = "reconstruction" if workflow == "recon" else workflow
 supported_extra = set(profile["methods"].get(_wf, {}).get("extra_inputs", []))
 for flag_name, flag_val in [("branch", branch), ("pr", pr), ("subfolder", subfolder),
-                            ("selection", selection), ("bucket", args.bucket), ("tag", tag)]:
+                            ("selection", selection), ("bucket", args.bucket), ("tag", tag),
+                            ("named_puckid", named_puckid)]:
     if flag_val is not None and flag_name not in supported_extra:
         print(f"WARNING: --{flag_name} is not supported by profile method '{_wf}' - ignoring")
 
@@ -369,15 +373,17 @@ def submit(config, ns, user_comment=""):
 
 def write_extra_inputs(body, extra_inputs, values):
     # Write only the inputs the active profile's method declares as supported
+    bare_inputs = {"pr", "named_puckid"}  # numeric/boolean inputs are written bare, strings are quoted
     for name in extra_inputs:
         if name not in values:
             continue
         val = values[name]
-        # numeric inputs (pr) are written bare, strings are quoted
-        if name == "pr":
-            body["inputs"][f"slide_tags.{name}"] = f'{val}' if pd.notna(val) else f''
+        if not pd.notna(val):
+            body["inputs"][f"slide_tags.{name}"] = f''
+        elif name in bare_inputs:
+            body["inputs"][f"slide_tags.{name}"] = f'{val}'
         else:
-            body["inputs"][f"slide_tags.{name}"] = f'"{val}"' if pd.notna(val) else f''
+            body["inputs"][f"slide_tags.{name}"] = f'"{val}"'
 
 def run_cellranger_count(method, bcl, index, reference, mem_GB, disk_GB, params=None, user_comment=""):
     ns, config = method["namespace"], method["config"]
@@ -425,7 +431,7 @@ def run_reconstruction(method, bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, 
     return True
 
 def run_slidetags(method, bcl, rna_index, sb_index, puck_paths, mem_GB, disk_GB, sb_bcl=None, params=None,
-                  branch=None, pr=None, subfolder=None, bucket=None, tag=None, user_comment=""):
+                  branch=None, pr=None, subfolder=None, bucket=None, tag=None, named_puckid=None, user_comment=""):
     ns, config = method["namespace"], method["config"]
     resp = fapi.get_workspace_config(wnamespace, workspace, ns, config)
     assert resp.status_code == 200, f"get_workspace_config({config}) failed ({resp.status_code}): {resp.text[:500]}"
@@ -439,7 +445,8 @@ def run_slidetags(method, bcl, rna_index, sb_index, puck_paths, mem_GB, disk_GB,
     body["inputs"]["slide_tags.params"] = f'"{params}"' if pd.notna(params) else f''
     write_extra_inputs(body, method["extra_inputs"],
                        {"sb_bcl": sb_bcl, "branch": branch, "pr": pr,
-                        "subfolder": subfolder, "bucket": bucket, "tag": tag})
+                        "subfolder": subfolder, "bucket": bucket, "tag": tag,
+                        "named_puckid": named_puckid})
     body["inputs"]["slide_tags.docker"] = f''
     res = fapi.update_workspace_config(wnamespace, workspace, ns, config, body)
     assert res.status_code == 200, res.json()['message']
@@ -457,7 +464,7 @@ elif workflow == "slide-tags":
     for r, p, m, j in zip(df.itertuples(index=False), pucks, mem_GBs, job_names):
         sb_bcl = getattr(r, "SBBCL", None) if profile["use_sbbcl"] else None
         run_slidetags(method, r.BCL, r.RNAIndex, r.SBIndex, p, m, m, sb_bcl, r.params,
-                      branch, pr, subfolder, bucket_override, tag, j)
+                      branch, pr, subfolder, bucket_override, tag, named_puckid, j)
 
 elif workflow in ["recon", "reconstruction"]:
     method = profile["methods"]["reconstruction"]

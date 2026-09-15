@@ -25,6 +25,7 @@ arguments <- OptionParser(
     make_option("--cells", type="character", help = "Path to barcodes file"),
     make_option("--dropsift", action="store_true", help = "Add is_cell to obj"),
     make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]"),
+    make_option("--named_puckid", type="logical", default=FALSE, help = "Write puckid as the puck's name instead of its integer index [default: %default]"),
     make_option("--args",   type="character", default = "", help = "Passed to positioning.R")
   )
 ) %>% parse_args(positional_arguments=3)
@@ -61,6 +62,10 @@ cores <- arguments$options$cores
 if (is.null(cores) || len(cores) != 1L || cores < 1L) {cores <- parallelly::availableCores()}
 setDTthreads(cores)
 print(g("cores: {cores}"))
+
+named_puckid <- arguments$options$named_puckid
+if (is.null(named_puckid)) {named_puckid <- FALSE}
+print(g("named_puckid: {named_puckid}"))
 
 args <- arguments$options$args %>% trimws
 if (is.null(args) || len(args) != 1L || nchar(args) < 1L) {args <- ""}
@@ -253,7 +258,7 @@ colnames(obj) %>% trim_10X_CB %>% writeLines(file.path(out_path, "cb_whitelist.t
 
 # Assign a position to each whitelist cell
 print(g("\nRunning positioning.R"))
-system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} --cores={cores} {args}"))
+system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} --cores={cores} --named_puckid={named_puckid} {args}"))
 
 stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
                       file.path(out_path, "spatial_metadata.json"),

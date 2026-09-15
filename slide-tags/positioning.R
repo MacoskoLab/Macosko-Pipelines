@@ -17,7 +17,8 @@ arguments <- OptionParser(
     make_option("--knn", type="integer", default=36L, help = "Number of bead neighbors used to compute eps [default: %default]"),
     make_option("--cmes", type="double", default=0.0, help = "Reconstruction parameter"),
     make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]"),
-    make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]")
+    make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]"),
+    make_option("--named_puckid", type="logical", default=FALSE, help = "Write puckid as the puck's name instead of its integer index [default: %default]")
   )
 ) %>% parse_args(positional_arguments=3)
 
@@ -31,6 +32,7 @@ knn <- arguments$options$knn       ; print(g("knn: {knn}"))
 cmes <- arguments$options$cmes     ; print(g("cmes: {cmes}"))
 prob <- arguments$options$prob     ; print(g("prob: {prob}"))
 cores <- arguments$options$cores %>% ifelse(.<1, parallelly::availableCores(), .) ; print(g("cores: {cores}"))
+named_puckid <- arguments$options$named_puckid ; print(g("named_puckid: {named_puckid}"))
 setDTthreads(cores)
 
 rm(arguments)
@@ -423,10 +425,11 @@ print(g("Placed: {round(coords[,sum(clusters==1)/.N]*100, 2)}%"))
 # puck_boundaries[i] - puck_boundaries[1]. For the first puck (and the
 # single-puck case) this offset is 0, so x_orig == x.
 pb <- metadata$puck_info$puck_boundaries
+puck_names <- sub("\\.[^.]*$", "", metadata$puck_info$puck_name) # strip file extension
 add_orig_coords <- function(dt) {
   idx <- findInterval(dt$x, pb, rightmost.closed = TRUE) # 1..(length(pb)-1)
   idx[idx < 1L] <- NA_integer_                           # unplaced / NA x
-  dt[, puckid := idx]                                    # which puck the cell is on
+  dt[, puckid := if (named_puckid) puck_names[idx] else idx] # which puck the cell is on
   dt[, x_orig := x - pb[idx] + pb[1]]
   dt[, y_orig := y]
 }
