@@ -63,6 +63,7 @@ task recon {
     fi
 
     base_dir="gs://$BUCKET/recon/~{bcl}/~{index}-~{lanes}" ; base_dir=${base_dir%-12345678}
+    root_dir="$base_dir"   # un-namespaced: the finished base run a branch/PR reads from
     if [ -n "$SUBFOLDER" ]; then
         base_dir="$base_dir/$SUBFOLDER"
     fi
@@ -99,10 +100,18 @@ task recon {
         FRESH_MATRIX=true
         mkdir base
 
-        if [ "$work_dir" != "$base_dir" ] && count_cached "$base_dir"; then
-            echo "----- Using cached matrix from $base_dir -----"
-            gcloud storage cp "$base_dir/matrix.csv.gz" "$base_dir/sb1.txt.gz" \
-                              "$base_dir/sb2.txt.gz"    "$base_dir/metadata.csv" base
+        # A branch/PR run namespaces base_dir under its own subfolder, so fall through to the
+        # un-namespaced base run rather than re-counting FASTQs into the sandbox. On main
+        # root_dir == base_dir, so the second test can never fire and nothing changes.
+        SRC=""
+        if   [ "$work_dir" != "$base_dir" ] && count_cached "$base_dir"; then SRC="$base_dir"
+        elif [ "$base_dir" != "$root_dir" ] && count_cached "$root_dir"; then SRC="$root_dir"
+        fi
+
+        if [ -n "$SRC" ]; then
+            echo "----- Using cached matrix from $SRC -----"
+            gcloud storage cp "$SRC/matrix.csv.gz" "$SRC/sb1.txt.gz" \
+                              "$SRC/sb2.txt.gz"    "$SRC/metadata.csv" base
         else
             echo "----- Running recon-count.jl -----"
             mkdir fastqs
@@ -122,16 +131,18 @@ task recon {
                 echo "ERROR: no $work_dir/selection.json - run tools/puck-select.py first"; exit 1; }
             gcloud storage cp "$work_dir/selection.json" base/
 
-            # Replay the circle recorded by tools/puck-select.py
-            read -r SOURCE_PUCK CX CY RAD INV < <($PY -c "
+            # Replay the cut recorded by tools/puck-select.py. The sidecar itself is handed
+            # back to puck-select.py, so a circle, a polygon, or whatever shape comes next
+            # all replay through the same command
+            SOURCE_PUCK=$($PY -c "
 import json
-d = json.load(open('base/selection.json'))
-print(d['source_puck'], d['center'][0], d['center'][1], d['radius'],
-      '--invert' if d.get('invert') else '')")
+print(json.load(open('base/selection.json'))['source_puck'])")
 
-            gcloud storage cp "$base_dir/$SOURCE_PUCK/Puck.csv" base/Puck.csv
+            # The puck sits beside whichever matrix was reused, which for a branch/PR run is
+            # the un-namespaced base run rather than this run's own subfolder
+            gcloud storage cp "${SRC:-$base_dir}/$SOURCE_PUCK/Puck.csv" base/Puck.csv
             $PY puck-select.py base/Puck.csv -o base/Puck-selected.csv --non_interactive \
-                --center "$CX" "$CY" --radius "$RAD" $INV
+                --from_json base/selection.json
             $PY subset-matrix.py -i base -o cache -p base/Puck-selected.csv -b 2
             cp base/Puck-selected.csv base/selection.json cache/
             gcloud storage cp cache/* "$work_dir/"

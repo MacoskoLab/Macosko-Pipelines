@@ -26,7 +26,7 @@ DEFAULT_PROFILE = {
     "subfolder_aware_cache": False,
     "methods": {
         "cellranger-count": {"namespace": "macosko-pipelines", "config": "cellranger-count", "extra_inputs": []},
-        "reconstruction":   {"namespace": "macosko-pipelines", "config": "reconstruction",   "extra_inputs": ["selection"]},
+        "reconstruction":   {"namespace": "macosko-pipelines", "config": "reconstruction",   "extra_inputs": ["selection", "branch"]},
         "slide-tags":       {"namespace": "macosko-pipelines", "config": "slide-tags",       "extra_inputs": []},
     },
 }
@@ -164,10 +164,12 @@ assert len(df.index) >= 1, f"No index rows found ({index})"
 
 # Expand recon rows into one job per bead selection
 if workflow in ["recon", "reconstruction"]:
-    def recon_base(idx):
-        """GCS prefix reconstruction.wdl writes an index's outputs to (no trailing slash)."""
+    def recon_base(idx, subfolder=True):
+        """GCS prefix reconstruction.wdl writes an index's outputs to (no trailing slash).
+        subfolder=False gives the un-namespaced path a branch/PR run falls back to reading,
+        matching root_dir in reconstruction.wdl."""
         d = idx[:-len("-12345678")] if idx.endswith("-12345678") else idx
-        return f"recon/{bcl}/{d}" + (f"/{sub}" if sub else "")
+        return f"recon/{bcl}/{d}" + (f"/{sub}" if sub and subfolder else "")
 
     df["selection"] = pd.NA
     if selection:
@@ -300,7 +302,11 @@ elif workflow in ["recon", "reconstruction"]:
             # observed knn2.npz is ~1.8x its matrix.csv.gz, so 25x knn ~= 45x matrix. A
             # selection's own matrix may not exist yet either, and is strictly smaller than
             # the base one it is cut from, so falling back to the base over-provisions safely.
-            mat = sizes.get(f"{work}/matrix.csv.gz", 0) or sizes.get(f"{base}/matrix.csv.gz", 0)
+            # The last fallback mirrors root_dir in reconstruction.wdl: a branch/PR run reads
+            # the un-namespaced base run, so its own subfolder holds no matrix to size off.
+            mat = (sizes.get(f"{work}/matrix.csv.gz", 0)
+                   or sizes.get(f"{base}/matrix.csv.gz", 0)
+                   or sizes.get(f"{recon_base(i, subfolder=False)}/matrix.csv.gz", 0))
             mem_GBs_mat.append(math.ceil(45 * mat / 1e9))
 
     # Take the max (TODO) - except a selection never reads the FASTQs
