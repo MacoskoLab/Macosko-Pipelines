@@ -17,7 +17,8 @@ arguments <- OptionParser(
     make_option("--knn", type="integer", default=36L, help = "Number of bead neighbors used to compute eps [default: %default]"),
     make_option("--cmes", type="double", default=0.0, help = "Reconstruction parameter"),
     make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]"),
-    make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]")
+    make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]"),
+    make_option("--named_puckid", type="logical", default=FALSE, help = "Write puckid as the puck's name instead of its integer index [default: %default]")
   )
 ) %>% parse_args(positional_arguments=3)
 
@@ -31,6 +32,7 @@ knn <- arguments$options$knn       ; print(g("knn: {knn}"))
 cmes <- arguments$options$cmes     ; print(g("cmes: {cmes}"))
 prob <- arguments$options$prob     ; print(g("prob: {prob}"))
 cores <- arguments$options$cores %>% ifelse(.<1, parallelly::availableCores(), .) ; print(g("cores: {cores}"))
+named_puckid <- arguments$options$named_puckid ; print(g("named_puckid: {named_puckid}"))
 setDTthreads(cores)
 
 rm(arguments)
@@ -416,6 +418,23 @@ coords[, `:=`(eps=eps, minPts=minPts)]
 coords[clusters==1, `:=`(x=x1, y=y1)]
 print(g("Placed: {round(coords[,sum(clusters==1)/.N]*100, 2)}%"))
 
+# Map placements back to a common (un-stacked) coordinate space.
+# Multiplexed pucks are stacked along x in ReadPuck (helpers.R); only x is
+# shifted, so y_orig == y. Each puck's stacking offset is recovered from
+# puck_boundaries: a cell placed at x in puck i is offset by
+# puck_boundaries[i] - puck_boundaries[1]. For the first puck (and the
+# single-puck case) this offset is 0, so x_orig == x.
+pb <- metadata$puck_info$puck_boundaries
+puck_names <- sub("\\.[^.]*$", "", metadata$puck_info$puck_name) # strip file extension
+add_orig_coords <- function(dt) {
+  idx <- findInterval(dt$x, pb, rightmost.closed = TRUE) # 1..(length(pb)-1)
+  idx[idx < 1L] <- NA_integer_                           # unplaced / NA x
+  dt[, puckid := if (named_puckid) puck_names[idx] else idx] # which puck the cell is on
+  dt[, x_orig := x - pb[idx] + pb[1]]
+  dt[, y_orig := y]
+}
+add_orig_coords(coords)
+
 # Final check
 stopifnot(names(data.list) == cb_whitelist)
 stopifnot(coords$cb == cb_whitelist)
@@ -485,6 +504,9 @@ coords2[is.na(cluster2), score := F2(umi1)]
 coords2[, c("eps", "minPts2", "minPts1") := data.table(eps=eps,
                                                        minPts2=mranges$i2*ms,
                                                        minPts1=mranges$i1*ms)]
+
+# Map placements back to a common (un-stacked) coordinate space (see above)
+add_orig_coords(coords2)
 
 # Save results
 plot_dbscan_score(coords2[umi>0]) %>% make.pdf(file.path(out_path, "DBSCANscore.pdf"), 7, 8)

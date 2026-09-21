@@ -10,6 +10,7 @@ task tags {
         Int mem_GB
         Int disk_GB
         String params
+        Boolean named_puckid
         String docker
         String tag
         String branch
@@ -75,12 +76,16 @@ task tags {
         mkdir pucks
         puck_paths=(~{sep=' ' puck_paths})
         for path in "${puck_paths[@]}"; do
-            puck=$path
-            puck=${puck#gs://}
-            puck=${puck#$BUCKET/}
-            puck=${puck#recon/}
-            puck=${puck////_}
-            gcloud storage cp "$path" "pucks/$puck"
+            # Derive the puck's actual ID from its path: for recon pucks
+            # (.../<bcl>/<index>/<umap_params>/Puck.csv) use "<bcl>_<index>",
+            # otherwise use the filename itself (e.g. pucks/<puckid>.csv).
+            stem="${path%.csv}"
+            puck="$(basename "$stem")"
+            if [ "$puck" = "Puck" ]; then
+                idx_dir="$(dirname "$(dirname "$stem")")"
+                puck="$(basename "$(dirname "$idx_dir")")_$(basename "$idx_dir")"
+            fi
+            gcloud storage cp "$path" "pucks/$puck.csv"
         done
         ls -1 pucks
 
@@ -102,9 +107,9 @@ task tags {
 
     echo "----- Running slide-tags -----"
     if [ -f "gex/filtered_feature_bc_matrix/barcodes.tsv.gz" ]; then
-        Rscript --vanilla run-positioning.R gex cache output --cores=8 --cells='filtered_feature_bc_matrix/barcodes.tsv.gz' ~{params}
+        Rscript --vanilla run-positioning.R gex cache output --cores=8 --cells='filtered_feature_bc_matrix/barcodes.tsv.gz' --named_puckid=~{named_puckid} ~{params}
     else
-        Rscript --vanilla run-positioning.R gex cache output --cores=8 ~{params}
+        Rscript --vanilla run-positioning.R gex cache output --cores=8 --named_puckid=~{named_puckid} ~{params}
     fi
 
     echo "----- Uploading results -----"
@@ -133,6 +138,7 @@ workflow slide_tags {
         Int mem_GB
         Int disk_GB
         String params = "--args='--cmes=10.0'"
+        Boolean named_puckid = false
         String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image"
         String tag = "latest"
         String branch = "main"
@@ -150,6 +156,7 @@ workflow slide_tags {
             mem_GB = mem_GB,
             disk_GB = disk_GB,
             params = params,
+            named_puckid = named_puckid,
             docker = docker,
             tag = tag,
             branch = branch,
