@@ -26,7 +26,7 @@ DEFAULT_PROFILE = {
     "subfolder_aware_cache": False,
     "methods": {
         "cellranger-count": {"namespace": "macosko-pipelines", "config": "cellranger-count", "extra_inputs": []},
-        "reconstruction":   {"namespace": "macosko-pipelines", "config": "reconstruction",   "extra_inputs": ["selection"]},
+        "reconstruction":   {"namespace": "macosko-pipelines", "config": "reconstruction",   "extra_inputs": ["selection", "branch", "downsample_prop"]},
         "slide-tags":       {"namespace": "macosko-pipelines", "config": "slide-tags",       "extra_inputs": []},
     },
 }
@@ -44,10 +44,9 @@ def get_args():
     parser.add_argument("--pr", type=int, default=None, help="Pull request number to pull pipeline scripts from; overrides --branch (slide-tags/recon only)")
     parser.add_argument("--subfolder", type=str, default=None, help="Output subfolder name override (slide-tags/recon only)")
     parser.add_argument("--selection", type=str, default=None, help="Submit curated bead selections instead of the full puck (recon only): a selection name, or 'all' for every selection found. Selections are created by tools/puck-select.py")
+    parser.add_argument("--downsample_prop", type=float, default=None, help="Override downsample proportion passed to recon-count.jl (recon only); WDL default is 1.0 (no downsampling)")
     parser.add_argument("--bucket", type=str, default=None, help="Override GCS bucket name (slide-tags only)")
     parser.add_argument("--tag", type=str, default=None, help="Override docker image tag (slide-tags only; default: latest)")
-    parser.add_argument("--named-puckid", type=str, default=None, choices=["true", "false"],
-                        help="Write puckid as the puck's name instead of its integer index (slide-tags only; default: false)")
     args = parser.parse_args()
     return args
 
@@ -65,6 +64,12 @@ if args.config is not None:
 if args.sa is not None:
     profile["sa"] = args.sa
 
+# Which optional CLI overrides the active profile's method actually writes into the Terra
+# config; needed both to scale memory for flags that affect it (downsample_prop) and to warn
+# about flags that would otherwise be silently ignored.
+_wf = "reconstruction" if args.workflow.lower() == "recon" else args.workflow.lower()
+supported_extra = set(profile["methods"].get(_wf, {}).get("extra_inputs", []))
+
 workflow = args.workflow.lower()     ; print(f"workflow: {workflow}")
 bcl = args.bcl.strip("/ \t\n\r")     ; print(f"     bcl: {bcl}")
 index = args.index.strip("/ \t\n\r") ; print(f"   index: {index}")
@@ -74,15 +79,16 @@ branch = args.branch                 ; print(f"  branch: {branch}")
 pr = args.pr                         ; print(f"      pr: {pr}")
 subfolder = args.subfolder           ; print(f"  subfolder: {subfolder}")
 selection = args.selection           ; print(f"  selection: {selection}")
+downsample_prop = args.downsample_prop ; print(f"  downsample_prop: {downsample_prop}")
 bucket_override = args.bucket if args.bucket is not None else profile["bucket"] ; print(f"  bucket: {bucket_override}")
 tag = args.tag                       ; print(f"     tag: {tag}")
-named_puckid = args.named_puckid     ; print(f"  named_puckid: {named_puckid}")
 print(f"workspace: {profile['wnamespace']}/{profile['workspace']}")
 
 assert workflow in ["cellranger-count", "slide-tags", "recon", "reconstruction"]
 assert not any(c.isspace() for c in bcl), f"remove whitespace from bcl ({bcl})"
 assert not any(c.isspace() for c in index), f"remove whitespace from index ({index})"
 assert selection is None or workflow in ["recon", "reconstruction"], "--selection is recon-only"
+assert downsample_prop is None or workflow in ["recon", "reconstruction"], "--downsample_prop is recon-only"
 
 # Resolve the output subfolder exactly as the WDLs do, so every cache lookup below targets
 # the same path the workflow will actually stat and reuse.
@@ -167,10 +173,12 @@ assert len(df.index) >= 1, f"No index rows found ({index})"
 
 # Expand recon rows into one job per bead selection
 if workflow in ["recon", "reconstruction"]:
-    def recon_base(idx):
-        """GCS prefix reconstruction.wdl writes an index's outputs to (no trailing slash)."""
+    def recon_base(idx, subfolder=True):
+        """GCS prefix reconstruction.wdl writes an index's outputs to (no trailing slash).
+        subfolder=False gives the un-namespaced path a branch/PR run falls back to reading,
+        matching root_dir in reconstruction.wdl."""
         d = idx[:-len("-12345678")] if idx.endswith("-12345678") else idx
-        return f"recon/{bcl}/{d}" + (f"/{sub}" if sub else "")
+        return f"recon/{bcl}/{d}" + (f"/{sub}" if sub and subfolder else "")
 
     df["selection"] = pd.NA
     if selection:
@@ -287,6 +295,14 @@ elif workflow in ["recon", "reconstruction"]:
     # Compte the FASTQ sizes
     mem_GBs_fastq = getfastqsizes(df["Index"])
     mem_GBs_fastq = [math.ceil(2*mem) for mem in mem_GBs_fastq]
+    # Disk holds the full FASTQs regardless of downsampling (the WDL downloads them
+    # undownsampled and only deletes them after recon-count.jl finishes), so it must be sized
+    # off the fastq estimate before the downsample scaling below shrinks it for memory only.
+    disk_GBs_fastq = mem_GBs_fastq
+    # Downsampling drops reads before they're stored (reconstruction/read-fastqs.jl), so the
+    # dominant memory cost scales with it too - but only if it will actually reach the WDL.
+    if downsample_prop is not None and "downsample_prop" in supported_extra:
+        mem_GBs_fastq = [math.ceil(mem * downsample_prop) for mem in mem_GBs_fastq]
 
     # Compute the intermediate file sizes. Resolve the exact paths the WDL will stat rather
     # than substring matching, since a selection's knn2.npz also contains "/<Index>/" and
@@ -303,12 +319,18 @@ elif workflow in ["recon", "reconstruction"]:
             # observed knn2.npz is ~1.8x its matrix.csv.gz, so 25x knn ~= 45x matrix. A
             # selection's own matrix may not exist yet either, and is strictly smaller than
             # the base one it is cut from, so falling back to the base over-provisions safely.
-            mat = sizes.get(f"{work}/matrix.csv.gz", 0) or sizes.get(f"{base}/matrix.csv.gz", 0)
+            # The last fallback mirrors root_dir in reconstruction.wdl: a branch/PR run reads
+            # the un-namespaced base run, so its own subfolder holds no matrix to size off.
+            mat = (sizes.get(f"{work}/matrix.csv.gz", 0)
+                   or sizes.get(f"{base}/matrix.csv.gz", 0)
+                   or sizes.get(f"{recon_base(i, subfolder=False)}/matrix.csv.gz", 0))
             mem_GBs_mat.append(math.ceil(45 * mat / 1e9))
 
     # Take the max (TODO) - except a selection never reads the FASTQs
     mem_GBs = [y if pd.notna(s) else max(x, y)
                for x, y, s in zip(mem_GBs_fastq, mem_GBs_mat, df["selection"])]
+    disk_GBs = [y if pd.notna(s) else max(x, y)
+                for x, y, s in zip(disk_GBs_fastq, mem_GBs_mat, df["selection"])]
 
 assert all(m > 0 for m in mem_GBs), f"Incomplete memory estimation: {mem_GBs} (missing input files)"
 mem_GBs = [math.ceil(max(mem, 64)) for mem in mem_GBs]
@@ -316,13 +338,16 @@ if mem_override is not None:
     mem_GBs = [mem_override] * len(mem_GBs)
 print(f"Memory (GB): {mem_GBs}")
 
+if workflow in ["recon", "reconstruction"]:
+    assert all(d > 0 for d in disk_GBs), f"Incomplete disk estimation: {disk_GBs} (missing input files)"
+    disk_GBs = [math.ceil(max(disk, 64)) for disk in disk_GBs]
+    print(f"Disk (GB): {disk_GBs}")
+
 
 # Warn about CLI flags not supported by the active profile's method
-_wf = "reconstruction" if workflow == "recon" else workflow
-supported_extra = set(profile["methods"].get(_wf, {}).get("extra_inputs", []))
 for flag_name, flag_val in [("branch", branch), ("pr", pr), ("subfolder", subfolder),
-                            ("selection", selection), ("bucket", args.bucket), ("tag", tag),
-                            ("named_puckid", named_puckid)]:
+                            ("selection", selection), ("downsample_prop", downsample_prop),
+                            ("bucket", args.bucket), ("tag", tag)]:
     if flag_val is not None and flag_name not in supported_extra:
         print(f"WARNING: --{flag_name} is not supported by profile method '{_wf}' - ignoring")
 
@@ -371,19 +396,25 @@ def submit(config, ns, user_comment=""):
     assert res.status_code == 201, f"{res.status_code}: {res.json()['message']}"
     print(f"Submitted {config} {user_comment}")
 
-def write_extra_inputs(body, extra_inputs, values):
-    # Write only the inputs the active profile's method declares as supported
-    bare_inputs = {"pr", "named_puckid"}  # numeric/boolean inputs are written bare, strings are quoted
-    for name in extra_inputs:
-        if name not in values:
+def write_extra_inputs(prefix, body, extra_inputs, values):
+    # Write every optional input this call site knows how to set: the profile's value if the
+    # active method declares it supported, otherwise an explicit reset. Terra's method config
+    # is shared state, so leaving an unsupported field untouched lets a stale value written by
+    # a different profile (or a manual edit) leak into unrelated future submissions.
+    # Skip fields the registered method doesn't declare at all (absent from body["inputs"]
+    # even before we touch it) - writing them would add a key validate_config rejects as an
+    # "extra input", since this profile's config may point to an older WDL snapshot that
+    # predates that input entirely.
+    for name, val in values.items():
+        if f"{prefix}.{name}" not in body["inputs"]:
             continue
-        val = values[name]
-        if not pd.notna(val):
-            body["inputs"][f"slide_tags.{name}"] = f''
-        elif name in bare_inputs:
-            body["inputs"][f"slide_tags.{name}"] = f'{val}'
+        if name not in extra_inputs:
+            val = None
+        # numeric inputs (pr, downsample_prop) are written bare, strings are quoted
+        if name in ("pr", "downsample_prop"):
+            body["inputs"][f"{prefix}.{name}"] = f'{val}' if pd.notna(val) else f''
         else:
-            body["inputs"][f"slide_tags.{name}"] = f'"{val}"'
+            body["inputs"][f"{prefix}.{name}"] = f'"{val}"' if pd.notna(val) else f''
 
 def run_cellranger_count(method, bcl, index, reference, mem_GB, disk_GB, params=None, user_comment=""):
     ns, config = method["namespace"], method["config"]
@@ -404,7 +435,7 @@ def run_cellranger_count(method, bcl, index, reference, mem_GB, disk_GB, params=
     return True
 
 def run_reconstruction(method, bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, lanes=None, params=None,
-                       branch=None, pr=None, subfolder=None, selection=None, user_comment=""):
+                       branch=None, pr=None, subfolder=None, selection=None, downsample_prop=None, user_comment=""):
     ns, config = method["namespace"], method["config"]
     resp = fapi.get_workspace_config(wnamespace, workspace, ns, config)
     assert resp.status_code == 200, f"get_workspace_config({config}) failed ({resp.status_code}): {resp.text[:500]}"
@@ -417,12 +448,9 @@ def run_reconstruction(method, bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, 
     body["inputs"]["reconstruction.bc2"] = f'{bc2}' if pd.notna(bc2) else f''
     body["inputs"]["reconstruction.lanes"] = f'{lanes}' if pd.notna(lanes) else f''
     body["inputs"]["reconstruction.params"] = f'"{params}"' if pd.notna(params) else f''
-    for name in method["extra_inputs"]:
-        val = {"branch": branch, "pr": pr, "subfolder": subfolder, "selection": selection}.get(name)
-        if name == "pr":
-            body["inputs"][f"reconstruction.{name}"] = f'{val}' if pd.notna(val) else f''
-        else:
-            body["inputs"][f"reconstruction.{name}"] = f'"{val}"' if pd.notna(val) else f''
+    write_extra_inputs("reconstruction", body, method["extra_inputs"],
+                       {"branch": branch, "pr": pr, "subfolder": subfolder,
+                        "selection": selection, "downsample_prop": downsample_prop})
     body["inputs"]["reconstruction.docker"] = f''
     res = fapi.update_workspace_config(wnamespace, workspace, ns, config, body)
     assert res.status_code == 200, res.json()['message']
@@ -431,7 +459,7 @@ def run_reconstruction(method, bcl, index, mem_GB, disk_GB, bc1=None, bc2=None, 
     return True
 
 def run_slidetags(method, bcl, rna_index, sb_index, puck_paths, mem_GB, disk_GB, sb_bcl=None, params=None,
-                  branch=None, pr=None, subfolder=None, bucket=None, tag=None, named_puckid=None, user_comment=""):
+                  branch=None, pr=None, subfolder=None, bucket=None, tag=None, user_comment=""):
     ns, config = method["namespace"], method["config"]
     resp = fapi.get_workspace_config(wnamespace, workspace, ns, config)
     assert resp.status_code == 200, f"get_workspace_config({config}) failed ({resp.status_code}): {resp.text[:500]}"
@@ -443,10 +471,9 @@ def run_slidetags(method, bcl, rna_index, sb_index, puck_paths, mem_GB, disk_GB,
     body["inputs"]["slide_tags.mem_GB"] = f'{mem_GB}'
     body["inputs"]["slide_tags.disk_GB"] = f'{disk_GB}'
     body["inputs"]["slide_tags.params"] = f'"{params}"' if pd.notna(params) else f''
-    write_extra_inputs(body, method["extra_inputs"],
+    write_extra_inputs("slide_tags", body, method["extra_inputs"],
                        {"sb_bcl": sb_bcl, "branch": branch, "pr": pr,
-                        "subfolder": subfolder, "bucket": bucket, "tag": tag,
-                        "named_puckid": named_puckid})
+                        "subfolder": subfolder, "bucket": bucket, "tag": tag})
     body["inputs"]["slide_tags.docker"] = f''
     res = fapi.update_workspace_config(wnamespace, workspace, ns, config, body)
     assert res.status_code == 200, res.json()['message']
@@ -464,15 +491,15 @@ elif workflow == "slide-tags":
     for r, p, m, j in zip(df.itertuples(index=False), pucks, mem_GBs, job_names):
         sb_bcl = getattr(r, "SBBCL", None) if profile["use_sbbcl"] else None
         run_slidetags(method, r.BCL, r.RNAIndex, r.SBIndex, p, m, m, sb_bcl, r.params,
-                      branch, pr, subfolder, bucket_override, tag, named_puckid, j)
+                      branch, pr, subfolder, bucket_override, tag, j)
 
 elif workflow in ["recon", "reconstruction"]:
     method = profile["methods"]["reconstruction"]
-    for r, m, j in zip(df.itertuples(index=False), mem_GBs, job_names):
+    for r, m, d, j in zip(df.itertuples(index=False), mem_GBs, disk_GBs, job_names):
         assert r.Index.count("-") <= 1
         idx, _, lanes = r.Index.partition("-") ;
-        run_reconstruction(method, r.BCL, idx, m, m, r.bc1, r.bc2, lanes or None, r.params,
-                           branch, pr, subfolder, r.selection, j)
+        run_reconstruction(method, r.BCL, idx, m, d, r.bc1, r.bc2, lanes or None, r.params,
+                           branch, pr, subfolder, r.selection, downsample_prop, j)
 
 ### Terra Commands #############################################################
 
