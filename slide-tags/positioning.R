@@ -141,6 +141,7 @@ rm(res) ; invisible(gc())
 
 # Compute eps scale using the kth neighbor
 if (!exists("eps") || !is.numeric(eps) || !(eps > 0)) {
+  set.seed(1) # fix the bead subsample so eps (and downstream cell calls) are reproducible across runs
   eps <- RANN::nn2(data = puckdf[, .(x,y)],
                    query = puckdf[sample(.N, 10000), .(x,y)],
                    k = knn)$nn.dists[,knn] %>% median
