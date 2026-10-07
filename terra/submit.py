@@ -185,7 +185,7 @@ if workflow in ["recon", "reconstruction"]:
         # A selection is named by the folder holding the selection.json that
         # tools/puck-select.py uploads; reconstruction.wdl reads the same file.
         found = {}
-        sel_blobs = [b.name for b in bucket.list_blobs(prefix=f"recon/{bcl}")
+        sel_blobs = [b.name for b in bucket.list_blobs(prefix=f"recon/{bcl}/")
                      if b.name.endswith("/selection.json")]
         for i in df[idx_col]:
             prefix = recon_base(i) + "/"
@@ -219,13 +219,13 @@ if workflow == "cellranger-count":
     assert df["Reference"].isin(refs).all(), f"Reference {set(df['Reference'])-refs} does not exist in the bucket"
 
     # Assert the output gene-expression folder does not exist
-    count_blobs = bucket.list_blobs(prefix=f"gene-expression/{bcl}")
+    count_blobs = bucket.list_blobs(prefix=f"gene-expression/{bcl}/")
     counts = {blob.name.split("/")[2] for blob in count_blobs}
     assert not df["RNAIndex"].isin(counts).any(), f"Output {set(df['RNAIndex'])&counts} already exists in the bucket"
 
 elif workflow == "slide-tags":
     # Assert RNA input exists
-    count_blobs = bucket.list_blobs(prefix=f"gene-expression/{bcl}")
+    count_blobs = bucket.list_blobs(prefix=f"gene-expression/{bcl}/")
     counts = {blob.name.split("/")[2] for blob in count_blobs}
     assert df["RNAIndex"].isin(counts).all(), f"GEX for {set(df['RNAIndex'])-counts} does not exist in the bucket"
 
@@ -264,7 +264,7 @@ elif workflow == "slide-tags":
 
 
 # Compute memory requirements
-fastq_blobs = bucket.list_blobs(prefix=f"fastqs/{bcl}")
+fastq_blobs = bucket.list_blobs(prefix=f"fastqs/{bcl}/")
 fastqs = [(blob.name, blob.size) for blob in fastq_blobs if blob.name.endswith(".fastq.gz")]
 getfastqsizes = lambda inds: [math.ceil(sum(s for n,s in fastqs if "/"+i+profile["fastq_match"] in n) / 1e9) for i in inds]
 
@@ -279,7 +279,7 @@ elif workflow == "slide-tags":
     mem_GBs_fastq = [math.ceil(2*mem) for mem in mem_GBs_fastq]
 
     # Compute the SBcounts.h5 size
-    tags_blobs = bucket.list_blobs(prefix=f"slide-tags/{bcl}")
+    tags_blobs = bucket.list_blobs(prefix=f"slide-tags/{bcl}/")
     tags = [(blob.name, blob.size) for blob in tags_blobs if blob.name.endswith("/SBcounts.h5")]
     if profile["subfolder_aware_cache"]:
         tags_suffix = f"/{sub}/SBcounts.h5" if sub else "/SBcounts.h5"
@@ -307,7 +307,7 @@ elif workflow in ["recon", "reconstruction"]:
     # Compute the intermediate file sizes. Resolve the exact paths the WDL will stat rather
     # than substring matching, since a selection's knn2.npz also contains "/<Index>/" and
     # would otherwise be maxed in against the base run's.
-    sizes = {blob.name: blob.size for blob in bucket.list_blobs(prefix=f"recon/{bcl}")}
+    sizes = {blob.name: blob.size for blob in bucket.list_blobs(prefix=f"recon/{bcl}/")}
     mem_GBs_mat = []
     for i, s in zip(df["Index"], df["selection"]):
         base = recon_base(i)
