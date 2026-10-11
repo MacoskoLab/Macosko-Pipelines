@@ -84,12 +84,15 @@ mat_norm = process(mat)
 del mat ; gc.collect()
 
 chunks_calculated = chunks == -1
-chunks_max_nnz = 2**31-1
+INT32_MAX = np.iinfo(np.int32).max
+topn_max_entries = INT32_MAX  # limit on rows * n_neighbors per chunk (top-n output size)
+chunks_max_rows = topn_max_entries // n_neighbors
+chunks_max_nnz = INT32_MAX
 if chunks_calculated:
     chunks = max(
         1,
         # This avoids a separate "MemoryError: std::bad_array_new_length" calling sp_matmul_topn
-        int(np.ceil(mat_norm.shape[0] * n_neighbors / (2**31-1))),
+        int(np.ceil(mat_norm.shape[0] / chunks_max_rows)),
         # This is the original limit check, only examining the number of nonzero values
         int(np.ceil(mat_norm.getnnz() / chunks_max_nnz)),
     )
@@ -100,13 +103,21 @@ while True:
     print('Chunking the matrix...')
     ABs = [mat_norm[chunk] for chunk in np.array_split(range(mat_norm.shape[0]), chunks)]
     ABs_max_nnz = max(AB.getnnz() for AB in ABs)
-    if ABs_max_nnz < chunks_max_nnz or not chunks_calculated:
+    if not chunks_calculated:
         break
-    chunks += 1
-    print(f"Matrix max non-zero entries per chunk ({ABs_max_nnz}) exceeds {chunks_max_nnz}, incrementing chunks to {chunks}")
+    if ABs_max_nnz >= chunks_max_nnz:
+        chunks += 1
+        print(f"Matrix max non-zero entries per chunk ({ABs_max_nnz}) exceeds {chunks_max_nnz}, incrementing chunks to {chunks}")
+        continue
+    if max(AB.shape[0] for AB in ABs) > chunks_max_rows:
+        chunks += 1
+        print(f"Matrix max rows per chunk ({max(AB.shape[0] for AB in ABs)}) exceeds {chunks_max_rows}, incrementing chunks to {chunks}")
+        continue
+    break
 
 del mat_norm ; gc.collect()
 assert ABs_max_nnz < chunks_max_nnz, f"Matrix max non-zero entries per chunk ({ABs_max_nnz}) exceeds {chunks_max_nnz}, increase 'chunks' or set 'chunks' to -1 to calculate number of chunks"
+assert max(AB.shape[0] for AB in ABs) <= chunks_max_rows, f"Matrix max rows per chunk ({max(AB.shape[0] for AB in ABs)}) exceeds {chunks_max_rows}, increase 'chunks' or set 'chunks' to -1 to calculate number of chunks"
 
 # Calculate Top-N KNN
 print('Multiplying sub-matrices...')
