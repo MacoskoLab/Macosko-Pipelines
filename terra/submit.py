@@ -125,21 +125,37 @@ sheets_creds = impersonated_credentials.Credentials(
     lifetime=3600,
 )
 sh = gspread.authorize(sheets_creds).open_by_key(profile["sheet_key"])
+worksheet_titles = profile.get("worksheets", {})
 if workflow in ["cellranger-count", "slide-tags"]:
+    title = worksheet_titles.get("slide-tags", "Slide-tags")
     if workflow == "cellranger-count" and profile["singlecell_concat"]:
-        df = pd.concat([get_as_dataframe(sh.worksheet("Slide-tags")),
-                        get_as_dataframe(sh.worksheet("SingleCell"))], ignore_index=True)
+        df = pd.concat([get_as_dataframe(sh.worksheet(title), evaluate_formulas=True),
+                        get_as_dataframe(sh.worksheet(worksheet_titles.get("singlecell", "SingleCell")), evaluate_formulas=True)], ignore_index=True)
     else:
-        df = get_as_dataframe(sh.worksheet("Slide-tags"))
+        df = get_as_dataframe(sh.worksheet(title), evaluate_formulas=True)
     cols = ["BCL", "Reference", "RNAIndex", "SBIndex", "Puck", "params"]
     if profile["use_sbbcl"]:
         if "SBBCL" not in df.columns:
             df["SBBCL"] = pd.NA
         cols = ["BCL", "Reference", "RNAIndex", "SBIndex", "SBBCL", "Puck", "params"]
 elif workflow in ["recon", "reconstruction"]:
-    df = get_as_dataframe(sh.worksheet("Recon"))
+    df = get_as_dataframe(sh.worksheet(worksheet_titles.get("recon", "Recon")), evaluate_formulas=True)
     cols = ["BCL", "Index", "bc1", "bc2", "params"]
 
+# A profile may source canonical columns from differently-named sheet columns (e.g.
+# a lab-tracking sheet with its own schema) via "column_map", and may lack a column
+# entirely (e.g. no Reference column when GEX is never run through Terra for that
+# sheet) - synthesize those as NA so the cleaning/validation below is unaffected.
+column_map = profile.get("column_map", {})
+df = df.rename(columns={src: canon for canon, src in column_map.items() if src in df.columns})
+for c in cols:
+    if c not in df.columns:
+        df[c] = pd.NA
+
+# A profile may source BCL from a raw flowcell string (e.g. "..._A23TNJFLT4") rather
+# than a dedicated BCL column; bcl_regex pulls the short flowcell ID out of it.
+if "bcl_regex" in profile:
+    df["BCL"] = df["BCL"].str.extract(profile["bcl_regex"], expand=False)
 
 # Clean the worksheet
 assert all(col in df.columns for col in cols)
@@ -237,8 +253,14 @@ elif workflow == "slide-tags":
 
     def pucks_to_URIs(pucks):
         URIs = []
+        puck_tiebreak = profile.get("puck_tiebreak")
         for puck in [s.strip() for s in pucks.split(',')]:
             matches = [s for s in all_pucks if puck in s]
+            if puck_tiebreak and len(matches) > 1:
+                preferred = [m for m in matches if puck_tiebreak in m]
+                if len(preferred) == 1:
+                    print(f"Auto-selecting the '{puck_tiebreak}' variant for '{puck}': {preferred[0]}")
+                    matches = preferred
             if not profile["interactive_puck"]:
                 assert len(matches) == 1, f"{len(matches)} pucks found for '{puck}': {matches}"
                 URIs.append("gs://"+BUCKET+"/"+matches[0])
