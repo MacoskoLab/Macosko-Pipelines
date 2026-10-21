@@ -18,7 +18,8 @@ arguments <- OptionParser(
     make_option("--cmes", type="double", default=0.0, help = "Reconstruction parameter"),
     make_option("--prob", type="double", default=1.0, help = "Proportion of reads to retain [default: 1.0]"),
     make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]"),
-    make_option("--named_puckid", type="logical", default=FALSE, help = "Write puckid as the puck's name instead of its integer index [default: %default]")
+    make_option("--named_puckid", type="logical", default=FALSE, help = "Write puckid as the puck's name instead of its integer index [default: %default]"),
+    make_option("--prefix", type="character", help = "Optional prefix label added as a 'prefix' column to coords.csv/coords2.csv")
   )
 ) %>% parse_args(positional_arguments=3)
 
@@ -33,6 +34,7 @@ cmes <- arguments$options$cmes     ; print(g("cmes: {cmes}"))
 prob <- arguments$options$prob     ; print(g("prob: {prob}"))
 cores <- arguments$options$cores %>% ifelse(.<1, parallelly::availableCores(), .) ; print(g("cores: {cores}"))
 named_puckid <- arguments$options$named_puckid ; print(g("named_puckid: {named_puckid}"))
+prefix <- arguments$options$prefix ; print(g("prefix: {prefix}"))
 setDTthreads(cores)
 
 rm(arguments)
@@ -443,6 +445,7 @@ stopifnot(nrow(mranges) == len(cb_whitelist))
 
 # Write coords
 setcolorder(coords, c("cb","x","y"))
+if (!is.null(prefix)) {coords[, prefix := prefix]}
 fwrite(coords, file.path(out_path, "coords.csv"))
 
 # Plots
@@ -511,6 +514,7 @@ add_orig_coords(coords2)
 
 # Save results
 plot_dbscan_score(coords2[umi>0]) %>% make.pdf(file.path(out_path, "DBSCANscore.pdf"), 7, 8)
+if (!is.null(prefix)) {coords2[, prefix := prefix]}
 fwrite(coords2, file.path(out_path, "coords2.csv"))
 
 ### Final check ################################################################

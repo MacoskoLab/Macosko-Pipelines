@@ -26,6 +26,7 @@ arguments <- OptionParser(
     make_option("--dropsift", action="store_true", help = "Add is_cell to obj"),
     make_option("--cores", type="integer", default=-1L, help = "The number of parallel processes to use [default: -1]"),
     make_option("--named_puckid", type="logical", default=FALSE, help = "Write puckid as the puck's name instead of its integer index [default: %default]"),
+    make_option("--prefix", type="character", help = "Optional prefix label forwarded to positioning.R and added to the Seurat object metadata"),
     make_option("--args",   type="character", default = "", help = "Passed to positioning.R")
   )
 ) %>% parse_args(positional_arguments=3)
@@ -66,6 +67,10 @@ print(g("cores: {cores}"))
 named_puckid <- arguments$options$named_puckid
 if (is.null(named_puckid)) {named_puckid <- FALSE}
 print(g("named_puckid: {named_puckid}"))
+
+prefix <- arguments$options$prefix
+if (is.null(prefix) || len(prefix) != 1L || nchar(prefix) < 1L) {prefix <- NULL}
+print(g("prefix: {prefix}"))
 
 args <- arguments$options$args %>% trimws
 if (is.null(args) || len(args) != 1L || nchar(args) < 1L) {args <- ""}
@@ -258,7 +263,8 @@ colnames(obj) %>% trim_10X_CB %>% writeLines(file.path(out_path, "cb_whitelist.t
 
 # Assign a position to each whitelist cell
 print(g("\nRunning positioning.R"))
-system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} --cores={cores} --named_puckid={named_puckid} {args}"))
+prefix_arg <- if (!is.null(prefix)) g("--prefix={shQuote(prefix)}") else ""
+system(g("Rscript --vanilla positioning.R {sb_path} {file.path(out_path, 'cb_whitelist.txt')} {out_path} --cores={cores} --named_puckid={named_puckid} {prefix_arg} {args}"))
 
 stopifnot(file.exists(file.path(out_path, "matrix.csv.gz"),
                       file.path(out_path, "spatial_metadata.json"),
@@ -279,9 +285,11 @@ Misc(obj, "coords") <- coords
 Misc(obj, "coords2") <- coords2
 
 # Add metadata
-obj %<>% AddMetaData(cbind(coords2[,.(x=x, y=y, x_orig=x_orig, y_orig=y_orig, puckid=puckid)],
-                           coords[,.(dbscan_clusters=clusters)],
-                           coords2[,.(dbscan_score=score)]))
+meta_cols <- cbind(coords2[,.(x=x, y=y, x_orig=x_orig, y_orig=y_orig, puckid=puckid)],
+                   coords[,.(dbscan_clusters=clusters)],
+                   coords2[,.(dbscan_score=score)])
+if (!is.null(prefix)) {meta_cols[, prefix := prefix]}
+obj %<>% AddMetaData(meta_cols)
 
 # Create spatial reduction
 emb <- obj@meta.data %>% transmute(x = if_else(dbscan_clusters == 1, x, NA_real_),
