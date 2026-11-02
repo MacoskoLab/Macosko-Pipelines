@@ -247,9 +247,23 @@ elif workflow == "slide-tags":
 
     # Assert puck file exists and is unique
     assert_full_column(df["Puck"])
-    recon_pucks = [blob.name for blob in bucket.list_blobs(prefix=f"recon") if blob.name.endswith("/Puck.csv")]
-    insitu_pucks = [blob.name for blob in bucket.list_blobs(prefix=f"pucks") if blob.name.endswith(".csv")]
-    all_pucks = recon_pucks + insitu_pucks
+    recon_pucks = {blob.name: blob.size for blob in bucket.list_blobs(prefix=f"recon") if blob.name.endswith("/Puck.csv")}
+    insitu_pucks = {blob.name: blob.size for blob in bucket.list_blobs(prefix=f"pucks") if blob.name.endswith(".csv")}
+    puck_sizes = {**recon_pucks, **insitu_pucks}
+    all_pucks = list(puck_sizes)
+
+    # Estimate (beads, barcode length) of a puck from a ranged read of its head, without
+    # downloading the whole file (recon Puck.csv runs ~50.5 B/bead, but in-situ pucks differ)
+    puck_stats_cache = {}
+    def puck_stats(name):
+        if name not in puck_stats_cache:
+            head = bucket.blob(name).download_as_bytes(start=0, end=65535).split(b"\n")
+            lines = head[1:-1]  # first may be a header, last may be truncated
+            assert len(lines) > 0, f"Could not sample lines from puck {name}"
+            bytes_per_line = sum(len(l)+1 for l in lines) / len(lines)
+            sb_len = len(lines[0].split(b",")[0].strip())
+            puck_stats_cache[name] = (puck_sizes[name] / bytes_per_line, sb_len)
+        return puck_stats_cache[name]
 
     def pucks_to_URIs(pucks):
         URIs = []
@@ -286,9 +300,16 @@ elif workflow == "slide-tags":
 
 
 # Compute memory requirements
-fastq_blobs = bucket.list_blobs(prefix=f"fastqs/{bcl}/")
-fastqs = [(blob.name, blob.size) for blob in fastq_blobs if blob.name.endswith(".fastq.gz")]
-getfastqsizes = lambda inds: [math.ceil(sum(s for n,s in fastqs if "/"+i+profile["fastq_match"] in n) / 1e9) for i in inds]
+fastq_cache = {}
+def getfastqsizes(inds, bcls=None):
+    # bcls gives the FASTQ folder per index (e.g. SBBCL for slide-tags); defaults to the run's bcl
+    bcls = [bcl] * len(inds) if bcls is None else bcls
+    sizes = []
+    for i, b in zip(inds, bcls):
+        if b not in fastq_cache:
+            fastq_cache[b] = [(blob.name, blob.size) for blob in bucket.list_blobs(prefix=f"fastqs/{b}/") if blob.name.endswith(".fastq.gz")]
+        sizes.append(math.ceil(sum(s for n,s in fastq_cache[b] if "/"+i+profile["fastq_match"] in n) / 1e9))
+    return sizes
 
 if workflow == "cellranger-count":
     # Compute the FASTQ sizes
@@ -296,9 +317,34 @@ if workflow == "cellranger-count":
     mem_GBs = [math.ceil(5*mem+20) for mem in mem_GBs]
 
 elif workflow == "slide-tags":
-    # Compute the FASTQ sizes
-    mem_GBs_fastq = getfastqsizes(df["SBIndex"])
-    mem_GBs_fastq = [math.ceil(2*mem) for mem in mem_GBs_fastq]
+    # Compute the FASTQ sizes - from the SBBCL folder when set, matching fastq_dir in slide-tags.wdl
+    if profile["use_sbbcl"]:
+        sb_bcls = [b if pd.notna(b) and str(b).strip() else bcl for b in df["SBBCL"]]
+    else:
+        sb_bcls = [bcl] * len(df.index)
+    fastq_GBs = getfastqsizes(df["SBIndex"], sb_bcls)
+
+    # Compute the puck sizes. spatial-count.jl builds its whitelist Dict (create_SBtoindex) from
+    # every bead plus all its HD1 neighbors (4*sb_len+1 entries/bead), held for the whole run
+    # regardless of FASTQ size. Each slot costs 41 B (32 B String15 pair key + 8 B padded value +
+    # 1 B slot flag), and Julia grows the table to the next power of 2 >= 2*count once it is 2/3
+    # full, so the final size S is the smallest power of 2 >= 1.5*entries - memory is a step
+    # function of the bead count, not linear in Puck.csv size. While rehashing the old (S/2) and
+    # new (S) tables coexist: peak 61.5*S B before any reads are loaded, 41*S B steady after.
+    # With 17-bp barcodes that's ~132 GB up to ~20.7M beads (S=2^31), ~264 GB up to ~41M (S=2^32).
+    # Observed: 23Y3JMLT4 (11.3M beads) OOM'd at 110 GB and 23KCMLLT4 (32.4M beads) at 248 GB,
+    # both in create_SBtoindex; 23KTGFLT4 SI-TT-F5 (~20.4M beads, just under the 2^31 step) fit
+    # in 150 GB. The 3% margin covers the sampled bead estimate landing just under a step.
+    # The reads then add up to ~2x the FASTQ size: per-read cost varies by library (unique
+    # (cb,umi,sb) fraction, CB diversity) and jumps when the counts Dict rehashes. Observed:
+    # 23KTGFLT4 SI-TT-F5 (61 GB FASTQs, 944M reads) fit in 150 GB; 23FNH5LT4 SI-TT-F8 (0.34 GB
+    # puck, 55 GB FASTQs) OOM'd at 97 GB after 780M reads. 2x covers the latter.
+    def puck_dict_slots(ps):
+        stats = [puck_stats(p[len("gs://"+BUCKET+"/"):]) for p in ps]
+        entries = 1.03 * sum(beads * (4*sb_len + 1) for beads, sb_len in stats)
+        return sum(beads for beads, _ in stats), 2 ** math.ceil(math.log2(1.5 * entries))
+    puck_beads, puck_slots = zip(*[puck_dict_slots(ps) for ps in pucks]) if len(pucks) else ((), ())
+    mem_GBs_fastq = [math.ceil(max(61.5*S/1e9, 41*S/1e9 + 2*f)) for f, S in zip(fastq_GBs, puck_slots)]
 
     # Compute the SBcounts.h5 size
     tags_blobs = bucket.list_blobs(prefix=f"slide-tags/{bcl}/")
@@ -308,10 +354,35 @@ elif workflow == "slide-tags":
         mem_GBs_mat = [max((s for n,s in tags if n == f"slide-tags/{bcl}/{i}{tags_suffix}"), default=0) / 1e9 for i in df["RNAIndex"]]
     else:
         mem_GBs_mat = [max((s for n,s in tags if "/"+i+"/" in n), default=0) / 1e9 for i in df["RNAIndex"]]
-    mem_GBs_mat = [math.ceil(20*mem) for mem in mem_GBs_mat]
+    # run-positioning.R on 23KTGFLT4 SI-TT-F5's 11.1 GB SBcounts.h5 fit in 150 GB (<= 13.5x)
+    mem_GBs_mat = [math.ceil(14*mem) for mem in mem_GBs_mat]
 
-    # Take the max (TODO)
-    mem_GBs = [max(x,y) for x,y in zip(mem_GBs_fastq, mem_GBs_mat)]
+    # The WDL skips spatial-count.jl when SBcounts.h5 exists at its exact tags_dir, so only size
+    # that step for uncached runs (sub only reaches the WDL if the method takes those inputs)
+    wdl_sub = sub if supported_extra & {"branch", "pr", "subfolder"} else None
+    cache_suffix = f"/{wdl_sub}/SBcounts.h5" if wdl_sub else "/SBcounts.h5"
+    cached = [any(n == f"slide-tags/{bcl}/{i}{cache_suffix}" for n,s in tags) for i in df["RNAIndex"]]
+    mem_GBs_fastq = [0 if c else x for x, c in zip(mem_GBs_fastq, cached)]
+    # The puck term alone is nonzero, so check explicitly that an uncached run has its FASTQs
+    missing = [(i, b) for i, b, f, c in zip(df["SBIndex"], sb_bcls, fastq_GBs, cached) if f == 0 and not c]
+    assert not missing, f"No SB FASTQs (and no cached SBcounts.h5) found for {missing}"
+
+    # Compute the GEX size: run-positioning.R loads the largest of the top-level .h5/.h5ad files
+    # the WDL downloads (gex_dir or gex_dir/outs). Sized even when SBcounts.h5 is not cached yet,
+    # since the R step then runs on the same VM right after spatial-count.jl (TODO: calibrate 10x)
+    gex_blobs = [(blob.name, blob.size) for blob in bucket.list_blobs(prefix=f"gene-expression/{bcl}/")]
+    def gex_size(i):
+        base = f"gene-expression/{bcl}/{i}/"
+        return max((s for n,s in gex_blobs
+                    if n.endswith((".h5", ".h5ad")) and n.startswith(base)
+                    and n[len(base):].removeprefix("outs/").count("/") == 0), default=0) / 1e9
+    mem_GBs_gex = [math.ceil(10*gex_size(i)) for i in df["RNAIndex"]]
+
+    # Take the max (TODO), plus 15% headroom (Cromwell's GB is decimal; Julia/R peaks are spiky)
+    mem_GBs = [math.ceil(1.15*max(x,y,z)) for x,y,z in zip(mem_GBs_fastq, mem_GBs_mat, mem_GBs_gex)]
+    for i, f, b, S, c, x, y, z in zip(df["RNAIndex"], fastq_GBs, puck_beads, puck_slots, cached, mem_GBs_fastq, mem_GBs_mat, mem_GBs_gex):
+        sc = "cached" if c else f"fastq {f} GB + puck {b/1e6:.1f}M beads (2^{int(math.log2(S))}) -> {x} GB"
+        print(f"  {i}: spatial-count {sc}, SBcounts {y} GB, GEX {z} GB")
 
 elif workflow in ["recon", "reconstruction"]:
     # Compte the FASTQ sizes
