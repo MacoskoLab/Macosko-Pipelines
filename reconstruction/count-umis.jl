@@ -3,10 +3,9 @@ using StatsBase
 using StatsPlots
 using DataFrames
 
-function hist_10cap(vec::Vector)
+function count_vec(vec::Vector)::DataFrame
     tab = countmap(vec)
-    plotdf = DataFrame(value = collect(keys(tab)), count = collect(values(tab)))
-    return hist_10cap(plotdf)
+    return DataFrame(value = collect(keys(tab)), count = collect(values(tab)))
 end
 
 function hist_10cap(plotdf::DataFrame)
@@ -86,20 +85,18 @@ function plot_umi_distributions(df, col::Symbol)
     return p1, p2
 end
 
-function count_umis(
+function plot_counts(
     df::DataFrame,
+    reads_plot_df::DataFrame,
+    umi_plot_df::DataFrame,
     out_path::String,
 )::Nothing
-    print_start("Counting UMIs... ")
-
-    p1 = hist_10cap(df.reads)
+    p1 = hist_10cap(reads_plot_df)
     xlabel!(p1, "Reads per UMI")
     ylabel!(p1, "Number of filtered UMIs")
     title!(p1, "Read depth")
 
-    count_umis(df) # this function modifies in-place
-
-    p2 = hist_10cap(df.umi)
+    p2 = hist_10cap(umi_plot_df)
     xlabel!(p2, "UMIs per connection")
     ylabel!(p2, "Number of connections")
     title!(p2, "Connection distribution")
@@ -112,7 +109,18 @@ function count_umis(
 
     p = plot(p5, p6, layout = (2, 1), size=(7*100, 8*100))
     savefig(p, joinpath(out_path, "histograms.pdf"))
+    return nothing
+end
 
+function count_umis(
+    df::DataFrame,
+    out_path::String,
+)::Nothing
+    print_start("Counting UMIs... ")
+    reads_plot_df = count_vec(df.reads)
+    count_umis(df) # this function modifies in-place
+    umi_plot_df = count_vec(df.umi)
+    plot_counts(df, reads_plot_df, umi_plot_df, out_path)
     println_done()
     return nothing
 end
@@ -168,32 +176,15 @@ function plot_umis(
     reads_counts = find_counts(in_path, "reads")
     reads_plot_df = read_tabs(reads_counts, :value, UInt64, :count, UInt64)
 
-    p1 = hist_10cap(reads_plot_df)
-    xlabel!(p1, "Reads per UMI")
-    ylabel!(p1, "Number of filtered UMIs")
-    title!(p1, "Read depth")
-
     umi_counts = find_counts(in_path, "umi")
     umi_plot_df = read_tabs(umi_counts, :value, UInt64, :count, UInt64)
-
-    p2 = hist_10cap(umi_plot_df)
-    xlabel!(p2, "UMIs per connection")
-    ylabel!(p2, "Number of connections")
-    title!(p2, "Connection distribution")
 
     umi_dfs = find_umi_dfs(in_path)
     df = read_dfs(umi_dfs, Dict(:sb1_i => UInt64, :sb2_i => UInt64, :umi => UInt64))
     sort_df(df, [:sb1_i, :sb2_i])
 
     print_start("Plotting UMI distributions... ")
-    p3, p5 = plot_umi_distributions(df, :sb1_i)
-    p4, p6 = plot_umi_distributions(df, :sb2_i)
+    plot_counts(df, reads_plot_df, umi_plot_df, out_path)
     println_done()
-
-    p = plot(p1, p2, p3, p4, layout = (2, 2), size=(7*100, 8*100))
-    savefig(p, joinpath(out_path, "SNR.pdf"))
-
-    p = plot(p5, p6, layout = (2, 1), size=(7*100, 8*100))
-    savefig(p, joinpath(out_path, "histograms.pdf"))
     return df
 end
