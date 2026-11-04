@@ -17,7 +17,7 @@ def get_args():
     parser.add_argument("-o", "--out", type=str, default=None, help="output csv (default: Puck-selected.csv beside the input)")
     parser.add_argument("-c", "--center", type=float, nargs=2, default=None, metavar=('X', 'Y'), help="pre-seed the circle center")
     parser.add_argument("-r", "--radius", type=float, default=None, help="pre-seed the circle radius")
-    parser.add_argument("-p", "--vertices", type=float, nargs='+', default=None, metavar='V', help="polygon vertices as X1 Y1 X2 Y2 ... (at least 3 pairs); overrides --center/--radius")
+    parser.add_argument("-p", "--vertices", type=float, nargs='+', action='append', default=None, metavar='V', help="polygon vertices as X1 Y1 X2 Y2 ... (at least 3 pairs); repeat for several polygons, which select their union; overrides --center/--radius")
     parser.add_argument("-j", "--from_json", type=str, default=None, help="replay the cut recorded in a selection.json sidecar, whatever shape it holds")
     parser.add_argument("-v", "--invert", action='store_true', help="select points outside the shape")
     parser.add_argument("-m", "--marker", type=str, default=",", help="matplotlib marker for the beads")
@@ -41,8 +41,10 @@ marker = args.marker                   ; print(f"marker = {marker}")
 non_interactive = args.non_interactive  ; print(f"non_interactive = {non_interactive}")
 
 # A cut is a dict: {"shape": "circle", "center": [x, y], "radius": r, "invert": bool}
-#                  {"shape": "polygon", "vertices": [[x, y], ...],  "invert": bool}
-# Sidecars written before polygons existed have no "shape" key, so it defaults to circle.
+#                  {"shape": "polygon", "polygons": [[[x, y], ...], ...], "invert": bool}
+# A polygon cut selects the union of its polygons; invert flips the union as a whole.
+# Sidecars written before polygons existed have no "shape" key, so it defaults to circle,
+# and a single-polygon sidecar stores its one ring under "vertices" rather than "polygons".
 replay_source_puck = None
 if from_json is not None:
     with open(from_json) as f:
@@ -51,16 +53,18 @@ if from_json is not None:
     if shape["shape"] == "circle":
         shape["center"], shape["radius"] = list(d["center"]), float(d["radius"])
     else:
-        shape["vertices"] = [[float(vx), float(vy)] for vx, vy in d["vertices"]]
+        rings = d["polygons"] if "polygons" in d else [d["vertices"]]
+        shape["polygons"] = [[[float(vx), float(vy)] for vx, vy in ring] for ring in rings]
     # Keep the recorded provenance rather than re-deriving it from the local puck path,
     # which under terra/reconstruction.wdl is just the scratch dir the file was copied to
     replay_source_puck = d.get("source_puck")
     print(f"replaying {shape['shape']} from {from_json}")
 elif vertices is not None:
-    assert len(vertices) % 2 == 0, "--vertices takes X Y pairs, got an odd number of values"
-    assert len(vertices) >= 6, "--vertices needs at least 3 points to close a shape"
+    for v in vertices:
+        assert len(v) % 2 == 0, "--vertices takes X Y pairs, got an odd number of values"
+        assert len(v) >= 6, "--vertices needs at least 3 points to close a shape"
     shape = {"shape": "polygon",
-             "vertices": [[vertices[i], vertices[i + 1]] for i in range(0, len(vertices), 2)],
+             "polygons": [[[v[i], v[i + 1]] for i in range(0, len(v), 2)] for v in vertices],
              "invert": invert}
 else:
     shape = {"shape": "circle", "center": center, "radius": radius, "invert": invert}
@@ -145,23 +149,30 @@ def polygon_mask(verts):
 def mask_of(shape):
     """Boolean mask of the beads inside (or outside, if inverted) the shape."""
     if shape["shape"] == "polygon":
-        m = polygon_mask(shape["vertices"])
+        m = np.zeros(n, dtype=bool)
+        for ring in shape["polygons"]:
+            m |= polygon_mask(ring)
     else:
         m = circle_mask(shape["center"], shape["radius"])
     return ~m if shape["invert"] else m
 
 def shape_json(shape):
     """The shape half of the sidecar. A circle emits exactly the keys it always has, so
-    sidecars stay readable by Terra method snapshots that predate polygons."""
+    sidecars stay readable by Terra method snapshots that predate polygons. Likewise a
+    single polygon keeps its "vertices" key for snapshots that predate multiple polygons;
+    "polygons" is written only when there are several, which those snapshots reject loudly."""
     if shape["shape"] == "polygon":
-        return {"shape": "polygon",
-                "vertices": [[float(vx), float(vy)] for vx, vy in shape["vertices"]]}
+        rings = [[[float(vx), float(vy)] for vx, vy in ring] for ring in shape["polygons"]]
+        if len(rings) == 1:
+            return {"shape": "polygon", "vertices": rings[0]}
+        return {"shape": "polygon", "polygons": rings}
     return {"center": [float(shape["center"][0]), float(shape["center"][1])],
             "radius": float(shape["radius"])}
 
 def reproduce_flags(shape):
     if shape["shape"] == "polygon":
-        flags = "--vertices " + " ".join(f"{v:.6g}" for xy in shape["vertices"] for v in xy)
+        flags = " ".join("--vertices " + " ".join(f"{v:.6g}" for xy in ring for v in xy)
+                         for ring in shape["polygons"])
     else:
         flags = f"--center {shape['center'][0]:.6g} {shape['center'][1]:.6g} --radius {shape['radius']:.6g}"
     return flags + (" --invert" if shape["invert"] else "")
@@ -194,7 +205,7 @@ if non_interactive:
     sys.exit(0)
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Polygon
 from matplotlib.widgets import PolygonSelector
 
 # A pre-seeded cut opens in its own mode with its own geometry already in place
@@ -227,14 +238,19 @@ ax.set_xlabel("xcoord")
 ax.set_ylabel("ycoord")
 fig.text(0.5, 0.015,
          "circle: drag = set circle (press at center)   scroll = radius (+shift = fine)\n"
-         "polygon: click = drop vertex, click the first one again to close, then drag handles   esc = restart\n"
+         "polygon: click = drop vertex, click the first one again to close, then drag handles   esc = discard active\n"
+         "         n = new polygon (beads in any polygon are selected)   tab = edit next polygon\n"
          "p = circle/polygon   arrows = nudge (+shift = fine)   i = invert   r = reset   enter/s = save   q = quit",
          ha='center', va='bottom', fontsize=9, color='0.35')
-fig.subplots_adjust(bottom=0.16)
+fig.subplots_adjust(bottom=0.19)
 
+# 'polygons' holds every closed ring; 'active' indexes the one held by the PolygonSelector
+# for editing, or is None while a new ring is being drawn. The rest are static outlines.
+polygons = [list(map(list, ring)) for ring in shape.get("polygons", [])]
 state = {'mode': shape["shape"], 'center': list(center), 'radius': radius,
-         'vertices': [list(v) for v in shape.get("vertices", [])],
+         'polygons': polygons, 'active': len(polygons) - 1 if polygons else None,
          'invert': invert, 'dragging': False, 'stale': True}
+outlines = []
 
 # Built on first use: a live PolygonSelector swallows the button events the circle drag
 # needs, so it must not exist while we are in circle mode
@@ -245,19 +261,46 @@ def polygon_selector():
     if selector is None:
         selector = PolygonSelector(ax, on_polygon, useblit=True,
                                    props=dict(color='blue', linestyle='--', linewidth=1.5))
-        if len(state['vertices']) >= 3:
-            selector.verts = state['vertices']
+        if state['active'] is not None:
+            selector.verts = state['polygons'][state['active']]
     return selector
+
+def draw_outlines():
+    """Outline every ring but the active one, which the selector draws with its handles."""
+    for p in outlines:
+        p.remove()
+    outlines.clear()
+    for i, ring in enumerate(state['polygons']):
+        if i != state['active'] and len(ring) >= 3:
+            outlines.append(ax.add_patch(Polygon(ring, closed=True, fill=False, edgecolor='blue',
+                                                 linewidth=1.5, linestyle='--',
+                                                 visible=state['mode'] == 'polygon')))
+    fig.canvas.draw_idle()
+
+def activate(i):
+    """Hand ring i to the selector for editing, or start a new ring if i is None."""
+    state['active'] = i
+    if i is None:
+        polygon_selector().clear()
+    else:
+        polygon_selector().verts = state['polygons'][i]
+    draw_outlines()
+    set_title(len(highlight.get_xdata()))  # the cut itself is unchanged
 
 def on_polygon(verts):
     """PolygonSelector callback: fires once the ring closes, and on every later edit."""
-    state['vertices'] = [[float(vx), float(vy)] for vx, vy in verts]
+    ring = [[float(vx), float(vy)] for vx, vy in verts]
+    if state['active'] is None:
+        state['polygons'].append(ring)
+        state['active'] = len(state['polygons']) - 1
+    else:
+        state['polygons'][state['active']] = ring
     state['stale'] = True
     refresh_selection()
 
 def current_shape():
     if state['mode'] == 'polygon':
-        return {"shape": "polygon", "vertices": state['vertices'], "invert": state['invert']}
+        return {"shape": "polygon", "polygons": state['polygons'], "invert": state['invert']}
     return {"shape": "circle", "center": state['center'], "radius": state['radius'],
             "invert": state['invert']}
 
@@ -268,6 +311,7 @@ def set_mode(mode):
     if sel is not None:
         sel.set_active(mode == 'polygon')
         sel.set_visible(mode == 'polygon')
+    draw_outlines()
     state['stale'] = True
     refresh_selection()
     fig.canvas.draw_idle()
@@ -283,7 +327,11 @@ def draw_circle():
 def set_title(count):
     head = f"selected: {count:,} / {n:,}" if count is not None else f"selected: ... / {n:,}"
     if state['mode'] == 'polygon':
-        detail = f"polygon ({len(state['vertices'])} vertices)"
+        k, a = len(state['polygons']), state['active']
+        if a is None:
+            detail = f"{k} polygon{'s' * (k != 1)}, drawing new"
+        else:
+            detail = f"polygon {a + 1}/{k} ({len(state['polygons'][a])} vertices)"
     else:
         cx, cy = state['center']
         detail = f"center ({cx:.1f}, {cy:.1f})  radius {state['radius']:.1f}"
@@ -334,14 +382,16 @@ def on_scroll(event):
 
 def nudge(dx, dy, frac):
     """Translate the live shape. The circle scales its step by the radius, the polygon by
-    its bounding box, so a tap moves each by a comparable fraction of its own size."""
+    its bounding box, so a tap moves each by a comparable fraction of its own size. Only
+    the active polygon moves; the others stay put."""
     if state['mode'] == 'polygon':
-        if len(state['vertices']) < 3:
+        a = state['active']
+        if a is None or len(state['polygons'][a]) < 3:
             return
-        v = np.asarray(state['vertices'])
+        v = np.asarray(state['polygons'][a])
         step = frac * float(max(v.max(axis=0) - v.min(axis=0)))
-        state['vertices'] = (v + [dx * step, dy * step]).tolist()
-        polygon_selector().verts = state['vertices']
+        state['polygons'][a] = (v + [dx * step, dy * step]).tolist()
+        polygon_selector().verts = state['polygons'][a]
         state['stale'] = True
     else:
         state['center'][0] += dx * frac * state['radius']
@@ -361,11 +411,26 @@ def on_key(event):
         state['invert'] = not state['invert']
         state['stale'] = True
         refresh_selection()
+    elif key == 'n' and state['mode'] == 'polygon' and state['active'] is not None:
+        activate(None)
+    elif key == 'tab' and state['mode'] == 'polygon' and state['polygons']:
+        a = state['active']
+        activate(0 if a is None else (a + 1) % len(state['polygons']))
+    elif key == 'escape' and state['mode'] == 'polygon':
+        # The selector wipes its own ring on the key release; drop it from the cut to match
+        if state['active'] is not None:
+            state['polygons'].pop(state['active'])
+            state['active'] = None
+            draw_outlines()
+            state['stale'] = True
+            refresh_selection()
     elif key == 'r':
         state['invert'] = False
         if state['mode'] == 'polygon':
-            state['vertices'] = []
+            state['polygons'].clear()
+            state['active'] = None
             polygon_selector().clear()
+            draw_outlines()
             state['stale'] = True
         else:
             state['radius'] = 0.0
