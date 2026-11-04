@@ -161,18 +161,18 @@ if knn_filter:
     print("Running KNN filter...")
 
     # Filter low clustering coefficient (<0.2)
-    m = tlu>=0.2
-    knn.apply_mask(m, "KNN filter")
-    G = G.subgraph(np.where(m)[0])
-    del m ; gc.collect()
-    
+    knn.apply_mask(tlu>=0.2, "KNN filter")
+    gc.collect()
+
     # Filter beads with far nearest neighbors?
     # Filter too-high or too-low in-edges?
     # New collision detector?
 
-# Intermediate bead filter
-knn.filter_toofewneighbors()
-knn.filter_disconnected()
+    # Intermediate bead filter - the KNN filter can leave beads short of neighbors
+    # or disconnected, so re-filter and rebuild G from the beads that survive
+    knn.filter_toofewneighbors()
+    knn.filter_disconnected()
+    G = knn.graph()
 
 ### Leiden Initialization ######################################################
 
