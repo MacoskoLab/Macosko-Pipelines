@@ -47,6 +47,7 @@ def get_args():
     parser.add_argument("--downsample_prop", type=float, default=None, help="Override downsample proportion passed to recon-count.jl (recon only); WDL default is 1.0 (no downsampling)")
     parser.add_argument("--bucket", type=str, default=None, help="Override GCS bucket name (slide-tags only)")
     parser.add_argument("--tag", type=str, default=None, help="Override docker image tag (slide-tags only; default: latest)")
+    parser.add_argument("--sbbcl", action='store_true', help="Read SB FASTQs from the sheet's SBBCL column and pass it to the WDL as sb_bcl (slide-tags only); overrides the profile 'use_sbbcl'")
     args = parser.parse_args()
     return args
 
@@ -63,6 +64,10 @@ if args.config is not None:
         profile["methods"].setdefault(name, {}).update(method)
 if args.sa is not None:
     profile["sa"] = args.sa
+if args.sbbcl:
+    profile["use_sbbcl"] = True
+    st = profile["methods"].setdefault("slide-tags", {})
+    st["extra_inputs"] = list(dict.fromkeys(st.get("extra_inputs", []) + ["sb_bcl"]))
 
 # Which optional CLI overrides the active profile's method actually writes into the Terra
 # config; needed both to scale memory for flags that affect it (downsample_prop) and to warn
@@ -82,6 +87,7 @@ selection = args.selection           ; print(f"  selection: {selection}")
 downsample_prop = args.downsample_prop ; print(f"  downsample_prop: {downsample_prop}")
 bucket_override = args.bucket if args.bucket is not None else profile["bucket"] ; print(f"  bucket: {bucket_override}")
 tag = args.tag                       ; print(f"     tag: {tag}")
+print(f"   sbbcl: {args.sbbcl}")
 print(f"workspace: {profile['wnamespace']}/{profile['workspace']}")
 
 assert workflow in ["cellranger-count", "slide-tags", "recon", "reconstruction"]
@@ -89,6 +95,7 @@ assert not any(c.isspace() for c in bcl), f"remove whitespace from bcl ({bcl})"
 assert not any(c.isspace() for c in index), f"remove whitespace from index ({index})"
 assert selection is None or workflow in ["recon", "reconstruction"], "--selection is recon-only"
 assert downsample_prop is None or workflow in ["recon", "reconstruction"], "--downsample_prop is recon-only"
+assert not args.sbbcl or workflow == "slide-tags", "--sbbcl is slide-tags-only"
 
 # Resolve the output subfolder exactly as the WDLs do, so every cache lookup below targets
 # the same path the workflow will actually stat and reuse.
@@ -463,6 +470,15 @@ subs = resp.json()
 subs = [sub for sub in subs if sub["status"] not in ["Done","Aborted"]]
 running_job_names = [sub["userComment"] for sub in subs if "userComment" in sub]
 assert not set(job_names) & set(running_job_names), "Jobs already running!"
+
+# write_extra_inputs silently skips inputs the registered method doesn't declare, which for
+# sb_bcl would make the WDL read SB FASTQs from the run's own bcl folder - fail loudly instead
+if workflow == "slide-tags" and profile["use_sbbcl"] and "sb_bcl" in profile["methods"]["slide-tags"]["extra_inputs"]:
+    method = profile["methods"]["slide-tags"]
+    resp = fapi.get_workspace_config(wnamespace, workspace, method["namespace"], method["config"])
+    assert resp.status_code == 200, f"get_workspace_config({method['config']}) failed ({resp.status_code}): {resp.text[:500]}"
+    assert "slide_tags.sb_bcl" in resp.json()["inputs"], \
+        f"Terra config {method['namespace']}/{method['config']} has no slide_tags.sb_bcl input - update its WDL snapshot to use SBBCL"
 
 
 # Print + exit if testing
