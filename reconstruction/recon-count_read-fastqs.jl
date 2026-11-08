@@ -133,8 +133,6 @@ write_rpsbs(df, out_path, file_suffix)
 
 ################################################################################
 
-include(joinpath(@__DIR__, "metadata.jl"))
-
 write_metadata(out_path, metadata, file_suffix)
 
 ################################################################################
