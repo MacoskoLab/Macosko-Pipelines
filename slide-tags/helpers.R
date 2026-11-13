@@ -236,18 +236,19 @@ ReadPuck <- function(f) {
   for (puck in puckdfs) {puck[, lr := NULL]}
   
   # for multiplexed pucks, stack along "x" to prevent overlapping
+  mins <- map_dbl(puckdfs, ~min(.$x, na.rm=TRUE)) %>% unname
   if (len(puckdfs) > 1) {
     maxs <- map_dbl(puckdfs, ~max(.$x, na.rm=TRUE)) %>% unname
-    mins <- map_dbl(puckdfs, ~min(.$x, na.rm=TRUE)) %>% unname
     starts <- cumsum(maxs-mins) %>% lag(1, 0)
     puckdfs %>% map2(starts, ~.x[, x := x-min(x)+.y])
   } else {
-    starts <- min(puckdfs[[1]]$x)
+    starts <- mins
   }
   
   puckdf <- rbindlist(puckdfs)
   stopifnot(!any(duplicated(puckdf[, sb])))
   puckmeta$puck_boundaries = c(starts, max(puckdf$x))
+  puckmeta$puck_xmin = mins # pre-stacking min x of each puck, to recover Puck.csv x
   puckdf[, sb := factor(sb)]
   
   return(list(puckdf, puckmeta))
