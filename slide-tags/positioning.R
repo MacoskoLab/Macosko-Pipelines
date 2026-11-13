@@ -421,19 +421,19 @@ coords[, `:=`(eps=eps, minPts=minPts)]
 coords[clusters==1, `:=`(x=x1, y=y1)]
 print(g("Placed: {round(coords[,sum(clusters==1)/.N]*100, 2)}%"))
 
-# Map placements back to a common (un-stacked) coordinate space.
-# Multiplexed pucks are stacked along x in ReadPuck (helpers.R); only x is
-# shifted, so y_orig == y. Each puck's stacking offset is recovered from
-# puck_boundaries: a cell placed at x in puck i is offset by
-# puck_boundaries[i] - puck_boundaries[1]. For the first puck (and the
-# single-puck case) this offset is 0, so x_orig == x.
+# Map placements back to each puck's own Puck.csv coordinates.
+# Multiplexed pucks are stacked along x in ReadPuck (helpers.R) via
+# x - puck_xmin[i] + puck_boundaries[i]; only x is shifted, so y_orig == y.
+# Undoing that shift gives x_orig == the Puck.csv x, as in the single-puck
+# case (where puck_boundaries[1] == puck_xmin[1], so x_orig == x).
 pb <- metadata$puck_info$puck_boundaries
+xmin <- metadata$puck_info$puck_xmin
 puck_names <- sub("\\.[^.]*$", "", metadata$puck_info$puck_name) # strip file extension
 add_orig_coords <- function(dt) {
   idx <- findInterval(dt$x, pb, rightmost.closed = TRUE) # 1..(length(pb)-1)
   idx[idx < 1L] <- NA_integer_                           # unplaced / NA x
   dt[, puckid := if (named_puckid) puck_names[idx] else idx] # which puck the cell is on
-  dt[, x_orig := x - pb[idx] + pb[1]]
+  dt[, x_orig := x - pb[idx] + xmin[idx]]
   dt[, y_orig := y]
 }
 add_orig_coords(coords)
