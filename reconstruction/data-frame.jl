@@ -98,10 +98,18 @@ function read_tabs_dict(
             if header_cols[1] != string(key_col) || header_cols[2] != string(value_col)
                 error("Unexpected header in $path: expected '$key_col,$value_col' but got '$header_line'")
             end
+            keys = K[]
+            values = V[]
             for line in eachline(io)
                 cols = split(line, ',')
-                key = parse(K, cols[1])
-                value = parse(V, cols[2])
+                push!(keys, parse(K, cols[1]))
+                push!(values, parse(V, cols[2]))
+            end
+            # write_tab saves keys in the hash order of the Dict they came from. Inserting them
+            # in that order into a smaller table piles them into adjacent slots and turns
+            # probing quadratic (one 128 MB rpsb2 took 24 min vs ~20 s), so grow the table first
+            sizehint!(tab_dict, length(tab_dict) + length(keys))
+            for (key, value) in zip(keys, values)
                 tab_dict[key] = get(tab_dict, key, key_zero) + value
             end
         end
