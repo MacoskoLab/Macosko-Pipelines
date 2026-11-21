@@ -116,7 +116,7 @@ function write_outputs(
         writedlm(file, sb2_whitelist, "\n")
     end
     rename!(df, Dict(:sb1_i => :sb1_index, :sb2_i => :sb2_index, :umi => :umi))
-    CSV.write(joinpath(out_path, "matrix.csv.gz"), df, writeheader=true, compress=true)
+    write_csv(joinpath(out_path, "matrix.csv.gz"), df)
 
     @assert all(f -> isfile(joinpath(out_path, f)), ["matrix.csv.gz", "sb1.txt.gz", "sb2.txt.gz", "QC.pdf", "metadata.csv"])
 

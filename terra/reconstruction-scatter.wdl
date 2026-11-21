@@ -282,6 +282,7 @@ task knn {
         String work_dir
         String docker
         Int mem_GB
+        Int cpu
         Int disk_GB
     }
     command <<<
@@ -300,7 +301,7 @@ task knn {
         String done = "~{work_dir}"
     }
     runtime {
-        cpu: 8
+        cpu: cpu
         memory: "~{mem_GB} GB"
         disks: "local-disk ~{disk_GB} SSD"
         docker: docker
@@ -315,6 +316,7 @@ task recon {
         String params
         String docker
         Int mem_GB
+        Int cpu
         Int disk_GB
     }
     command <<<
@@ -333,7 +335,7 @@ task recon {
     gcloud storage cp -r output/* "~{work_dir}/"
     >>>
     runtime {
-        cpu: 8
+        cpu: cpu
         memory: "~{mem_GB} GB"
         disks: "local-disk ~{disk_GB} SSD"
         docker: docker
@@ -357,11 +359,21 @@ workflow reconstruction {
         Int? pr
         String? subfolder
 
-        # Per-stage memory. mem_GB (sized by submit.py like the serial run) goes to knn/recon;
-        # the read-level shards each hold 1/16-1/25 of the reads, compute-chimeras 1/4
-        Int mem_shard_GB = 64
-        Int mem_chimera_GB = 192
-        Int mem_gather_GB = 128
+        # Per-stage memory, from the peaks of the first full run (D707D504, 514 GB of FASTQs)
+        # plus headroom. Batch hands out about one vCPU per 6.5 GB, and the Julia steps are
+        # single-threaded, so oversizing memory only buys idle cores
+        Int mem_read_GB = 64
+        Int mem_whitelist_GB = 24
+        Int mem_match_GB = 16
+        Int mem_chimera_GB = 48
+        Int mem_remove_GB = 16
+        Int mem_count_GB = 48
+
+        # mem_GB (sized by submit.py like the serial run) goes to knn/recon. Both are
+        # multi-threaded, so their cores are set explicitly rather than left to follow memory:
+        # on 20 vCPUs knn took 2h, where the serial run's ~92-vCPU VM took 37 min
+        Int cpu_knn = 48
+        Int cpu_recon = 48
 
         # disk_GB (sized off the FASTQs) only goes to read_fastqs, which downloads them all;
         # every later task works on a slice of the reads and gets disk_work_GB
@@ -391,7 +403,7 @@ workflow reconstruction {
                     fastqs1 = find_fastqs.fastqs1, fastqs2 = find_fastqs.fastqs2,
                     bcl = bcl, index = index, lanes = lanes, downsample_prop = downsample_prop,
                     R1_filter = p.left, R2_filter = p.right,
-                    docker = docker, mem_GB = mem_shard_GB, disk_GB = disk_GB
+                    docker = docker, mem_GB = mem_read_GB, disk_GB = disk_GB
             }
         }
 
@@ -399,7 +411,7 @@ workflow reconstruction {
             input:
                 scripts = setup.scripts, metadata = find_fastqs.metadata,
                 rpsbs = flatten(read_fastqs.rpsbs), bc1 = bc1, bc2 = bc2,
-                docker = docker, mem_GB = mem_shard_GB, disk_GB = 50
+                docker = docker, mem_GB = mem_whitelist_GB, disk_GB = 50
         }
 
         # Shards are addressed by index rather than handed every file, so each VM only
@@ -418,7 +430,7 @@ workflow reconstruction {
                     inputs = flatten([read_fastqs.reads_dfs[r], read_fastqs.metadatas[r],
                                       [compute_whitelists.wl1, compute_whitelists.wl2]]),
                     R1_filter = bases[a], R2_filter = bases[b],
-                    docker = docker, mem_GB = mem_shard_GB, disk_GB = disk_work_GB
+                    docker = docker, mem_GB = mem_match_GB, disk_GB = disk_work_GB
             }
         }
 
@@ -458,7 +470,7 @@ workflow reconstruction {
                     inputs = flatten([match_whitelists.outputs[i], flatten(compute_chimeras1.outputs),
                                       flatten(compute_chimeras2.outputs)]),
                     R1_filter = bases[ra], R2_filter = bases[rb],
-                    docker = docker, mem_GB = mem_shard_GB, disk_GB = disk_work_GB
+                    docker = docker, mem_GB = mem_remove_GB, disk_GB = disk_work_GB
             }
         }
 
@@ -477,19 +489,19 @@ workflow reconstruction {
                                    compute_whitelists.metadata_out],
                                   flatten(select_all(n_metadata)), flatten(remove_chimeras.outputs)]),
                 bc1 = bc1, bc2 = bc2, downsample_prop = downsample_prop, work_dir = setup.work_dir,
-                docker = docker, mem_GB = mem_gather_GB, disk_GB = disk_work_GB
+                docker = docker, mem_GB = mem_count_GB, disk_GB = disk_work_GB
         }
     }
 
     call knn {
         input:
             scripts = setup.scripts, work_dir = select_first([count_umis.done, setup.work_dir]),
-            docker = docker, mem_GB = mem_GB, disk_GB = disk_work_GB
+            docker = docker, mem_GB = mem_GB, cpu = cpu_knn, disk_GB = disk_work_GB
     }
 
     call recon {
         input:
             scripts = setup.scripts, work_dir = knn.done, params = params,
-            docker = docker, mem_GB = mem_GB, disk_GB = disk_work_GB
+            docker = docker, mem_GB = mem_GB, cpu = cpu_recon, disk_GB = disk_work_GB
     }
 }

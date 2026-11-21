@@ -6,12 +6,27 @@ using DataFrames
 # Each file possibly includes the number of reads or umi.
 # Much larger than a data table.
 
+# CSV.jl's compress=true gzips at the default level, which made writing the big frames take
+# longer than computing them; level 1 is several times faster for a slightly larger file
+function write_csv(path::String, df::DataFrame; compress::Bool = endswith(path, ".gz"))::Nothing
+    if compress
+        open(path, "w") do file
+            io = GzipCompressorStream(file; level=1)
+            CSV.write(io, df, writeheader=true)
+            close(io)
+        end
+    else
+        CSV.write(path, df, writeheader=true)
+    end
+    return nothing
+end
+
 function write_df(df::DataFrame, path::String; compress::Union{Bool,Nothing} = nothing)::Nothing
     print_start("Writing $(basename(path))... ")
     if compress === nothing
         compress = endswith(path, ".gz")
     end
-    CSV.write(path, df, writeheader=true, compress=compress)
+    write_csv(path, df; compress=compress)
     println_done()
     return nothing
 end
@@ -62,7 +77,7 @@ function write_tab(
     if compress === nothing
         compress = endswith(path, ".gz")
     end
-    CSV.write(path, tab_df; header=true, compress=compress)
+    write_csv(path, tab_df; compress=compress)
     return nothing
 end
 
