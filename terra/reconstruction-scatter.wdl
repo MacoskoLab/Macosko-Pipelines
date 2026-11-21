@@ -179,6 +179,10 @@ task compute_whitelists {
     }
     command <<<
     set -euo pipefail
+    # Julia's logged "GB" is live memory after a GC, not the peak, so sample the VM's used
+    # memory and report the real peak, even when the task is OOM-killed
+    ( while sleep 10; do awk '/^MemTotal/{t=$2} /^MemAvailable/{a=$2} END{print int((t-a)/1024)}' /proc/meminfo >> mem.log; done ) & MON=$!
+    trap 'kill $MON 2>/dev/null; echo "Peak memory used: $(sort -n mem.log 2>/dev/null | tail -1) MB"' EXIT
     mkdir src && tar xzf ~{scripts} -C src
 
     mkdir in out
@@ -217,6 +221,10 @@ task prefix_step {
     }
     command <<<
     set -euo pipefail
+    # Julia's logged "GB" is live memory after a GC, not the peak, so sample the VM's used
+    # memory and report the real peak, even when the task is OOM-killed
+    ( while sleep 10; do awk '/^MemTotal/{t=$2} /^MemAvailable/{a=$2} END{print int((t-a)/1024)}' /proc/meminfo >> mem.log; done ) & MON=$!
+    trap 'kill $MON 2>/dev/null; echo "Peak memory used: $(sort -n mem.log 2>/dev/null | tail -1) MB"' EXIT
     mkdir src && tar xzf ~{scripts} -C src
 
     mkdir in out
@@ -253,6 +261,10 @@ task count_umis {
     }
     command <<<
     set -euo pipefail
+    # Julia's logged "GB" is live memory after a GC, not the peak, so sample the VM's used
+    # memory and report the real peak, even when the task is OOM-killed
+    ( while sleep 10; do awk '/^MemTotal/{t=$2} /^MemAvailable/{a=$2} END{print int((t-a)/1024)}' /proc/meminfo >> mem.log; done ) & MON=$!
+    trap 'kill $MON 2>/dev/null; echo "Peak memory used: $(sort -n mem.log 2>/dev/null | tail -1) MB"' EXIT
     mkdir src && tar xzf ~{scripts} -C src
 
     mkdir in out
@@ -287,6 +299,10 @@ task knn {
     }
     command <<<
     set -euo pipefail
+    # Julia's logged "GB" is live memory after a GC, not the peak, so sample the VM's used
+    # memory and report the real peak, even when the task is OOM-killed
+    ( while sleep 10; do awk '/^MemTotal/{t=$2} /^MemAvailable/{a=$2} END{print int((t-a)/1024)}' /proc/meminfo >> mem.log; done ) & MON=$!
+    trap 'kill $MON 2>/dev/null; echo "Peak memory used: $(sort -n mem.log 2>/dev/null | tail -1) MB"' EXIT
     mkdir src && tar xzf ~{scripts} -C src
     PY="/root/.local/bin/micromamba run python"
 
@@ -321,6 +337,10 @@ task recon {
     }
     command <<<
     set -euo pipefail
+    # Julia's logged "GB" is live memory after a GC, not the peak, so sample the VM's used
+    # memory and report the real peak, even when the task is OOM-killed
+    ( while sleep 10; do awk '/^MemTotal/{t=$2} /^MemAvailable/{a=$2} END{print int((t-a)/1024)}' /proc/meminfo >> mem.log; done ) & MON=$!
+    trap 'kill $MON 2>/dev/null; echo "Peak memory used: $(sort -n mem.log 2>/dev/null | tail -1) MB"' EXIT
     mkdir src && tar xzf ~{scripts} -C src
     PY="/root/.local/bin/micromamba run python"
 
@@ -359,15 +379,16 @@ workflow reconstruction {
         Int? pr
         String? subfolder
 
-        # Per-stage memory, from the peaks of the first full run (D707D504, 514 GB of FASTQs)
-        # plus headroom. Batch hands out about one vCPU per 6.5 GB, and the Julia steps are
-        # single-threaded, so oversizing memory only buys idle cores
+        # Per-stage memory: the values the first full run (D707D504, 514 GB of FASTQs) succeeded
+        # with. Julia's logged "GB" is live memory after a GC, well below the peak (24 GB OOMed
+        # in compute-whitelists where the log said 9), so these wait on the "Peak memory used"
+        # line each task now prints before being cut
         Int mem_read_GB = 64
-        Int mem_whitelist_GB = 24
-        Int mem_match_GB = 16
-        Int mem_chimera_GB = 48
-        Int mem_remove_GB = 16
-        Int mem_count_GB = 48
+        Int mem_whitelist_GB = 64
+        Int mem_match_GB = 64
+        Int mem_chimera_GB = 192
+        Int mem_remove_GB = 64
+        Int mem_count_GB = 128
 
         # mem_GB (sized by submit.py like the serial run) goes to knn/recon. Both are
         # multi-threaded, so their cores are set explicitly rather than left to follow memory:

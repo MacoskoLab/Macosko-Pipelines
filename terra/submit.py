@@ -39,6 +39,7 @@ def get_args():
     parser.add_argument("--config", type=str, default=None, help="Path to JSON profile overriding the built-in Macosko defaults")
     parser.add_argument("--sa", type=str, default=None, help="Service account to impersonate (short name or full email) for Google Sheets access; overrides the profile 'sa'")
     parser.add_argument("--dryrun", action='store_true')
+    parser.add_argument("--callcache", action='store_true', help="Let Terra reuse results of identical earlier tasks (e.g. to resume a failed scatter run)")
     parser.add_argument("--mem", type=int, default=None, help="Override memory (GB) for all jobs")
     parser.add_argument("--branch", type=str, default=None, help="Git ref to pull pipeline scripts from: branch/tag name or commit SHA (slide-tags/recon only; default: main)")
     parser.add_argument("--pr", type=int, default=None, help="Pull request number to pull pipeline scripts from; overrides --branch (slide-tags/recon only)")
@@ -501,7 +502,7 @@ def submit(config, ns, user_comment=""):
     assert res["missingInputs"] == [], f"ERROR: missing input: \n{res['missingInputs']}"
 
     # Submit the job
-    res = fapi.create_submission(wnamespace, workspace, ns, config, user_comment=user_comment, use_callcache=False)
+    res = fapi.create_submission(wnamespace, workspace, ns, config, user_comment=user_comment, use_callcache=args.callcache)
     assert res.status_code == 201, f"{res.status_code}: {res.json()['message']}"
     print(f"Submitted {config} {user_comment}")
 
