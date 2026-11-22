@@ -367,7 +367,9 @@ workflow reconstruction {
     input {
         String bcl
         String index
-        Int mem_GB
+        # Not used: submit.py always writes mem_GB (sized for the serial run, so FASTQ-dominated
+        # and far too big here), and the per-stage inputs below set every task's memory instead
+        Int? mem_GB
         Int disk_GB
         Int bc1 = 0
         Int bc2 = 0
@@ -379,21 +381,24 @@ workflow reconstruction {
         Int? pr
         String? subfolder
 
-        # Per-stage memory: the values the first full run (D707D504, 514 GB of FASTQs) succeeded
-        # with. Julia's logged "GB" is live memory after a GC, well below the peak (24 GB OOMed
-        # in compute-whitelists where the log said 9), so these wait on the "Peak memory used"
-        # line each task now prints before being cut
+        # Per-stage memory: about 1.3-1.6x the "Peak memory used" each task printed on D707D504
+        # (514 GB of FASTQs, 100% of reads; peaks 27/14/53/29/60/63/40 GB). Julia's own logged
+        # "GB" is live memory after a GC and far below the peak, so don't size from it. Larger
+        # pucks may need these raised in the config. read_fastqs has no peak measurement yet and
+        # keeps the 64 GB it has always run with
         Int mem_read_GB = 64
-        Int mem_whitelist_GB = 64
-        Int mem_match_GB = 64
-        Int mem_chimera_GB = 192
-        Int mem_remove_GB = 64
-        Int mem_count_GB = 128
+        Int mem_whitelist_GB = 40
+        Int mem_match_GB = 24
+        Int mem_chimera_GB = 72
+        Int mem_remove_GB = 40
+        Int mem_count_GB = 80
+        Int mem_knn_GB = 96
+        Int mem_recon_GB = 64
 
-        # mem_GB (sized by submit.py like the serial run) goes to knn/recon. Both are
-        # multi-threaded, so their cores are set explicitly rather than left to follow memory:
-        # on 20 vCPUs knn took 2h, where the serial run's ~92-vCPU VM took 37 min
-        Int cpu_knn = 48
+        # knn/recon are multi-threaded, so their cores are set explicitly rather than left to
+        # follow memory. recon's UMAP embedding scaled well (63 -> 29 min from ~20 to 48 vCPUs);
+        # knn barely did (2h01 -> 1h35 with all 48 busy), so it gets fewer
+        Int cpu_knn = 32
         Int cpu_recon = 48
 
         # disk_GB (sized off the FASTQs) only goes to read_fastqs, which downloads them all;
@@ -517,12 +522,12 @@ workflow reconstruction {
     call knn {
         input:
             scripts = setup.scripts, work_dir = select_first([count_umis.done, setup.work_dir]),
-            docker = docker, mem_GB = mem_GB, cpu = cpu_knn, disk_GB = disk_work_GB
+            docker = docker, mem_GB = mem_knn_GB, cpu = cpu_knn, disk_GB = disk_work_GB
     }
 
     call recon {
         input:
             scripts = setup.scripts, work_dir = knn.done, params = params,
-            docker = docker, mem_GB = mem_GB, cpu = cpu_recon, disk_GB = disk_work_GB
+            docker = docker, mem_GB = mem_recon_GB, cpu = cpu_recon, disk_GB = disk_work_GB
     }
 }
