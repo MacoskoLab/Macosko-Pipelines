@@ -15,6 +15,7 @@ task setup {
         String branch
         Int? pr
         String? subfolder
+        String? selection
     }
     command <<<
     set -euo pipefail
@@ -25,6 +26,14 @@ task setup {
     if [ -n "$PR" ]; then REF="refs/pull/$PR/head"; else REF="$BRANCH"; fi
     wget -q -O repo.tar.gz "https://codeload.github.com/MacoskoLab/Macosko-Pipelines/tar.gz/$REF"
     mkdir repo && tar xzf repo.tar.gz -C repo --strip-components=1
+
+    # tools/ is only needed to cut a selection, so a plain run never fails over its absence
+    SELECTION="~{default="" selection}"
+    if [ -n "$SELECTION" ]; then
+        cp repo/tools/puck-select.py repo/tools/subset-matrix.py repo/reconstruction/ 2>/dev/null || {
+            echo "ERROR: tools/puck-select.py + tools/subset-matrix.py are not present at ref '$REF'"
+            exit 1; }
+    fi
     tar czf scripts.tar.gz -C repo/reconstruction .
 
     BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
@@ -40,6 +49,18 @@ task setup {
     if [ -n "$SUBFOLDER" ]; then work_dir="$work_dir/$SUBFOLDER"; fi
     echo "$work_dir" > work_dir.txt
     echo "Output directory: $work_dir"
+
+    # A selection is a curated subset of the beads, cut by tools/puck-select.py and kept in its
+    # own subfolder beside the full run it was cut from. Checked here so a missing sidecar fails
+    # in minutes rather than after the counting stages
+    sel_dir="$work_dir"
+    if [ -n "$SELECTION" ]; then
+        sel_dir="$work_dir/$SELECTION"
+        gsutil -q stat "$sel_dir/selection.json" || {
+            echo "ERROR: no $sel_dir/selection.json - run tools/puck-select.py first"; exit 1; }
+        echo "Selection directory: $sel_dir"
+    fi
+    echo "$sel_dir" > sel_dir.txt
 
     # Only this run's own folder counts as a cache: unlike reconstruction.wdl there is no
     # fall-through to the root run, since the point of a scatter run is to count afresh
@@ -61,6 +82,7 @@ task setup {
     output {
         File scripts = "scripts.tar.gz"
         String work_dir = read_string("work_dir.txt")
+        String sel_dir = read_string("sel_dir.txt")
         Boolean cached = read_boolean("cached.txt")
     }
     runtime {
@@ -288,6 +310,49 @@ task count_umis {
     }
 }
 
+task select_beads {
+    input {
+        File scripts
+        String base_dir
+        String sel_dir
+        String docker
+        Int mem_GB
+        Int disk_GB
+    }
+    command <<<
+    set -euo pipefail
+    ( while sleep 10; do awk '/^MemTotal/{t=$2} /^MemAvailable/{a=$2} END{print int((t-a)/1024)}' /proc/meminfo >> mem.log; done ) & MON=$!
+    trap 'kill $MON 2>/dev/null; echo "Peak memory used: $(sort -n mem.log 2>/dev/null | tail -1) MB"' EXIT
+    mkdir src && tar xzf ~{scripts} -C src
+    PY="/root/.local/bin/micromamba run python"
+
+    mkdir base cache
+    gcloud storage cp "~{base_dir}/matrix.csv.gz" "~{base_dir}/sb1.txt.gz" \
+                      "~{base_dir}/sb2.txt.gz"    "~{base_dir}/metadata.csv" \
+                      "~{sel_dir}/selection.json" base
+
+    # Replay the cut recorded by tools/puck-select.py against the puck it was drawn on, which
+    # recon.py wrote inside its own UMAP..._ne2000 folder of the full run
+    SOURCE_PUCK=$($PY -c "import json; print(json.load(open('base/selection.json'))['source_puck'])")
+    gcloud storage cp "~{base_dir}/$SOURCE_PUCK/Puck.csv" base/Puck.csv
+    $PY src/puck-select.py base/Puck.csv -o base/Puck-selected.csv --non_interactive \
+        --from_json base/selection.json
+    $PY src/subset-matrix.py -i base -o cache -p base/Puck-selected.csv -b 2 -l 1
+    cp base/Puck-selected.csv base/selection.json cache/
+    gcloud storage cp cache/* "~{sel_dir}/"
+    >>>
+    output {
+        String done = "~{sel_dir}"
+    }
+    runtime {
+        cpu: 2
+        memory: "~{mem_GB} GB"
+        disks: "local-disk ~{disk_GB} SSD"
+        docker: docker
+        preemptible: 2
+    }
+}
+
 task knn {
     input {
         File scripts
@@ -330,6 +395,7 @@ task recon {
         File scripts
         String work_dir
         String params
+        Boolean selected
         String docker
         Int mem_GB
         Int cpu
@@ -349,7 +415,19 @@ task recon {
                       "~{work_dir}/sb2.txt.gz"    "~{work_dir}/metadata.csv" \
                       "~{work_dir}/knn2.npz" cache
 
-    $PY src/recon.py -i cache -o output -b 2 ~{params}
+    # estimate_diameter() bins on total bead count, so a large cut silently rescales the puck.
+    # subset-matrix.py records the pre-cut bin; carry it over unless params already sets one
+    DIAM=""
+    if [ "~{selected}" = true ] && ! grep -q -- '-D' <<< "~{params}"; then
+        prev=$(grep -m1 '^subset_diameter_prev,' cache/metadata.csv | cut -d',' -f2 || true)
+        new=$( grep -m1 '^subset_diameter_new,'  cache/metadata.csv | cut -d',' -f2 || true)
+        if [ -n "$prev" ] && [ "$prev" != "None" ] && [ "$prev" != "$new" ]; then
+            DIAM="-D $prev"
+            echo "NOTE: subsetting changed the estimated diameter ${prev} -> ${new}um, preserving ${prev}um"
+        fi
+    fi
+
+    $PY src/recon.py -i cache -o output -b 2 $DIAM ~{params}
 
     echo "----- Uploading results -----"
     gcloud storage cp -r output/* "~{work_dir}/"
@@ -380,6 +458,9 @@ workflow reconstruction {
         String branch = "main"
         Int? pr
         String? subfolder
+        # Name of a tools/puck-select.py cut under <run dir>/<selection>/selection.json. The full
+        # run's matrix is reused if present (counted first if not), then subset, then knn + recon
+        String? selection
 
         # Per-stage memory: about 1.3-1.6x the "Peak memory used" each task printed on D707D504
         # (514 GB of FASTQs, 100% of reads; peaks 27/14/53/29/60/63/40 GB). Julia's own logged
@@ -394,6 +475,7 @@ workflow reconstruction {
         Int mem_count_GB = 80
         Int mem_knn_GB = 96
         Int mem_recon_GB = 64
+        Int mem_select_GB = 32
 
         # knn/recon are multi-threaded, so their cores are set explicitly rather than left to
         # follow memory. recon's UMAP embedding scaled well (63 -> 29 min from ~20 to 48 vCPUs);
@@ -412,7 +494,7 @@ workflow reconstruction {
     call setup {
         input:
             bcl = bcl, index = index, bc1 = bc1, bc2 = bc2, lanes = lanes,
-            docker = docker, branch = branch, pr = pr, subfolder = subfolder
+            docker = docker, branch = branch, pr = pr, subfolder = subfolder, selection = selection
     }
 
     if (!setup.cached) {
@@ -519,15 +601,26 @@ workflow reconstruction {
         }
     }
 
+    # The base matrix comes from count_umis on a fresh run, or is already in work_dir
+    String base_dir = select_first([count_umis.done, setup.work_dir])
+
+    if (defined(selection)) {
+        call select_beads {
+            input:
+                scripts = setup.scripts, base_dir = base_dir, sel_dir = setup.sel_dir,
+                docker = docker, mem_GB = mem_select_GB, disk_GB = disk_work_GB
+        }
+    }
+
     call knn {
         input:
-            scripts = setup.scripts, work_dir = select_first([count_umis.done, setup.work_dir]),
+            scripts = setup.scripts, work_dir = select_first([select_beads.done, base_dir]),
             docker = docker, mem_GB = mem_knn_GB, cpu = cpu_knn, disk_GB = disk_work_GB
     }
 
     call recon {
         input:
-            scripts = setup.scripts, work_dir = knn.done, params = params,
+            scripts = setup.scripts, work_dir = knn.done, params = params, selected = defined(selection),
             docker = docker, mem_GB = mem_recon_GB, cpu = cpu_recon, disk_GB = disk_work_GB
     }
 }
