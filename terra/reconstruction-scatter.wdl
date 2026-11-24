@@ -12,6 +12,7 @@ task setup {
         Int bc2
         Int lanes
         String docker
+        String bucket
         String branch
         Int? pr
         String? subfolder
@@ -36,7 +37,7 @@ task setup {
     fi
     tar czf scripts.tar.gz -C repo/reconstruction .
 
-    BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
+    BUCKET="~{bucket}"
 
     SUBFOLDER="~{default="" subfolder}"
     if [ -z "$SUBFOLDER" ]; then
@@ -101,6 +102,7 @@ task find_fastqs {
         String index
         Int lanes
         String docker
+        String bucket
     }
     command <<<
     set -euo pipefail
@@ -110,7 +112,7 @@ task find_fastqs {
     # the head of each file instead of downloading them whole. A byte range rather than
     # cat | head, since gcloud does not exit when head closes the pipe and the VM hangs.
     # 50 MB compressed holds ~7x the reads needed; the truncated gzip tail is discarded.
-    BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
+    BUCKET="~{bucket}"
     mkdir fastqs
     set +o pipefail
     for f in $(gcloud storage ls "gs://$BUCKET/fastqs/~{bcl}/~{index}_*_L00[~{lanes}]_*"); do
@@ -154,6 +156,7 @@ task read_fastqs {
         String R1_filter
         String R2_filter
         String docker
+        String bucket
         Int mem_GB
         Int disk_GB
     }
@@ -161,7 +164,7 @@ task read_fastqs {
     set -euo pipefail
     mkdir src && tar xzf ~{scripts} -C src
 
-    BUCKET="fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
+    BUCKET="~{bucket}"
     mkdir fastqs
     gcloud storage cp "gs://$BUCKET/fastqs/~{bcl}/~{index}_*_L00[~{lanes}]_*" fastqs
 
@@ -454,6 +457,8 @@ workflow reconstruction {
         Int lanes = 12345678
         String params = ""
         String docker = "us-central1-docker.pkg.dev/velina-208320/terra/pipeline-image:latest"
+        # Workspace bucket holding fastqs/ and recon/; the BICAN config sets its own
+        String bucket = "fc-secure-d99fbd65-eb27-4989-95b4-4cf559aa7d36"
         Float downsample_prop = 1.0
         String branch = "main"
         Int? pr
@@ -494,13 +499,13 @@ workflow reconstruction {
     call setup {
         input:
             bcl = bcl, index = index, bc1 = bc1, bc2 = bc2, lanes = lanes,
-            docker = docker, branch = branch, pr = pr, subfolder = subfolder, selection = selection
+            docker = docker, bucket = bucket, branch = branch, pr = pr, subfolder = subfolder, selection = selection
     }
 
     if (!setup.cached) {
         call find_fastqs {
             input:
-                scripts = setup.scripts, bcl = bcl, index = index, lanes = lanes, docker = docker
+                scripts = setup.scripts, bcl = bcl, index = index, lanes = lanes, docker = docker, bucket = bucket
         }
 
         # Every prefix pair, N included, so N reads are still tallied in the metadata
@@ -511,7 +516,7 @@ workflow reconstruction {
                     fastqs1 = find_fastqs.fastqs1, fastqs2 = find_fastqs.fastqs2,
                     bcl = bcl, index = index, lanes = lanes, downsample_prop = downsample_prop,
                     R1_filter = p.left, R2_filter = p.right,
-                    docker = docker, mem_GB = mem_read_GB, disk_GB = disk_GB
+                    docker = docker, bucket = bucket, mem_GB = mem_read_GB, disk_GB = disk_GB
             }
         }
 
