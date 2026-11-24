@@ -467,19 +467,20 @@ workflow reconstruction {
         # run's matrix is reused if present (counted first if not), then subset, then knn + recon
         String? selection
 
-        # Per-stage memory: about 1.3-1.6x the "Peak memory used" each task printed on D707D504
-        # (514 GB of FASTQs, 100% of reads; peaks 27/14/53/29/60/63/40 GB). Julia's own logged
-        # "GB" is live memory after a GC and far below the peak, so don't size from it. Larger
-        # pucks may need these raised in the config. read_fastqs has no peak measurement yet and
-        # keeps the 64 GB it has always run with
+        # Per-stage memory, from the "Peak memory used" each task prints. Peaks track the
+        # whitelist-matched reads, not FASTQ size: BICAN Gio_1 (206 GiB of FASTQs) matched 1.33x
+        # the reads of D707D504 (514 GB) and its compute-chimeras peaked at ~72 GB vs 53, OOMing
+        # at 72. The stages after read/whitelist/match are sized at ~1.5x Gio_1's (expected)
+        # peaks. Julia's own logged "GB" is live memory after a GC, far below the peak, so don't
+        # size from it. read_fastqs has no peak measurement and keeps the 64 GB it ran with
         Int mem_read_GB = 64
         Int mem_whitelist_GB = 40
         Int mem_match_GB = 24
-        Int mem_chimera_GB = 72
-        Int mem_remove_GB = 40
-        Int mem_count_GB = 80
-        Int mem_knn_GB = 96
-        Int mem_recon_GB = 64
+        Int mem_chimera_GB = 112
+        Int mem_remove_GB = 64
+        Int mem_count_GB = 128
+        Int mem_knn_GB = 136
+        Int mem_recon_GB = 96
         Int mem_select_GB = 32
 
         # knn/recon are multi-threaded, so their cores are set explicitly rather than left to
