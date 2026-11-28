@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import gspread
@@ -80,8 +81,16 @@ bucket = storage.Client().bucket(BUCKET)
 bucket.reload()
 
 # Load the number of FASTQ files for each BCL/Index
+# A file counts under its fastq_match prefix (sheets index "SI-TT-B1_2025-..._S1_L001_..." as
+# "SI-TT-B1") and also under its full name before the Illumina suffix, so an Index that itself
+# contains the separator (e.g. tools/bican/stage-recon-fastqs.py's "Gio_1") still matches.
+# The optional r<n>- is that script's tag for a puck's later sequencing runs.
+ILLUMINA_SUFFIX = re.compile(r"_(r\d+-)?S\d+_L\d{3}_[RI]\d_\d{3}\.fastq\.gz$")
+def fastq_indexes(name):
+    m = ILLUMINA_SUFFIX.search(name)
+    return {name.split(profile["fastq_match"])[0]} | ({name[:m.start()]} if m else set())
 fastqs = [blob.name for blob in bucket.list_blobs(prefix=f"fastqs") if blob.name.endswith(".fastq.gz")]
-fastqs = Counter([(f.split("/")[1], f.split("/")[2].split(profile["fastq_match"])[0]) for f in fastqs])
+fastqs = Counter([(f.split("/")[1], i) for f in fastqs for i in fastq_indexes(f.split("/")[2])])
 fastqs = pd.DataFrame([(k[0],k[1],v) for k,v in fastqs.items()], columns=["BCL", "Index", "FASTQs"])
 assert not fastqs.duplicated(subset=["BCL", "Index"]).any()
 
@@ -131,6 +140,15 @@ def multiline_hyperlink_requests(sheet_id, col_idx, paths_series):
         })
     return requests
 
+def strip_keys(df):
+    # Match on trimmed BCL/Index cells, as submit.py does; a stray space or newline in a cell
+    # would otherwise hide that row's outputs. Writes go by row position, so cells are untouched
+    df = df.copy()
+    for col in ["BCL", "Index", "SBIndex"]:
+        if col in df.columns:
+            df[col] = df[col].map(lambda x: x.strip() if isinstance(x, str) else x)
+    return df
+
 link_requests = []
 
 # Query the gene-expression / slide-tags output blobs once (shared by both GEX tabs)
@@ -153,6 +171,7 @@ def update_gex_tab(ws_name, fastq_index_col):
     col_idx = {col: df0.columns.get_loc(col) for col in ["web_summary", "summary", "FASTQs"]}
     df0 = df0.drop(columns=["web_summary", "summary", "FASTQs"])
     df0.rename(columns={'RNAIndex': 'Index'}, inplace=True)
+    df0 = strip_keys(df0)
 
     df = df0.copy()
     df = df.dropna(subset=['BCL', 'Index'])
@@ -186,7 +205,7 @@ recon_ws = sh.worksheet("Recon")
 df0 = retry(get_as_dataframe, recon_ws)
 ranges = {col: get_column_letter(df0.columns.get_loc(col)+1)+"2" for col in ["QC", "summary", "FASTQs"]}
 col_idx = {col: df0.columns.get_loc(col) for col in ["QC", "summary", "FASTQs"]}
-df0 = df0.drop(columns=["QC", "summary", "FASTQs"])
+df0 = strip_keys(df0.drop(columns=["QC", "summary", "FASTQs"]))
 
 df = df0.copy()
 df = df.dropna(subset=['BCL', 'Index'])
